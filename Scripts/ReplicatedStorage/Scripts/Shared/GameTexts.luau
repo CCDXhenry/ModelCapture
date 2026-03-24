@@ -24,5 +24,6 @@ local GameTexts = {
 	BackpackFull = { key = "", source = "Backpack is full!" },
 	WingsAssistanceTitle = { key = "WingsAssistanceTitle", source = "Wings Assistance" },
 	WingsAssistanceBody = { key = "WingsAssistanceBody", source = "Wings assistance can help you return to your nearest previous island. Do you want to purchase this assistance?" },
+	ReceivedReward = { key = "ReceivedReward", source = "Received: {1}" },
 }
 return GameTexts

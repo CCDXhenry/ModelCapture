@@ -9,6 +9,7 @@ local DateTimeExtension = require(coreSharedScripts:FindFirstChild("DateTimeExte
 local BrainrotData = require(script:FindFirstChild("BrainrotData"))
 local UpgradeShopData = require(script:FindFirstChild("UpgradeShopData"))
 local CoilData = require(script:FindFirstChild("CoilData"))
+local LittleElfChestData = require(script:FindFirstChild("LittleElfChestData"))
 
 --游戏版本
 GameConfig.GameVersion = "1.0.0"
@@ -72,6 +73,7 @@ GameConfig.SkillType = {
 GameConfig.ItemType = {
 	Brainrot = 1,
 	Coil = 2,
+	LittleElfChest = 3,
 }
 
 -- 线圈类型
@@ -191,6 +193,15 @@ GameConfig.CoilIdMap = {} :: { [number]: CoilInfo }
 for _, config in pairs(CoilData) do
 	GameConfig.CoilNameMap[config.modelRes] = config
 	GameConfig.CoilIdMap[config.id] = config
+end
+
+GameConfig.LittleElfChests = LittleElfChestData
+GameConfig.LittleElfChestNameMap = {} :: { [string]: any }
+GameConfig.LittleElfChestIdMap = {} :: { [number]: any }
+
+for _, config in pairs(LittleElfChestData) do
+	GameConfig.LittleElfChestNameMap[config.resourceName] = config
+	GameConfig.LittleElfChestIdMap[config.id] = config
 end
 
 -- 宠物质量配置 (已迁移到 GameConfig.BrainrotQualityConfig)

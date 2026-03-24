@@ -21,12 +21,14 @@ local coreClientScripts = coreScripts:WaitForChild("Client")
 
 local GameConfig = require(sharedScripts:WaitForChild("GameConfig"))
 local GameTexts = require(sharedScripts:WaitForChild("GameTexts"))
+local NetMsg = require(sharedScripts:WaitForChild("NetMsg"))
 local TranslationTool = require(coreClientScripts:WaitForChild("TranslationTool"))
 local BillboardManager = require(scripts:WaitForChild("Client"):WaitForChild("BillboardManager"))
 local NumberExtension = require(coreSharedScripts:WaitForChild("NumberExtension"))
 
 local islandsFolder = workspace:WaitForChild("Islands")
 local actualModels = replicatedStorage:WaitForChild("Models"):WaitForChild("Brainrots")
+local actualChests = replicatedStorage:WaitForChild("Models"):WaitForChild("LittleElfChests")
 local uIFolder = replicatedStorage:WaitForChild("UI")
 local brainrotInfoUIParams = uIFolder:WaitForChild("BrainrotInfoUI") :: BillboardGui
 
@@ -38,16 +40,26 @@ local function SetupVisualBrainrot(targetPart: BasePart)
 	end
 
 	local configId = targetPart:GetAttribute("ConfigId") :: number?
+	local itemType = targetPart:GetAttribute("ItemType") :: number? or GameConfig.ItemType.Brainrot
 	if not configId then
 		return
 	end
 
-	local brainrotData = GameConfig.BrainrotIdMap[configId]
-	if not brainrotData then
+	local data: any
+	local sourceFolder: Folder?
+	if itemType == GameConfig.ItemType.LittleElfChest then
+		data = GameConfig.LittleElfChestIdMap[configId]
+		sourceFolder = actualChests
+	else
+		data = GameConfig.BrainrotIdMap[configId]
+		sourceFolder = actualModels
+	end
+
+	if not data or not sourceFolder then
 		return
 	end
 
-	local sourceModel = actualModels:FindFirstChild(brainrotData.resourceName)
+	local sourceModel = sourceFolder:FindFirstChild(data.resourceName)
 	if not sourceModel or not sourceModel:IsA("Model") then
 		return
 	end
@@ -55,6 +67,7 @@ local function SetupVisualBrainrot(targetPart: BasePart)
 	local newVisual = sourceModel:Clone()
 	newVisual.Name = "VisualModel"
 	newVisual:SetAttribute("ConfigId", configId)
+	newVisual:SetAttribute("ItemType", itemType)
 
 	local targetCFrame = targetPart.CFrame
 	newVisual:PivotTo(targetCFrame)
@@ -80,7 +93,9 @@ local function SetupVisualBrainrot(targetPart: BasePart)
 	newVisual.Parent = targetPart
 
 	local level = (targetPart:GetAttribute("Level") :: number) or 1
-	AttachInfoUIToModel(targetPart, targetPart :: BasePart, configId, level, brainrotData.quality, newVisual:GetExtentsSize().Y)
+	if itemType ~= GameConfig.ItemType.LittleElfChest then
+		AttachInfoUIToModel(targetPart, targetPart :: BasePart, configId, level, data.quality or 1, newVisual:GetExtentsSize().Y)
+	end
 end
 
 -- Attach UI
@@ -89,46 +104,49 @@ function AttachInfoUIToModel(targetParent: Instance, adornee: BasePart, configId
 		return
 	end
 
-	local brainrotData = GameConfig.BrainrotIdMap[configId]
-	if not brainrotData then
+	local itemType = targetParent:GetAttribute("ItemType") :: number? or GameConfig.ItemType.Brainrot
+	local data: any
+	if itemType == GameConfig.ItemType.LittleElfChest then
+		data = GameConfig.LittleElfChestIdMap[configId]
+	else
+		data = GameConfig.BrainrotIdMap[configId]
+	end
+
+	if not data then
 		return
 	end
 
 	local newBrainrotUI = brainrotInfoUIParams:Clone()
+	newBrainrotUI.Adornee = adornee
+	--newBrainrotUI.ExtentsOffsetWorldSpace = Vector3.new(0, visualModelHeight + 1.2, 0)
 	newBrainrotUI.Name = "BrainrotInfoUI"
-	newBrainrotUI.Enabled = true
 
-	local qualityCfg = GameConfig.BrainrotQualityConfig[quality]
-	local controller = newBrainrotUI:FindFirstChild("ControllerFrame")
+	local controller = newBrainrotUI:FindFirstChild("Controller")
 	if controller then
-		local nameLabel = controller:FindFirstChild("NameLabel") :: TextLabel?
-		local qualityLabel = controller:FindFirstChild("QualityLabel") :: TextLabel?
-		local lvLabel = controller:FindFirstChild("LvLabel") :: TextLabel?
+		local nameLabel = controller:FindFirstChild("NameText") :: TextLabel?
+		local levelText = controller:FindFirstChild("LevelText") :: TextLabel?
 		local abilityText = controller:FindFirstChild("AbilityText") :: TextLabel?
 		local sellPriceText = controller:FindFirstChild("SellPriceText") :: TextLabel?
 
+		local qualityCfg = GameConfig.BrainrotQualityConfig[quality]
+
 		if nameLabel then
-			nameLabel.Text = brainrotData.name_t or ""
+			nameLabel.Text = data.name_t or ""
 			if qualityCfg then
 				nameLabel.TextColor3 = qualityCfg.textColor
 			end
 		end
-		if qualityLabel then
-			qualityLabel.Text = if qualityCfg then qualityCfg.rarity else ""
+		if levelText then
+			levelText.Visible = true
+			TranslationTool.CustomAutoLocalizeTextLabel(levelText, GameTexts.LevelWithNumber.source, GameTexts.LevelWithNumber.key, { tostring(level) })
 			if qualityCfg then
-				qualityLabel.TextColor3 = qualityCfg.textColor
-			end
-		end
-		if lvLabel then
-			lvLabel.Visible = true
-			TranslationTool.CustomAutoLocalizeTextLabel(lvLabel, GameTexts.LevelWithNumber.source, GameTexts.LevelWithNumber.key, { tostring(level) })
-			if qualityCfg then
-				lvLabel.TextColor3 = qualityCfg.textColor
+				levelText.TextColor3 = qualityCfg.textColor
 			end
 		end
 		if abilityText then
-			abilityText.Visible = true
-			local abilityStr = NumberExtension.FormatBigNumberAA(GameConfig.GetBrainrotAbility(brainrotData.baseAbility, level))
+			abilityText.Visible = itemType == GameConfig.ItemType.Brainrot
+			local ability = if itemType == GameConfig.ItemType.Brainrot then GameConfig.GetBrainrotAbility(data.baseAbility, level) else 0
+			local abilityStr = NumberExtension.FormatBigNumberAA(ability)
 			TranslationTool.CustomAutoLocalizeTextLabel(abilityText, GameTexts.YieldPerSecond.source, GameTexts.YieldPerSecond.key, { abilityStr })
 		end
 		if sellPriceText then
@@ -136,14 +154,14 @@ function AttachInfoUIToModel(targetParent: Instance, adornee: BasePart, configId
 		end
 	end
 
-	newBrainrotUI.StudsOffset = Vector3.new(0, visualModelHeight + 4, 0)
+	newBrainrotUI.StudsOffset = Vector3.new(0, visualModelHeight + 1, 0)
 	newBrainrotUI.Adornee = adornee
 	newBrainrotUI.Parent = targetParent
 	BillboardManager.Track(newBrainrotUI)
 end
 
 local function ProcessDescendantAdded(descendant: Instance)
-	if descendant:IsA("BasePart") and (descendant.Name == "IslandBrainrot" or descendant.Name == "CarryingBrainrot") then
+	if descendant:IsA("BasePart") and (descendant.Name == "IslandBrainrot" or descendant.Name == "IslandChest" or descendant.Name == "CarryingBrainrot") then
 		SetupVisualBrainrot(descendant :: any)
 	elseif descendant:IsA("Tool") and descendant:GetAttribute("BrainrotUID") then
 		local visualModel = descendant:WaitForChild("VisualModel", 3) :: Model?
@@ -151,9 +169,19 @@ local function ProcessDescendantAdded(descendant: Instance)
 			local root = visualModel.PrimaryPart or visualModel:FindFirstChildWhichIsA("BasePart")
 			if root then
 				local configId = descendant:GetAttribute("ConfigId") :: number
-				local level = descendant:GetAttribute("Level") :: number or 1
-				local quality = descendant:GetAttribute("Quality") :: number or 1
-				AttachInfoUIToModel(visualModel, root, configId, level, quality, visualModel:GetExtentsSize().Y)
+				local level = (descendant:GetAttribute("Level") :: number) or 1
+				local quality = (descendant:GetAttribute("Quality") :: number) or 1
+				local itemType = descendant:GetAttribute("ItemType") :: number?
+				if itemType ~= GameConfig.ItemType.LittleElfChest then
+					AttachInfoUIToModel(
+						descendant,
+						visualModel.PrimaryPart or visualModel:FindFirstChildWhichIsA("BasePart") or (visualModel:GetChildren()[1] :: any),
+						configId,
+						level,
+						quality,
+						visualModel:GetExtentsSize().Y
+					)
+				end
 			end
 		end
 	end
@@ -213,6 +241,19 @@ local function SetupLocalPlayerToolTracking(character: Model)
 	character.ChildAdded:Connect(function(child)
 		if child:IsA("Tool") and child:GetAttribute("BrainrotUID") then
 			OnLocalToolEquipped(child :: Tool, character)
+
+			-- 如果是宝箱，监听点击
+			if child:GetAttribute("ItemType") == GameConfig.ItemType.LittleElfChest then
+				local uid = child:GetAttribute("BrainrotUID") :: string
+				local activatedConn: RBXScriptConnection? = nil
+				activatedConn = (child :: Tool).Activated:Connect(function()
+					if activatedConn then
+						activatedConn:Disconnect()
+						activatedConn = nil
+					end
+					NetMsg.FireRequestOpenChest(uid)
+				end)
+			end
 		end
 	end)
 	character.ChildRemoved:Connect(function(child)

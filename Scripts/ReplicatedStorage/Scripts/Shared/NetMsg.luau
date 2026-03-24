@@ -42,6 +42,7 @@ local notifyShowGiftConfirmEvent: RemoteEvent = remoteEventsFolder:FindFirstChil
 local notifyBrainrotQueueUpdateEvent: RemoteEvent = remoteEventsFolder:FindFirstChild("NotifyBrainrotQueueUpdate") :: RemoteEvent
 local notifyShowGameTipEvent: RemoteEvent = remoteEventsFolder:FindFirstChild("NotifyShowGameTip") :: RemoteEvent
 local notifyRescueStartEvent: RemoteEvent = remoteEventsFolder:FindFirstChild("NotifyRescueStart") :: RemoteEvent
+local requestOpenChestEvent: RemoteEvent = remoteEventsFolder:FindFirstChild("RequestOpenChest") :: RemoteEvent
 
 --客户端请求设置背景音乐音量
 function NetMsg.FireRequestSetBGMVolume(volume: number)
@@ -349,6 +350,16 @@ function NetMsg.ConnectNotifyRescueStart(callback: () -> ())
 	if notifyRescueStartEvent then
 		notifyRescueStartEvent.OnClientEvent:Connect(callback)
 	end
+end
+
+-- 客户端请求开启宝箱
+function NetMsg.FireRequestOpenChest(uid: string)
+	print("[NetMsg] FireRequestOpenChest", uid)
+	requestOpenChestEvent:FireServer(uid)
+end
+
+function NetMsg.ConnectRequestOpenChest(callback: (player: Player, uid: string) -> ())
+	requestOpenChestEvent.OnServerEvent:Connect(callback)
 end
 
 return NetMsg

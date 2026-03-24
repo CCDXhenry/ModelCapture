@@ -17,6 +17,7 @@ local islandsFolder = workspace:WaitForChild("Islands")
 local homesFolder = workspace:WaitForChild("PlayersHome")
 
 local actualModels = replicatedStorage:WaitForChild("Models"):WaitForChild("Brainrots")
+local actualChests = replicatedStorage:WaitForChild("Models"):WaitForChild("LittleElfChests")
 local BrainrotCarryingManager = require(serverScripts:FindFirstChild("BrainrotCarryingManager"))
 
 local BrainrotIslandManager = {}
@@ -80,9 +81,10 @@ function ConvertCarryingToQueue(player: Player)
 	local quality = tonumber(carryingBrainrot:GetAttribute("Quality")) or 1
 	local level = tonumber(carryingBrainrot:GetAttribute("Level")) or 1
 	local uid = carryingBrainrot:GetAttribute("BrainrotUID") :: string?
+	local itemType = carryingBrainrot:GetAttribute("ItemType") :: number?
 
 	if configId and uid then
-		local success = BrainrotQueueManager.AddItem(player, configId, quality, level, true)
+		local success = BrainrotQueueManager.AddItem(player, configId, quality, level, true, itemType)
 		if success then
 			BrainrotCarryingManager.StopCarrying(player)
 		else
@@ -125,10 +127,19 @@ function SetupBrainrotInteraction(randomBrainrot: Instance, island: Instance, sp
 	if not prompt then
 		prompt = Instance.new("ProximityPrompt")
 		if prompt then
-			prompt.ActionText = GameTexts.PickUpBrainrot.source
+			local itemType = randomBrainrot:GetAttribute("ItemType") or 1
 			local configId: number? = randomBrainrot:GetAttribute("ConfigId") :: number?
-			local brainrotConfig = if configId then GameConfig.BrainrotIdMap[configId] else nil
-			prompt.ObjectText = if brainrotConfig then brainrotConfig.name_t else randomBrainrot.Name
+			local level = randomBrainrot:GetAttribute("Level") or 1
+			local config: any = nil
+			if itemType == 3 then
+				config = if configId then GameConfig.LittleElfChestIdMap[configId] else nil
+			else
+				config = if configId then GameConfig.BrainrotIdMap[configId] else nil
+			end
+
+			local name = if config then config.name_t else randomBrainrot.Name
+			prompt.ActionText = GameTexts.PickUpBrainrot.source
+			prompt.ObjectText = `{name}(等级{level})`
 			prompt.RequiresLineOfSight = false
 			prompt.MaxActivationDistance = 10
 			prompt.Enabled = true
@@ -141,18 +152,44 @@ function SetupBrainrotInteraction(randomBrainrot: Instance, island: Instance, sp
 	end)
 end
 
-local function SpawnOneBrainrotInternal(island: Instance): BasePart?
-	local brainrotIds = {}
-	for id, _ in pairs(GameConfig.BrainrotIdMap) do
-		table.insert(brainrotIds, id)
+local function GetRandomChestConfigId(): number?
+	local chestIds = {}
+	for id, _ in pairs(GameConfig.LittleElfChestIdMap) do
+		table.insert(chestIds, id)
 	end
-	if #brainrotIds == 0 then
+	if #chestIds == 0 then
 		return nil
 	end
+	return chestIds[math.random(1, #chestIds)]
+end
 
-	local randomId = brainrotIds[math.random(1, #brainrotIds)]
-	local brainrotConfig = GameConfig.BrainrotIdMap[randomId]
-	if not brainrotConfig then
+local function SpawnOneBrainrotInternal(island: Instance): BasePart?
+	-- 判定是否产生宝箱 (10% 几率)
+	local isChest = math.random(1, 100) <= 100
+	local config: any = nil
+	local itemType = GameConfig.ItemType.Brainrot
+
+	if isChest then
+		local chestId = GetRandomChestConfigId()
+		if chestId then
+			config = GameConfig.LittleElfChestIdMap[chestId]
+			itemType = GameConfig.ItemType.LittleElfChest
+		end
+	end
+
+	if not config then
+		local brainrotIds = {}
+		for id, _ in pairs(GameConfig.BrainrotIdMap) do
+			table.insert(brainrotIds, id)
+		end
+		if #brainrotIds == 0 then
+			return nil
+		end
+		local randomId = brainrotIds[math.random(1, #brainrotIds)]
+		config = GameConfig.BrainrotIdMap[randomId]
+	end
+
+	if not config then
 		return nil
 	end
 
@@ -161,10 +198,11 @@ local function SpawnOneBrainrotInternal(island: Instance): BasePart?
 	randomBrainrot.Transparency = 1
 	randomBrainrot.CanCollide = false
 	randomBrainrot.Anchored = true
-	randomBrainrot.Name = "IslandBrainrot"
+	randomBrainrot.Name = if itemType == GameConfig.ItemType.LittleElfChest then "IslandChest" else "IslandBrainrot"
 
-	randomBrainrot:SetAttribute("ConfigId", brainrotConfig.id)
-	randomBrainrot:SetAttribute("Quality", brainrotConfig.quality)
+	randomBrainrot:SetAttribute("ConfigId", config.id)
+	randomBrainrot:SetAttribute("ItemType", itemType)
+	randomBrainrot:SetAttribute("Quality", config.quality or 1)
 	randomBrainrot:SetAttribute("Level", 1)
 	randomBrainrot:SetAttribute("HomeIslandName", island.Name)
 
@@ -202,13 +240,17 @@ local function GetActiveBrainrot(player: Player): Instance?
 
 	local equippedTool = character:FindFirstChildOfClass("Tool")
 	if equippedTool and equippedTool:GetAttribute("BrainrotUID") then
-		if equippedTool:GetAttribute("ItemType") == 2 then return nil end
+		if equippedTool:GetAttribute("ItemType") == 2 then
+			return nil
+		end
 		return equippedTool
 	end
 
 	local carrying = character:FindFirstChild("CarryingBrainrot")
 	if carrying and carrying:GetAttribute("BrainrotUID") then
-		if carrying:GetAttribute("ItemType") == 2 then return nil end
+		if carrying:GetAttribute("ItemType") == 2 then
+			return nil
+		end
 		return carrying
 	end
 
@@ -311,7 +353,7 @@ local function StartSpawnLoop()
 				if island.Name:match("^Island%d+$") then
 					local existingCount = 0
 					for _, child in ipairs(island:GetChildren()) do
-						if child.Name == "IslandBrainrot" then
+						if child.Name == "IslandBrainrot" or child.Name == "IslandChest" then
 							existingCount += 1
 						end
 					end
@@ -329,31 +371,34 @@ local function StartSpawnLoop()
 end
 
 local function InitBrainrotModelsWelds()
-	if not actualModels then
-		return
-	end
-	for _, model in ipairs(actualModels:GetChildren()) do
-		if model:IsA("Model") then
-			local root = model.PrimaryPart or model:FindFirstChild("RootPart") or model:FindFirstChildWhichIsA("BasePart")
-			if root and root:IsA("BasePart") then
-				model.PrimaryPart = root :: BasePart
-				for _, part in ipairs(model:GetDescendants()) do
-					if part:IsA("BasePart") and part ~= root then
-						-- Clear old welds just to be safe
-						for _, child in ipairs(part:GetChildren()) do
-							if child:IsA("WeldConstraint") or child:IsA("Weld") then
-								child:Destroy()
+	local function WeldFolder(folder: Folder)
+		if not folder then return end
+		for _, model in ipairs(folder:GetChildren()) do
+			if model:IsA("Model") then
+				local root = model.PrimaryPart or model:FindFirstChild("RootPart") or model:FindFirstChildWhichIsA("BasePart")
+				if root and root:IsA("BasePart") then
+					model.PrimaryPart = root :: BasePart
+					for _, part in ipairs(model:GetDescendants()) do
+						if part:IsA("BasePart") and part ~= root then
+							-- Clear old welds just to be safe
+							for _, child in ipairs(part:GetChildren()) do
+								if child:IsA("WeldConstraint") or child:IsA("Weld") then
+									child:Destroy()
+								end
 							end
+							local weld = Instance.new("WeldConstraint")
+							weld.Part0 = root :: BasePart
+							weld.Part1 = part
+							weld.Parent = part
 						end
-						local weld = Instance.new("WeldConstraint")
-						weld.Part0 = root :: BasePart
-						weld.Part1 = part
-						weld.Parent = part
 					end
 				end
 			end
 		end
 	end
+
+	WeldFolder(actualModels)
+	WeldFolder(actualChests)
 end
 
 local function SetupGroundTrigger()

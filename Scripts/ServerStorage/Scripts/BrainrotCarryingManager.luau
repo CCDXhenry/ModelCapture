@@ -24,7 +24,8 @@ function BrainrotCarryingManager.StartCarrying(player: Player, newBrainrot: Inst
 
 		if swapTargetCFrame then
 			local drop = oldCarrying:Clone()
-			drop.Name = "IslandBrainrot"
+			local itemType = drop:GetAttribute("ItemType") or 1
+			drop.Name = if itemType == 3 then "IslandChest" else "IslandBrainrot"
 			-- 移除身上绑定的约束
 			for _, child in ipairs(drop:GetChildren()) do
 				if child:IsA("WeldConstraint") or child:IsA("Motor6D") then
