@@ -25,6 +25,7 @@ local NetMsg = require(sharedScripts:WaitForChild("NetMsg"))
 local TranslationTool = require(coreClientScripts:WaitForChild("TranslationTool"))
 local BillboardManager = require(scripts:WaitForChild("Client"):WaitForChild("BillboardManager"))
 local NumberExtension = require(coreSharedScripts:WaitForChild("NumberExtension"))
+local LittleElfChestOpenAnimationManager = require(scripts:WaitForChild("Client"):WaitForChild("LittleElfChestOpenAnimationManager"))
 
 local islandsFolder = workspace:WaitForChild("Islands")
 local actualModels = replicatedStorage:WaitForChild("Models"):WaitForChild("Brainrots")
@@ -33,6 +34,8 @@ local uIFolder = replicatedStorage:WaitForChild("UI")
 local brainrotInfoUIParams = uIFolder:WaitForChild("BrainrotInfoUI") :: BillboardGui
 
 local AttachInfoUIToModel -- 向前声明
+local pendingOpenChestToolMap: { [string]: Tool } = {}
+local pendingOpenChestCFrameMap: { [string]: CFrame } = {}
 
 local function SetupVisualBrainrot(targetPart: BasePart)
 	if targetPart:FindFirstChild("VisualModel") then
@@ -245,8 +248,19 @@ local function SetupLocalPlayerToolTracking(character: Model)
 			-- 如果是宝箱，监听点击
 			if child:GetAttribute("ItemType") == GameConfig.ItemType.LittleElfChest then
 				local uid = child:GetAttribute("BrainrotUID") :: string
+				pendingOpenChestToolMap[uid] = child :: Tool
 				local activatedConn: RBXScriptConnection? = nil
 				activatedConn = (child :: Tool).Activated:Connect(function()
+					pendingOpenChestToolMap[uid] = child :: Tool
+					local visualModel = child:FindFirstChild("VisualModel")
+					if visualModel and visualModel:IsA("Model") then
+						pendingOpenChestCFrameMap[uid] = visualModel:GetPivot()
+					else
+						local handle = child:FindFirstChild("Handle")
+						if handle and handle:IsA("BasePart") then
+							pendingOpenChestCFrameMap[uid] = handle.CFrame
+						end
+					end
 					if activatedConn then
 						activatedConn:Disconnect()
 						activatedConn = nil
@@ -261,6 +275,26 @@ local function SetupLocalPlayerToolTracking(character: Model)
 			OnLocalToolUnequipped(child :: Tool)
 		end
 	end)
+end
+
+local function OnNotifyChestOpenResult(uid: string, chestConfigId: number, chestLevel: number, finalBrainrotId: number)
+	local fallbackCFrame = pendingOpenChestCFrameMap[uid]
+	if not fallbackCFrame then
+		local character = localPlayer.Character
+		local hrp = character and character:FindFirstChild("HumanoidRootPart")
+		if hrp and hrp:IsA("BasePart") then
+			fallbackCFrame = hrp.CFrame * CFrame.new(0, 0, -4)
+		else
+			warn("[BrainrotClientManager] OnNotifyChestOpenResult no fallback cframe, uid:", uid)
+			return
+		end
+	end
+	task.spawn(function()
+		-- 开箱动画固定在世界中播放，不在手上变形
+		LittleElfChestOpenAnimationManager.Play(nil, uid, chestConfigId, chestLevel, finalBrainrotId, fallbackCFrame)
+	end)
+	pendingOpenChestToolMap[uid] = nil
+	pendingOpenChestCFrameMap[uid] = nil
 end
 
 function BrainrotClientManager.Init()
@@ -299,6 +333,8 @@ function BrainrotClientManager.Init()
 		SetupLocalPlayerToolTracking(localPlayer.Character)
 	end
 	localPlayer.CharacterAdded:Connect(SetupLocalPlayerToolTracking)
+
+	NetMsg.ConnectNotifyChestOpenResult(OnNotifyChestOpenResult)
 end
 
 return BrainrotClientManager

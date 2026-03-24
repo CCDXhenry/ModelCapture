@@ -43,6 +43,7 @@ local notifyBrainrotQueueUpdateEvent: RemoteEvent = remoteEventsFolder:FindFirst
 local notifyShowGameTipEvent: RemoteEvent = remoteEventsFolder:FindFirstChild("NotifyShowGameTip") :: RemoteEvent
 local notifyRescueStartEvent: RemoteEvent = remoteEventsFolder:FindFirstChild("NotifyRescueStart") :: RemoteEvent
 local requestOpenChestEvent: RemoteEvent = remoteEventsFolder:FindFirstChild("RequestOpenChest") :: RemoteEvent
+local notifyChestOpenResultEvent: RemoteEvent = remoteEventsFolder:FindFirstChild("NotifyChestOpenResult") :: RemoteEvent
 
 --客户端请求设置背景音乐音量
 function NetMsg.FireRequestSetBGMVolume(volume: number)
@@ -341,15 +342,11 @@ end
 
 -- 服务端通知客户端开始飞行救援
 function NetMsg.FireNotifyRescueStart(player: Player)
-	if notifyRescueStartEvent then
-		notifyRescueStartEvent:FireClient(player)
-	end
+	notifyRescueStartEvent:FireClient(player)
 end
 
 function NetMsg.ConnectNotifyRescueStart(callback: () -> ())
-	if notifyRescueStartEvent then
-		notifyRescueStartEvent.OnClientEvent:Connect(callback)
-	end
+	notifyRescueStartEvent.OnClientEvent:Connect(callback)
 end
 
 -- 客户端请求开启宝箱
@@ -360,6 +357,15 @@ end
 
 function NetMsg.ConnectRequestOpenChest(callback: (player: Player, uid: string) -> ())
 	requestOpenChestEvent.OnServerEvent:Connect(callback)
+end
+
+-- 服务端通知客户端宝箱开箱结果（权威结果）
+function NetMsg.FireNotifyChestOpenResult(player: Player, uid: string, chestConfigId: number, chestLevel: number, finalBrainrotId: number)
+	notifyChestOpenResultEvent:FireClient(player, uid, chestConfigId, chestLevel, finalBrainrotId)
+end
+
+function NetMsg.ConnectNotifyChestOpenResult(callback: (uid: string, chestConfigId: number, chestLevel: number, finalBrainrotId: number) -> ())
+	notifyChestOpenResultEvent.OnClientEvent:Connect(callback)
 end
 
 return NetMsg

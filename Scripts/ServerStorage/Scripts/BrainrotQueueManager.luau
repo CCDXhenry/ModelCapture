@@ -17,6 +17,7 @@ local ServerGameInfo = require(serverScripts:FindFirstChild("ServerGameInfo"))
 local actualModels = replicatedStorage:WaitForChild("Models"):WaitForChild("Brainrots")
 local actualChests = replicatedStorage:WaitForChild("Models"):WaitForChild("LittleElfChests")
 local actualCoils = replicatedStorage:WaitForChild("Tools")
+local OpenChestRevealDelay = 5.7
 
 -- 提示冷却逻辑
 local FullTipCooldown: number = 5
@@ -328,6 +329,10 @@ function BrainrotQueueManager.OpenChest(player: Player, uid: string)
 		return
 	end
 
+	-- 2.5 先把权威结果通知给客户端，用于播放开箱动画
+	local chestLevel = chestItem.level or 1
+	NetMsg.FireNotifyChestOpenResult(player, uid, chestItem.configId, chestLevel, brainrotConfig.id)
+
 	-- 3. 移除宝箱，添加新宠物
 	-- 先移除 Tool
 	local char = player.Character
@@ -347,9 +352,16 @@ function BrainrotQueueManager.OpenChest(player: Player, uid: string)
 	-- 更新数据
 	table.remove(playerInfo.brainrotQueue, itemIndex)
 	playerInfo.playerInfoChanged = true
+	NotifyQueueUpdate(player, playerInfo.brainrotQueue)
 
-	-- 添加新宠物
-	BrainrotQueueManager.AddItem(player, brainrotConfig.id, brainrotConfig.quality, 1, true, GameConfig.ItemType.Brainrot)
+	-- 动画播放期间先不显示最终 brainrotTool，延迟后再发放并展示
+	task.delay(OpenChestRevealDelay, function()
+		local latestPlayerInfo = ServerGameInfo.GetPlayerInfo(player)
+		if not latestPlayerInfo then
+			return
+		end
+		BrainrotQueueManager.AddItem(player, brainrotConfig.id, brainrotConfig.quality, chestLevel, true, GameConfig.ItemType.Brainrot)
+	end)
 
 	-- 提示
 	NetMsg.FireNotifyShowGameTip(player, GameTexts.ReceivedReward.source, GameConfig.GameTipTweenType.FlyUp, GameTexts.ReceivedReward.key, {brainrotConfig.name_t})
