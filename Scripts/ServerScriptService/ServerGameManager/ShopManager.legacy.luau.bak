@@ -1,0 +1,136 @@
+--!strict
+--[=[
+	ShopManager.legacy.luau
+	Handles shop interactions and upgrades.
+]=]
+
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local ServerStorage = game:GetService("ServerStorage")
+
+local UpgradeShopData = require(ReplicatedStorage.Scripts.Shared.GameConfig.UpgradeShopData)
+local NetMsg = require(ReplicatedStorage.Scripts.Shared.NetMsg)
+local ServerGameInfo = require(ServerStorage.Scripts.ServerGameInfo)
+
+local ShopManager = {}
+
+-- Constants
+local UPGRADE_ID_WALKSPEED = 1
+local UPGRADE_ID_MAXBRICKS = 2
+local PROMPT_ACTION_TEXT = "Cost：50"
+local PROMPT_HOLD_DURATION = 0.5
+local MODEL_NAME_UPGRADE_SHOP = "UpgradeShop"
+local ROOT_PART_NAME = "RootPart"
+
+-- Types
+type PromptConfig = {
+	attachmentName: string,
+	upgradeId: number,
+	objectText: string,
+}
+
+--------------------------------------------------------------------------------
+-- Initialization Functions
+--------------------------------------------------------------------------------
+
+function ShopManager.InitUpgradeShopPrompts()
+	local upgradeShop = workspace:FindFirstChild(MODEL_NAME_UPGRADE_SHOP)
+	if not upgradeShop then
+		warn(`{MODEL_NAME_UPGRADE_SHOP} model not found in workspace`)
+		return
+	end
+
+	local rootPart = upgradeShop:FindFirstChild(ROOT_PART_NAME)
+	if not rootPart then
+		warn(`{ROOT_PART_NAME} not found in {MODEL_NAME_UPGRADE_SHOP}`)
+		return
+	end
+
+	local promptConfigs: { PromptConfig } = {
+		{
+			attachmentName = "UpgradeMaxBricksAttachment",
+			upgradeId = UPGRADE_ID_MAXBRICKS,
+			objectText = "升级最大容量",
+		},
+		{
+			attachmentName = "UpgradeWalkSpeedAttachment",
+			upgradeId = UPGRADE_ID_WALKSPEED,
+			objectText = "升级行走速度",
+		},
+	}
+
+	for _, config in promptConfigs do
+		local attachment = rootPart:FindFirstChild(config.attachmentName)
+		if attachment and attachment:IsA("Attachment") then
+			local prompt = Instance.new("ProximityPrompt")
+			prompt.ActionText = PROMPT_ACTION_TEXT
+			prompt.ObjectText = config.objectText
+			prompt.HoldDuration = PROMPT_HOLD_DURATION
+			prompt.Parent = attachment
+
+			prompt.Triggered:Connect(function(player)
+				ShopManager.OnUpgradeRequested(player, config.upgradeId)
+			end)
+		else
+			warn(`Attachment {config.attachmentName} not found in {MODEL_NAME_UPGRADE_SHOP}.{ROOT_PART_NAME}`)
+		end
+	end
+end
+
+function ShopManager.Init()
+	NetMsg.OnUpgradeRequestedServer:Connect(function(player, upgradeId)
+		ShopManager.OnUpgradeRequested(player, upgradeId)
+	end)
+	ShopManager.InitUpgradeShopPrompts()
+end
+
+--------------------------------------------------------------------------------
+-- Event Listeners & Callbacks
+--------------------------------------------------------------------------------
+
+function ShopManager.OnUpgradeRequested(player: Player, upgradeId: number)
+	local upgradeData = UpgradeShopData[upgradeId]
+	if not upgradeData then
+		return
+	end
+
+	local playerInfo = ServerGameInfo.GetPlayerInfo(player)
+	if not playerInfo then
+		return
+	end
+
+	local currentLevel = playerInfo.Upgrades[upgradeId] or 0
+	if currentLevel >= upgradeData.maxLevel then
+		print("Max level reached")
+		return
+	end
+
+	local nextLevel = currentLevel + 1
+	local cost = upgradeData.upgradeCostList[nextLevel]
+	if not cost then
+		return
+	end
+
+	if playerInfo.Money < cost then
+		print("Not enough money")
+		return
+	end
+
+	playerInfo.Money -= cost
+	playerInfo.Upgrades[upgradeId] = nextLevel
+	ServerGameInfo.SetPlayerInfo(player, playerInfo)
+
+	print(`Upgraded {upgradeId} to level {nextLevel}`)
+
+	-- Special handling for WalkSpeed
+	if upgradeId == UPGRADE_ID_WALKSPEED then
+		local character = player.Character
+		if character then
+			local humanoid = character:FindFirstChildOfClass("Humanoid")
+			if humanoid then
+				humanoid.WalkSpeed = upgradeData.abilityList[nextLevel]
+			end
+		end
+	end
+end
+
+return ShopManager

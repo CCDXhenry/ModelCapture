@@ -1,0 +1,28 @@
+--!strict
+local GameTexts = {
+	PickUpBrainrot = { key = "", source = "Pick up" },
+	YieldPerSecond = { key = "YieldPerSecond", source = "{1}/s" },
+	LevelWithNumber = { key = "LevelWithNumber", source = "Lv.{1}" },
+	InsufficientCoin = { key = "", source = "Insufficient Coins!" },
+	InsufficientBrainrot = { key = "", source = "You don't have a brainrot!" },
+	SellWithPrice = { key = "SellWithPrice", source = "Sell ({1})" },
+	UpgradeLevelFormat = { key = "UpgradeLevelFormat", source = "Lv.{1} -> Lv.{2}" },
+	MaxLevel = { key = "", source = "MAX" },
+	GiftConfirmTitle = { key = "", source = "Confirm Gift" },
+	GiftConfirmBody = { key = "GiftConfirmBody", source = "Are you sure you want to gift {1} to {2}?" },
+	GiftRequestTitle = { key = "", source = "Gift Request" },
+	GiftRequestSent = { key = "GiftRequestSent", source = "Gift request sent to @{1}!" },
+	GiftRequestBody = { key = "GiftRequestBody", source = "{1} Wants to gift you {2} [{3}]!" },
+	GiftSuccess = { key = "", source = "Gift completed!" },
+	CountdownFormat = { key = "CountdownFormat", source = "{1}s" },
+	GiftFailedFormat = { key = "GiftFailedFormat", source = "Gift failed: {1}" },
+	GiftAction = { key = "", source = "Gift" },
+	SpeedWithNumber = { key = "SpeedWithNumber", source = "{1} Studs/s" },
+	BricksWithNumber = { key = "BricksWithNumber", source = "{1} Bricks" },
+	BricksCurrentMax = { key = "BricksCurrentMax", source = "{1}/{2}" },
+	PlaceAction = { key = "", source = "Place" },
+	BackpackFull = { key = "", source = "Backpack is full!" },
+	WingsAssistanceTitle = { key = "WingsAssistanceTitle", source = "Wings Assistance" },
+	WingsAssistanceBody = { key = "WingsAssistanceBody", source = "Wings assistance can help you return to your nearest previous island. Do you want to purchase this assistance?" },
+}
+return GameTexts
