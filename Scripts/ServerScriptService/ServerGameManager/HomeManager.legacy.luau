@@ -267,7 +267,9 @@ local function OnHeartbeat(dt: number)
 				for pointIndexStr, model in pairs(playerInfo.homeInfo.placedModels) do
 					local brainrotData = GameConfig.BrainrotIdMap[model.configId]
 					if brainrotData then
-						local yield = GameConfig.GetBrainrotAbility(brainrotData.baseAbility, model.level)
+						local baseYield = GameConfig.GetBrainrotAbility(brainrotData.baseAbility, model.level)
+						local multiplier = ServerGameInfo.GetRebirthMultiplier(player)
+						local yield = math.ceil(baseYield * multiplier)
 						if yield > 0 then
 							local pointIndex = tonumber(pointIndexStr)
 							if pointIndex then
@@ -311,5 +313,25 @@ NetMsg.ConnectRequestUpgradeModel(OnRequestUpgradeModel)
 NetMsg.ConnectRequestSellModel(OnRequestSellModel)
 NetMsg.ConnectRequestClaimYield(OnRequestClaimYield)
 NetMsg.ConnectRequestPickupHomeModel(OnRequestPickupHomeModel)
+
+-- 重生请求处理
+NetMsg.ConnectRequestRebirth(function(player: Player)
+	ServerGameInfo.ExecuteRebirth(player, false)
+end)
+
+NetMsg.ConnectRequestPaidRebirth(function(player: Player)
+	-- 获取重生等级并检查要求 (虽然 Purchase 也会检查，但这里可以先做一次检查)
+	local playerInfo = ServerGameInfo.GetPlayerInfo(player)
+	if not playerInfo then return end
+	
+	local currentRebirthLevel = playerInfo.shopInfo.rebirthLevel or 1
+	local nextRebirthConfig = GameConfig.RebirthMap[currentRebirthLevel]
+	if not nextRebirthConfig then return end
+	
+	if playerInfo.shopInfo.walkSpeedLevel >= nextRebirthConfig.speedLv and playerInfo.shopInfo.maxBricksLevel >= nextRebirthConfig.brickLv then
+		-- 弹出付费提示
+		game:GetService("MarketplaceService"):PromptProductPurchase(player, GameConfig.Paving.RebirthProductId)
+	end
+end)
 
 return HomeManager

@@ -10,6 +10,7 @@ local BrainrotData = require(script:FindFirstChild("BrainrotData"))
 local UpgradeShopData = require(script:FindFirstChild("UpgradeShopData"))
 local CoilData = require(script:FindFirstChild("CoilData"))
 local LittleElfChestData = require(script:FindFirstChild("LittleElfChestData"))
+local RebirthData = require(script:FindFirstChild("RebirthData"))
 
 --游戏版本
 GameConfig.GameVersion = "1.0.0"
@@ -67,6 +68,7 @@ GameConfig.SkillType = {
 	WalkSpeed = 1, -- 行走速度
 	MaxBricks = 2, -- 最大容量
 	HomeLevel = 3, -- 家园等级
+	RebirthLevel = 4, -- 重生等级
 }
 
 -- 物品类型
@@ -204,6 +206,13 @@ for _, config in pairs(LittleElfChestData) do
 	GameConfig.LittleElfChestIdMap[config.id] = config
 end
 
+-- 重生配置
+GameConfig.Rebirth = RebirthData
+GameConfig.RebirthMap = {} :: { [number]: any }
+for _, config in pairs(RebirthData) do
+	GameConfig.RebirthMap[config.id] = config
+end
+
 -- 宠物质量配置 (已迁移到 GameConfig.BrainrotQualityConfig)
 
 --宠物品质
@@ -261,6 +270,7 @@ GameConfig.Paving = {
 	PavingDistanceLimit = 30, -- 距离玩家超过此距离则不让铺
 	StationaryRenewalThreshold = 0.7, -- 剩余寿命低于 70% 时才允许原地续期
 	StationaryRenewalInterval = 0.2, -- 原地续期检测间隔 (加快响应)
+	RebirthProductId = 3562550008, -- 付费重生产品ID
 }
 
 -- 2. 模型与收益逻辑 (已废弃 GameConfig.Models，现在由 BrainrotData.json 驱动)
@@ -357,6 +367,7 @@ export type PlayerSaveInfo = {
 	shopInfo: {
 		walkSpeedLevel: number,
 		maxBricksLevel: number,
+		rebirthLevel: number,
 	},
 	-- [抓模型] 宠物信息
 	brainrotsInfo: BrainrotInventoryInfo,
@@ -423,6 +434,7 @@ function GameConfig.CreateDefaultPlayerSaveInfo(): PlayerSaveInfo
 		shopInfo = {
 			walkSpeedLevel = 1,
 			maxBricksLevel = GameConfig.Inventory.InitialBricksCapacityLevel,
+			rebirthLevel = 1,
 		},
 		brainrotsInfo = {
 			ownedBrainrots = {},
@@ -453,6 +465,7 @@ export type ClientLocalPlayerSaveInfo = {
 	shopInfo: {
 		walkSpeedLevel: number,
 		maxBricksLevel: number,
+		rebirthLevel: number,
 	},
 	-- [抓模型] 宠物信息
 	brainrotsInfo: BrainrotInventoryInfo,
@@ -478,6 +491,7 @@ export type ClientOtherPlayerSaveInfo = {
 		level: number,
 		placedModels: { [string]: ModelInfo },
 	},
+	rebirthLevel: number?,
 }
 export type ClientOtherPlayerSyncInfo = ClientOtherPlayerSaveInfo & {}
 export type ClientOtherPlayerInfo = ClientOtherPlayerSyncInfo & {}

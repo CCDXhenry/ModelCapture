@@ -39,7 +39,7 @@ return {
 		["iconImageId"] = "rbxassetid://73490385699318",
 		["name_t"] = "Gravity Coil",
 		["gravitationalValue"] = 0.5,
-		["speedValue"] = 0,
+		["speedValue"] = 0.5,
 		["modelRes"] = "RainbowCoil",
 		["extraJumps"] = 0,
 	},

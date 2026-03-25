@@ -23,7 +23,7 @@ local actualModels = replicatedStorage:WaitForChild("Models"):FindFirstChild("Br
 local HomeClientManager = {}
 local homesFolder = workspace:WaitForChild("PlayersHome")
 
-local slotStateCache: { [string]: { active: boolean, homeInfo: any?, isLocalPlayer: boolean? } } = {}
+local slotStateCache: { [string]: { active: boolean, homeInfo: any?, isLocalPlayer: boolean?, rebirthLevel: number? } } = {}
 local floorModelsCache: { [string]: { [number]: Model } } = {}
 local FLOOR_HEIGHT = 32.6
 local MAX_FLOOR_COUNT = 3 -- 最大楼层上限
@@ -139,6 +139,33 @@ local function SetVisuals(inst: Instance, visible: boolean, isPlaceholder: boole
 	end
 end
 
+-- Helper to ensure BillboardGui is set up for adaptation
+local function SetupBillboardAdaptation(gui: BillboardGui)
+	local controller = gui:FindFirstChild("ControllerFrame") :: Frame?
+	if not controller then
+		return
+	end
+
+	-- Ensure UIScale exists
+	local uiScale = controller:FindFirstChildOfClass("UIScale")
+	if not uiScale then
+		uiScale = Instance.new("UIScale")
+		uiScale.Name = "UIScale"
+		uiScale.Parent = controller
+	end
+
+	-- Ensure ControllerFrame size is in Offset for BillboardManager
+	-- If it's using Scale, convert it to current AbsoluteSize
+	if controller.Size.X.Scale > 0 or controller.Size.Y.Scale > 0 then
+		local absSize = controller.AbsoluteSize
+		if absSize.X > 0 and absSize.Y > 0 then
+			controller.Size = UDim2.fromOffset(absSize.X, absSize.Y)
+		end
+	end
+
+	BillboardManager.Track(gui)
+end
+
 -- Handles model placement for a single plot
 local function UpdatePlot(folder: Instance, placedData: any?, isLocalPlayer: boolean, slotName: string)
 	local modelContainer = folder:FindFirstChild("Model") or folder:FindFirstChild("RootPart")
@@ -234,7 +261,7 @@ local function UpdatePlot(folder: Instance, placedData: any?, isLocalPlayer: boo
 
 	-- 只要 BillboardGui 存在就追踪自适应 (即使当前不显示，Enabled 会在 UpdateUIScales 检查)
 	if infoUI then
-		BillboardManager.Track(infoUI)
+		SetupBillboardAdaptation(infoUI)
 	end
 
 	-- 4. Set prompt/UI visibility based on occupancy
@@ -364,7 +391,15 @@ local function UpdatePlot(folder: Instance, placedData: any?, isLocalPlayer: boo
 		if collectText then
 			collectText.Visible = isOccupied
 			if isOccupied then
-				local yieldStr = NumberExtension.FormatBigNumberAA(yield)
+				local playerInfo = ClientGameInfo.GetLocalPlayerInfo()
+				local rebirthLevel = if playerInfo then (playerInfo.shopInfo.rebirthLevel or 1) else 1
+				local multiplier = 1
+				if rebirthLevel > 1 then
+					local rbConfig = GameConfig.RebirthMap[rebirthLevel - 1]
+					multiplier = if rbConfig then rbConfig.collectMultiple else 1
+				end
+				local finalYield = math.ceil(yield * multiplier)
+				local yieldStr = NumberExtension.FormatBigNumberAA(finalYield)
 				TranslationTool.CustomAutoLocalizeTextLabel(collectText, yieldStr) -- Plain text, no key
 			end
 		end
@@ -503,7 +538,7 @@ local function UpdatePlot(folder: Instance, placedData: any?, isLocalPlayer: boo
 				local brainrotModelRoot = newVisual:FindFirstChild("RootPart") :: BasePart?
 				local brainrotUI = brainrotModelRoot and brainrotModelRoot:FindFirstChild("BrainrotInfoUI") :: BillboardGui?
 				if brainrotUI then
-					BillboardManager.Track(brainrotUI)
+					SetupBillboardAdaptation(brainrotUI)
 				end
 
 				newVisual.Parent = folder
@@ -574,11 +609,115 @@ local function UpdateTeleportPoint(tpModel: Model, isLocalPlayer: boolean)
 	end
 end
 
+-- Updates the rebirth multiplier UI for the home
+local function UpdateRebirthMultiplierUI(slotName: string, homeInfo: any, isLocalPlayer: boolean, rebirthLevel: number?)
+	print("[UpdateRebirthMultiplierUI] Updating UI for slot", slotName, "isLocalPlayer", isLocalPlayer)
+	local slotModel = homesFolder:FindFirstChild(slotName)
+	if not slotModel or not homeInfo then
+		return
+	end
+
+	-- 1. Find RebirthMultiplierPart in the new model path
+	local rebirthMultiplierModel = slotModel:FindFirstChild("RebirthMultiplierModel")
+	local rebirthMultiplierPart = rebirthMultiplierModel and rebirthMultiplierModel:FindFirstChild("RebirthMultiplierPart") :: BasePart?
+
+	if not rebirthMultiplierPart then
+		return
+	end
+
+	local infoUI: BillboardGui? = rebirthMultiplierPart:FindFirstChild("InfoUI") :: BillboardGui?
+	if not infoUI then
+		return
+	end
+
+	-- 确保 UI 基础配置
+	infoUI.Enabled = true
+	infoUI.AlwaysOnTop = false
+	infoUI.MaxDistance = 100
+
+	local controllerFrame: Frame? = infoUI:FindFirstChild("ControllerFrame") :: Frame?
+	if not controllerFrame then
+		return
+	end
+
+	-- 确保 UI 追踪自适应
+	SetupBillboardAdaptation(infoUI)
+
+	local rebirthInfoLabel: TextLabel? = controllerFrame:FindFirstChild("RebirthInfoLabel") :: TextLabel?
+	local totalRevenueLabel: TextLabel? = controllerFrame:FindFirstChild("TotalRevenueLabel") :: TextLabel?
+
+	if not rebirthInfoLabel or not totalRevenueLabel then
+		return
+	end
+
+	-- 2. Calculate Rebirth Multiplier
+	local finalRebirthLevel: number = rebirthLevel or 1
+
+	-- 如果没有传入 rebirthLevel 且不是本地玩家，尝试再次查找一次（作为兜底）
+	if not rebirthLevel and not isLocalPlayer then
+		for _, p in ipairs(players:GetPlayers()) do
+			local info = ClientGameInfo.GetOtherPlayerInfo(p.UserId)
+			if info and info.homeSlot == slotName then
+				finalRebirthLevel = info.rebirthLevel or 1
+				break
+			end
+		end
+	elseif not rebirthLevel and isLocalPlayer then
+		local playerInfo = ClientGameInfo.GetLocalPlayerInfo()
+		if playerInfo then
+			finalRebirthLevel = playerInfo.shopInfo.rebirthLevel or 1
+		end
+	end
+
+	-- 关键：只要 slotStateCache 标记为 active，我们就显示，如果没有 playerInfo 默认为 1 级
+	-- 这里不再 return，确保 UI 基础状态始终正确
+
+	-- Rebirth Info Label
+	local levelStr = tostring(finalRebirthLevel)
+	local multiplier = 1
+	if finalRebirthLevel > 1 then
+		local rbConfig = GameConfig.RebirthMap[finalRebirthLevel - 1]
+		multiplier = if rbConfig then rbConfig.collectMultiple else 1
+	end
+	local multiplierStr = string.format("%.1f", multiplier)
+	TranslationTool.CustomAutoLocalizeTextLabel(
+		rebirthInfoLabel,
+		GameTexts.RebirthMultiplierFormat.source,
+		GameTexts.RebirthMultiplierFormat.key,
+		{ levelStr, multiplierStr }
+	)
+
+	-- 3. Calculate Total Revenue (Base Yield * Multiplier)
+	local totalBaseRevenue = 0
+	for _, model in pairs(homeInfo.placedModels) do
+		local brainrotData = GameConfig.BrainrotIdMap[model.configId]
+		if brainrotData then
+			totalBaseRevenue += GameConfig.GetBrainrotAbility(brainrotData.baseAbility, model.level)
+		end
+	end
+	local totalFinalRevenue = math.ceil(totalBaseRevenue * multiplier)
+
+	-- 4. Update UI
+	infoUI.Enabled = true
+
+	-- Total Revenue Label
+	local revenueStr = NumberExtension.FormatBigNumberAA(totalFinalRevenue)
+	TranslationTool.CustomAutoLocalizeTextLabel(totalRevenueLabel, GameTexts.TotalRevenueFormat.source, GameTexts.TotalRevenueFormat.key, { revenueStr })
+end
+
 -- Completely hides a slot (when empty)
 function ClearHomeVisuals(slotName: string)
 	local slotModel = homesFolder:FindFirstChild(slotName)
 	if not slotModel then
 		return
+	end
+
+	-- Hide RebirthMultiplier UI
+	local rebirthMultiplierModel = slotModel:FindFirstChild("RebirthMultiplierModel")
+	local rbPart = rebirthMultiplierModel and rebirthMultiplierModel:FindFirstChild("RebirthMultiplierPart")
+	local infoUI = rbPart and rbPart:FindFirstChild("InfoUI") :: BillboardGui?
+	if infoUI then
+		infoUI.Enabled = false
 	end
 
 	for _, child in ipairs(slotModel:GetChildren()) do
@@ -842,6 +981,11 @@ function UpdateHomeVisuals(slotName: string, homeInfo: any, isLocalPlayer: boole
 			end
 		end
 	end
+
+	-- 4. Update RebirthMultiplier UI
+	local state = slotStateCache[slotName]
+	--print("[UpdateRebirthMultiplierUI] Updating UI for slot", slotName, "isLocalPlayer", isLocalPlayer, "rebirthLevel", state and state.rebirthLevel)
+	UpdateRebirthMultiplierUI(slotName, homeInfo, isLocalPlayer, state and state.rebirthLevel)
 end
 
 -- Refresh all online players' homes (syncs state)
@@ -855,7 +999,12 @@ local function RefreshAllHomes()
 
 	local localInfo: any = ClientGameInfo.GetLocalPlayerInfo()
 	if localInfo and localInfo.homeSlot and localInfo.homeSlot ~= "" then
-		slotStateCache[localInfo.homeSlot] = { active = true, homeInfo = localInfo.homeInfo, isLocalPlayer = true }
+		slotStateCache[localInfo.homeSlot] = {
+			active = true,
+			homeInfo = localInfo.homeInfo,
+			isLocalPlayer = true,
+			rebirthLevel = if localInfo.shopInfo then localInfo.shopInfo.rebirthLevel else 1,
+		}
 	end
 
 	for _, player in ipairs(players:GetPlayers()) do
@@ -864,7 +1013,12 @@ local function RefreshAllHomes()
 		end
 		local otherInfo = ClientGameInfo.GetOtherPlayerInfo(player.UserId)
 		if otherInfo and otherInfo.homeSlot and otherInfo.homeSlot ~= "" then
-			slotStateCache[otherInfo.homeSlot] = { active = true, homeInfo = otherInfo.homeInfo, isLocalPlayer = false }
+			slotStateCache[otherInfo.homeSlot] = {
+				active = true,
+				homeInfo = otherInfo.homeInfo,
+				isLocalPlayer = false,
+				rebirthLevel = otherInfo.rebirthLevel or 1,
+			}
 		end
 	end
 
@@ -986,8 +1140,14 @@ function HomeClientManager.Init()
 			-- Refresh own home slot if active
 			local localInfo = ClientGameInfo.GetLocalPlayerInfo()
 			if localInfo and localInfo.homeSlot and localInfo.homeSlot ~= "" then
-			--	print("[HomeClientManager] Refreshing interaction prompts for slot", localInfo.homeSlot)
+				--	print("[HomeClientManager] Refreshing interaction prompts for slot", localInfo.homeSlot)
 				UpdateHomePrompts(localInfo.homeSlot)
+				UpdateRebirthMultiplierUI(
+					localInfo.homeSlot,
+					localInfo.homeInfo,
+					true,
+					if localInfo.shopInfo then localInfo.shopInfo.rebirthLevel else 1
+				)
 			end
 		end
 	end
@@ -1023,6 +1183,11 @@ function HomeClientManager.Init()
 		end
 	end)
 
+	players.PlayerRemoving:Connect(function(player)
+		ClientGameInfo.RemoveOtherPlayer(player.UserId)
+		RefreshAllHomes()
+	end)
+
 	NetMsg.ConnectNotifyPlayerInfoInit(function()
 		RefreshAllHomes()
 	end)
@@ -1031,14 +1196,25 @@ function HomeClientManager.Init()
 		task.wait()
 		local otherInfo = ClientGameInfo.GetOtherPlayerInfo(playerId)
 		if otherInfo and otherInfo.homeSlot and otherInfo.homeSlot ~= "" then
-			slotStateCache[otherInfo.homeSlot] = { active = true, homeInfo = otherInfo.homeInfo, isLocalPlayer = false }
+			slotStateCache[otherInfo.homeSlot] = {
+				active = true,
+				homeInfo = otherInfo.homeInfo,
+				isLocalPlayer = false,
+				rebirthLevel = otherInfo.rebirthLevel or 1,
+			}
 			ApplySlotVisuals(otherInfo.homeSlot)
 		end
 	end)
 
-	ClientMsg.ConnectPlayerHomeInfoUpdate(function(playerId, homeSlot, newHomeInfo)
+	ClientMsg.ConnectPlayerHomeInfoUpdate(function(playerId, homeSlot, homeInfo, rebirthLevel)
 		local isLocal = (playerId == players.LocalPlayer.UserId)
-		slotStateCache[homeSlot] = { active = true, homeInfo = newHomeInfo, isLocalPlayer = isLocal }
+		local currentState = slotStateCache[homeSlot]
+		slotStateCache[homeSlot] = {
+			active = true,
+			homeInfo = homeInfo,
+			isLocalPlayer = isLocal,
+			rebirthLevel = rebirthLevel or (currentState and currentState.rebirthLevel),
+		}
 		ApplySlotVisuals(homeSlot)
 	end)
 

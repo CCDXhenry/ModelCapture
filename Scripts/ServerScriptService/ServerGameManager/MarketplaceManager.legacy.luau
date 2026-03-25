@@ -40,6 +40,9 @@ local function ProcessReceipt(receiptInfo: GameConfig.ReceiptInfo): Enum.Product
 	if receiptInfo.ProductId == GameConfig.Paving.DeathRescueProductId then
 		NetMsg.FireNotifyRescueStart(player)
 		return Enum.ProductPurchaseDecision.PurchaseGranted
+	elseif receiptInfo.ProductId == GameConfig.Paving.RebirthProductId then
+		local success = ServerGameInfo.ExecuteRebirth(player, true)
+		return if success then Enum.ProductPurchaseDecision.PurchaseGranted else Enum.ProductPurchaseDecision.NotProcessedYet
 	end
 
 	return Enum.ProductPurchaseDecision.NotProcessedYet

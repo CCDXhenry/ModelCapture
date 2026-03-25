@@ -52,6 +52,7 @@ function ClientGameInfo.InitPlayerInfo(
 		local otherPlayerInfo: GameConfig.ClientOtherPlayerInfo = {
 			homeSlot = otherPlayerSaveInfo.homeSlot,
 			homeInfo = otherPlayerSaveInfo.homeInfo,
+			rebirthLevel = otherPlayerSaveInfo.rebirthLevel,
 		}
 		otherPlayerInfoMap[otherPlayerId] = otherPlayerInfo
 	end
@@ -65,6 +66,7 @@ function ClientGameInfo.InitOtherPlayerInfo(playerId: number, otherPlayerSaveInf
 	local otherPlayerInfo: GameConfig.ClientOtherPlayerInfo = {
 		homeSlot = otherPlayerSaveInfo.homeSlot,
 		homeInfo = otherPlayerSaveInfo.homeInfo,
+		rebirthLevel = otherPlayerSaveInfo.rebirthLevel,
 	}
 	otherPlayerInfoMap[playerId] = otherPlayerInfo
 	ClientMsg.FireOtherPlayerInfoInit(playerId)
@@ -151,7 +153,7 @@ function ClientGameInfo.UpdateAllPlayersModelYields(allYields: { [string]: { [st
 end
 
 --更新自己或其他玩家的房屋信息
-function ClientGameInfo.UpdatePlayerHomeInfo(playerId: number, homeSlot: string, homeInfo: any)
+function ClientGameInfo.UpdatePlayerHomeInfo(playerId: number, homeSlot: string, homeInfo: any, rebirthLevel: number?)
 	if localPlayerInfo ~= nil and playerId == game.Players.LocalPlayer.UserId then
 		localPlayerInfo.homeSlot = homeSlot
 		localPlayerInfo.homeInfo = homeInfo
@@ -159,6 +161,7 @@ function ClientGameInfo.UpdatePlayerHomeInfo(playerId: number, homeSlot: string,
 	elseif otherPlayerInfoMap[playerId] ~= nil then
 		otherPlayerInfoMap[playerId].homeSlot = homeSlot
 		otherPlayerInfoMap[playerId].homeInfo = homeInfo
+		otherPlayerInfoMap[playerId].rebirthLevel = rebirthLevel
 		print("[ClientGameInfo] UpdatePlayerHomeInfo for OtherPlayer", playerId)
 	end
 	ClientMsg.FirePlayerHomeInfoUpdate(playerId, homeSlot, homeInfo)
@@ -206,6 +209,12 @@ function ClientGameInfo.GetBrainrotQueue(): { GameConfig.BrainrotQueueItem }
 		return localPlayerInfo.brainrotQueue
 	end
 	return {}
+end
+
+-- 移除其他玩家信息 (当玩家离开时)
+function ClientGameInfo.RemoveOtherPlayer(playerId: number)
+	otherPlayerInfoMap[playerId] = nil
+	print("[ClientGameInfo] RemoveOtherPlayer for playerId", playerId)
 end
 
 return ClientGameInfo

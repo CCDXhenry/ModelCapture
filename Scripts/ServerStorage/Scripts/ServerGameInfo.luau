@@ -72,6 +72,7 @@ function ServerGameInfo.InitPlayerInfo(
 	local clientOtherPlayerSaveInfo: GameConfig.ClientOtherPlayerSyncInfo = {
 		homeSlot = playerInfo.homeSlot,
 		homeInfo = playerInfo.homeInfo,
+		rebirthLevel = playerInfo.shopInfo.rebirthLevel,
 	}
 	local clientOtherPlayerSyncInfoMap: { [string]: GameConfig.ClientOtherPlayerSyncInfo } = {}
 	for player2Index: number, player2: Player in players:GetPlayers() do
@@ -85,6 +86,7 @@ function ServerGameInfo.InitPlayerInfo(
 		local clientOtherPlayer2SyncInfo: GameConfig.ClientOtherPlayerSyncInfo = {
 			homeSlot = player2Info.homeSlot,
 			homeInfo = player2Info.homeInfo,
+			rebirthLevel = player2Info.shopInfo.rebirthLevel,
 		}
 		clientOtherPlayerSyncInfoMap[tostring(player2.UserId)] = clientOtherPlayer2SyncInfo
 	end
@@ -109,7 +111,7 @@ end
 function ServerGameInfo.NotifyPlayerHomeInfoUpdate(playerId: number)
 	local playerInfo = playerInfoMap[playerId]
 	if playerInfo then
-		NetMsg.FireNotifyPlayerHomeInfoUpdate(playerId, playerInfo.homeSlot, playerInfo.homeInfo)
+		NetMsg.FireNotifyPlayerHomeInfoUpdate(playerId, playerInfo.homeSlot, playerInfo.homeInfo, playerInfo.shopInfo.rebirthLevel)
 	end
 end
 
@@ -143,6 +145,66 @@ function ServerGameInfo.CreatePlayerSaveInfoByPlayerInfo(playerInfo: GameConfig.
 		brainrotsInfo = playerInfo.brainrotsInfo,
 		brainrotQueue = playerInfo.brainrotQueue,
 	}
+end
+
+--获取玩家重生倍率
+function ServerGameInfo.GetRebirthMultiplier(player: Player): number
+	local playerInfo = ServerGameInfo.GetPlayerInfo(player)
+	if not playerInfo then
+		return 1
+	end
+	local rebirthLevel = playerInfo.shopInfo.rebirthLevel or 1
+	if rebirthLevel <= 1 then
+		return 1
+	end
+	local config = GameConfig.RebirthMap[rebirthLevel - 1]
+	return if config then config.collectMultiple else 1
+end
+
+--执行重生
+function ServerGameInfo.ExecuteRebirth(player: Player, isPaid: boolean): boolean
+	local playerInfo = ServerGameInfo.GetPlayerInfo(player)
+	if not playerInfo then
+		return false
+	end
+
+	local currentRebirthLevel = playerInfo.shopInfo.rebirthLevel or 1
+	local nextRebirthConfig = GameConfig.RebirthMap[currentRebirthLevel]
+	if not nextRebirthConfig then
+		print("[ServerGameInfo] ExecuteRebirth failed: max rebirth level reached for", player.Name)
+		return false
+	end
+
+	-- 检查要求
+	local requiredSpeedLv = nextRebirthConfig.speedLv
+	local requiredBrickLv = nextRebirthConfig.brickLv
+
+	if playerInfo.shopInfo.walkSpeedLevel < requiredSpeedLv or playerInfo.shopInfo.maxBricksLevel < requiredBrickLv then
+		print("[ServerGameInfo] ExecuteRebirth failed: requirements not met for", player.Name)
+		return false
+	end
+
+	if not isPaid then
+		-- 免费重生：重置等级
+		playerInfo.shopInfo.walkSpeedLevel = 1
+		playerInfo.shopInfo.maxBricksLevel = 1
+		ServerGameInfo.ApplyWalkSpeed(player)
+		-- 同步重置后的等级
+		NetMsg.FireNotifyPlayerSkillLevelUpdate(player, GameConfig.SkillType.WalkSpeed, 1)
+		NetMsg.FireNotifyPlayerSkillLevelUpdate(player, GameConfig.SkillType.MaxBricks, 1)
+		-- 还要同步搬运信息（可能因为容量变了需要同步）
+		ServerGameInfo.UpdateInventoryBricks(player, 0)
+	end
+
+	-- 增加重生等级
+	playerInfo.shopInfo.rebirthLevel = currentRebirthLevel + 1
+	playerInfo.playerInfoChanged = true
+
+	-- 通知客户端重生等级变更
+	NetMsg.FireNotifyPlayerSkillLevelUpdate(player, GameConfig.SkillType.RebirthLevel, playerInfo.shopInfo.rebirthLevel)
+
+	print("[ServerGameInfo] ExecuteRebirth success for", player.Name, "New Level:", playerInfo.shopInfo.rebirthLevel, "isPaid:", isPaid)
+	return true
 end
 
 --增加玩家游戏时间

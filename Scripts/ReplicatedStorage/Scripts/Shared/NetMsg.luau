@@ -45,6 +45,10 @@ local notifyRescueStartEvent: RemoteEvent = remoteEventsFolder:FindFirstChild("N
 local requestOpenChestEvent: RemoteEvent = remoteEventsFolder:FindFirstChild("RequestOpenChest") :: RemoteEvent
 local notifyChestOpenResultEvent: RemoteEvent = remoteEventsFolder:FindFirstChild("NotifyChestOpenResult") :: RemoteEvent
 
+-- Rebirth
+local requestRebirthEvent: RemoteEvent = remoteEventsFolder:FindFirstChild("RequestRebirth") :: RemoteEvent
+local requestPaidRebirthEvent: RemoteEvent = remoteEventsFolder:FindFirstChild("RequestPaidRebirth") :: RemoteEvent
+
 --客户端请求设置背景音乐音量
 function NetMsg.FireRequestSetBGMVolume(volume: number)
 	requestSetBGMVolumeEvent:FireServer(volume)
@@ -110,12 +114,12 @@ function NetMsg.ConnectNotifyPlayerAcquiredGamePass(callback: (gamePassId: numbe
 end
 
 --通知所有客户端更新在线玩家的房子信息
-function NetMsg.FireNotifyPlayerHomeInfoUpdate(playerId: number, homeSlot: string, homeInfo: any)
+function NetMsg.FireNotifyPlayerHomeInfoUpdate(playerId: number, homeSlot: string, homeInfo: any, rebirthLevel: number?)
 	print("[NetMsg] FireNotifyPlayerHomeInfoUpdate for playerId", playerId)
-	notifyPlayerHomeInfoUpdateEvent:FireAllClients(playerId, homeSlot, homeInfo)
+	notifyPlayerHomeInfoUpdateEvent:FireAllClients(playerId, homeSlot, homeInfo, rebirthLevel)
 end
 
-function NetMsg.ConnectNotifyPlayerHomeInfoUpdate(callback: (playerId: number, homeSlot: string, homeInfo: any) -> ())
+function NetMsg.ConnectNotifyPlayerHomeInfoUpdate(callback: (playerId: number, homeSlot: string, homeInfo: any, rebirthLevel: number?) -> ())
 	notifyPlayerHomeInfoUpdateEvent.OnClientEvent:Connect(callback)
 end
 
@@ -366,6 +370,26 @@ end
 
 function NetMsg.ConnectNotifyChestOpenResult(callback: (uid: string, chestConfigId: number, chestLevel: number, finalBrainrotId: number) -> ())
 	notifyChestOpenResultEvent.OnClientEvent:Connect(callback)
+end
+
+-- 客户端请求重生
+function NetMsg.FireRequestRebirth()
+	print("[NetMsg] FireRequestRebirth")
+	requestRebirthEvent:FireServer()
+end
+
+function NetMsg.ConnectRequestRebirth(callback: (player: Player) -> ())
+	requestRebirthEvent.OnServerEvent:Connect(callback)
+end
+
+-- 客户端请求付费重生
+function NetMsg.FireRequestPaidRebirth()
+	print("[NetMsg] FireRequestPaidRebirth")
+	requestPaidRebirthEvent:FireServer()
+end
+
+function NetMsg.ConnectRequestPaidRebirth(callback: (player: Player) -> ())
+	requestPaidRebirthEvent.OnServerEvent:Connect(callback)
 end
 
 return NetMsg

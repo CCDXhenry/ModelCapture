@@ -27,7 +27,13 @@ local function UpdateUIScales()
 		local uIScale = controllerFrame and controllerFrame:FindFirstChild("UIScale") :: UIScale?
 		if uIScale and controllerFrame then
 			-- Calculate scale based on AbsoluteSize (which changes with distance) vs DesignSize
-			uIScale.Scale = math.min(gui.AbsoluteSize.X / controllerFrame.Size.X.Offset, gui.AbsoluteSize.Y / controllerFrame.Size.Y.Offset)
+			local designX = controllerFrame.Size.X.Offset
+			local designY = controllerFrame.Size.Y.Offset
+			if designX > 0 and designY > 0 then
+				uIScale.Scale = math.min(gui.AbsoluteSize.X / designX, gui.AbsoluteSize.Y / designY)
+			else
+				uIScale.Scale = 1 -- Fallback
+			end
 		end
 	end
 end
