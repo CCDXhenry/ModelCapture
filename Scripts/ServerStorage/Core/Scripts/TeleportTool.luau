@@ -31,7 +31,7 @@ function TeleportTool.SafeTeleport(placeId: number, players: { Instance }, telep
 end
 
 local function HandleFailedTeleport(
-	player: Player,
+	player: Instance,
 	teleportResult: Enum.TeleportResult,
 	errorMessage: string,
 	targetPlaceId: number,
@@ -42,7 +42,9 @@ local function HandleFailedTeleport(
 	elseif teleportResult == Enum.TeleportResult.Failure then
 		task.wait(RetryDelay)
 	else
-		teleportingPlayers[player.UserId] = nil
+		if player:IsA("Player") then
+			teleportingPlayers[player.UserId] = nil
+		end
 		error(("Invalid teleport [%s]: %s"):format(teleportResult.Name, errorMessage))
 	end
 	TeleportTool.SafeTeleport(targetPlaceId, { player }, teleportOptions)

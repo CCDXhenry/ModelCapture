@@ -324,8 +324,9 @@ NetMsg.ConnectRequestPaidRebirth(function(player: Player)
 	local playerInfo = ServerGameInfo.GetPlayerInfo(player)
 	if not playerInfo then return end
 	
-	local currentRebirthLevel = playerInfo.shopInfo.rebirthLevel or 1
-	local nextRebirthConfig = GameConfig.RebirthMap[currentRebirthLevel]
+	local currentRebirthLevel = playerInfo.shopInfo.rebirthLevel or 0
+	local nextRebirthCount = currentRebirthLevel + 1
+	local nextRebirthConfig = GameConfig.RebirthMap[nextRebirthCount]
 	if not nextRebirthConfig then return end
 	
 	if playerInfo.shopInfo.walkSpeedLevel >= nextRebirthConfig.speedLv and playerInfo.shopInfo.maxBricksLevel >= nextRebirthConfig.brickLv then

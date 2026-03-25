@@ -32,6 +32,7 @@ local actualModels = replicatedStorage:WaitForChild("Models"):WaitForChild("Brai
 local actualChests = replicatedStorage:WaitForChild("Models"):WaitForChild("LittleElfChests")
 local uIFolder = replicatedStorage:WaitForChild("UI")
 local brainrotInfoUIParams = uIFolder:WaitForChild("BrainrotInfoUI") :: BillboardGui
+local littleElfChestInfoUIParams = uIFolder:WaitForChild("LittleElfChestInfoUI") :: BillboardGui
 
 local AttachInfoUIToModel -- 向前声明
 local pendingOpenChestToolMap: { [string]: Tool } = {}
@@ -96,14 +97,12 @@ local function SetupVisualBrainrot(targetPart: BasePart)
 	newVisual.Parent = targetPart
 
 	local level = (targetPart:GetAttribute("Level") :: number) or 1
-	if itemType ~= GameConfig.ItemType.LittleElfChest then
-		AttachInfoUIToModel(targetPart, targetPart :: BasePart, configId, level, data.quality or 1, newVisual:GetExtentsSize().Y)
-	end
+	AttachInfoUIToModel(targetPart, targetPart :: BasePart, configId, level, data.quality or 1, newVisual:GetExtentsSize().Y)
 end
 
 -- Attach UI
 function AttachInfoUIToModel(targetParent: Instance, adornee: BasePart, configId: number, level: number, quality: number, visualModelHeight: number)
-	if targetParent:FindFirstChild("BrainrotInfoUI") then
+	if targetParent:FindFirstChild("BrainrotInfoUI") or targetParent:FindFirstChild("LittleElfChestInfoUI") then
 		return
 	end
 
@@ -119,15 +118,15 @@ function AttachInfoUIToModel(targetParent: Instance, adornee: BasePart, configId
 		return
 	end
 
-	local newBrainrotUI = brainrotInfoUIParams:Clone()
+	local newBrainrotUI = if itemType == GameConfig.ItemType.LittleElfChest then littleElfChestInfoUIParams:Clone() else brainrotInfoUIParams:Clone()
 	newBrainrotUI.Adornee = adornee
 	--newBrainrotUI.ExtentsOffsetWorldSpace = Vector3.new(0, visualModelHeight + 1.2, 0)
-	newBrainrotUI.Name = "BrainrotInfoUI"
+	newBrainrotUI.Name = if itemType == GameConfig.ItemType.LittleElfChest then "LittleElfChestInfoUI" else "BrainrotInfoUI"
 
-	local controller = newBrainrotUI:FindFirstChild("Controller")
+	local controller = newBrainrotUI:FindFirstChild("Controller") or newBrainrotUI:FindFirstChild("ControllerFrame")
 	if controller then
-		local nameLabel = controller:FindFirstChild("NameText") :: TextLabel?
-		local levelText = controller:FindFirstChild("LevelText") :: TextLabel?
+		local nameLabel = controller:FindFirstChild("NameLabel") :: TextLabel?
+		local levelText = controller:FindFirstChild("LvLabel") :: TextLabel?
 		local abilityText = controller:FindFirstChild("AbilityText") :: TextLabel?
 		local sellPriceText = controller:FindFirstChild("SellPriceText") :: TextLabel?
 
@@ -141,7 +140,16 @@ function AttachInfoUIToModel(targetParent: Instance, adornee: BasePart, configId
 		end
 		if levelText then
 			levelText.Visible = true
-			TranslationTool.CustomAutoLocalizeTextLabel(levelText, GameTexts.LevelWithNumber.source, GameTexts.LevelWithNumber.key, { tostring(level) })
+			if itemType == GameConfig.ItemType.LittleElfChest then
+				if targetParent:IsA("Tool") then
+					TranslationTool.CustomAutoLocalizeTextLabel(levelText, GameTexts.LevelWithNumber.source, GameTexts.LevelWithNumber.key, { tostring(level) })
+				else
+					TranslationTool.CustomAutoLocalizeTextLabel(levelText, GameTexts.UnknownLevel.source, GameTexts.UnknownLevel.key, {})
+				end
+			else
+				TranslationTool.CustomAutoLocalizeTextLabel(levelText, GameTexts.LevelWithNumber.source, GameTexts.LevelWithNumber.key, { tostring(level) })
+			end
+
 			if qualityCfg then
 				levelText.TextColor3 = qualityCfg.textColor
 			end
@@ -174,17 +182,14 @@ local function ProcessDescendantAdded(descendant: Instance)
 				local configId = descendant:GetAttribute("ConfigId") :: number
 				local level = (descendant:GetAttribute("Level") :: number) or 1
 				local quality = (descendant:GetAttribute("Quality") :: number) or 1
-				local itemType = descendant:GetAttribute("ItemType") :: number?
-				if itemType ~= GameConfig.ItemType.LittleElfChest then
-					AttachInfoUIToModel(
-						descendant,
-						visualModel.PrimaryPart or visualModel:FindFirstChildWhichIsA("BasePart") or (visualModel:GetChildren()[1] :: any),
-						configId,
-						level,
-						quality,
-						visualModel:GetExtentsSize().Y
-					)
-				end
+				AttachInfoUIToModel(
+					descendant,
+					visualModel.PrimaryPart or visualModel:FindFirstChildWhichIsA("BasePart") or (visualModel:GetChildren()[1] :: any),
+					configId,
+					level,
+					quality,
+					visualModel:GetExtentsSize().Y
+				)
 			end
 		end
 	end

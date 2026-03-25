@@ -6,11 +6,11 @@ local core = replicatedStorage:WaitForChild("Core")
 local coreScripts = core:WaitForChild("Scripts")
 local coreSharedScripts = coreScripts:WaitForChild("Shared")
 local DateTimeExtension = require(coreSharedScripts:FindFirstChild("DateTimeExtension"))
-local BrainrotData = require(script:FindFirstChild("BrainrotData"))
-local UpgradeShopData = require(script:FindFirstChild("UpgradeShopData"))
-local CoilData = require(script:FindFirstChild("CoilData"))
-local LittleElfChestData = require(script:FindFirstChild("LittleElfChestData"))
-local RebirthData = require(script:FindFirstChild("RebirthData"))
+local BrainrotDataModule = require(script:FindFirstChild("BrainrotData"))
+local UpgradeShopDataModule = require(script:FindFirstChild("UpgradeShopData"))
+local CoilDataModule = require(script:FindFirstChild("CoilData"))
+local LittleElfChestDataModule = require(script:FindFirstChild("LittleElfChestData"))
+local RebirthDataModule = require(script:FindFirstChild("RebirthData"))
 
 --游戏版本
 GameConfig.GameVersion = "1.0.0"
@@ -167,16 +167,16 @@ export type BrainrotInfo = {
 	acquireTime: number,
 }
 
-GameConfig.Brainrots = BrainrotData
+GameConfig.Brainrots = BrainrotDataModule
 GameConfig.BrainrotNameMap = {} :: { [string]: BrainrotData }
 GameConfig.BrainrotIdMap = {} :: { [number]: BrainrotData }
 
-for _, config in pairs(BrainrotData) do
+for _, config in pairs(BrainrotDataModule) do
 	GameConfig.BrainrotNameMap[config.resourceName] = config
 	GameConfig.BrainrotIdMap[config.id] = config
 end
 
-export type CoilInfo = {
+export type CoilData = {
 	id: number,
 	coilType: number,
 	speedValue: number,
@@ -188,28 +188,98 @@ export type CoilInfo = {
 	iconImageId: string,
 }
 
-GameConfig.Coils = CoilData
-GameConfig.CoilNameMap = {} :: { [string]: CoilInfo }
-GameConfig.CoilIdMap = {} :: { [number]: CoilInfo }
+GameConfig.Coils = CoilDataModule
+GameConfig.CoilNameMap = {} :: { [string]: CoilData }
+GameConfig.CoilIdMap = {} :: { [number]: CoilData }
 
-for _, config in pairs(CoilData) do
+for _, config in pairs(CoilDataModule) do
 	GameConfig.CoilNameMap[config.modelRes] = config
 	GameConfig.CoilIdMap[config.id] = config
 end
 
-GameConfig.LittleElfChests = LittleElfChestData
-GameConfig.LittleElfChestNameMap = {} :: { [string]: any }
-GameConfig.LittleElfChestIdMap = {} :: { [number]: any }
+-- LittleElfChest 配置
+export type LittleElfChestData = {
+	id: number,
+	name_t: string,
+	resourceName: string,
+	iconImageId: string,
+	quality: number,
+}
 
-for _, config in pairs(LittleElfChestData) do
+GameConfig.LittleElfChests = LittleElfChestDataModule
+GameConfig.LittleElfChestNameMap = {} :: { [string]: LittleElfChestData }
+GameConfig.LittleElfChestIdMap = {} :: { [number]: LittleElfChestData }
+
+for _, config in pairs(LittleElfChestDataModule) do
 	GameConfig.LittleElfChestNameMap[config.resourceName] = config
 	GameConfig.LittleElfChestIdMap[config.id] = config
 end
 
--- 重生配置
-GameConfig.Rebirth = RebirthData
-GameConfig.RebirthMap = {} :: { [number]: any }
-for _, config in pairs(RebirthData) do
+-- 岛屿配置
+export type IslandData = {
+	id: number,
+	islandName: string,
+	itemMinLv: number,
+	itemMaxLv: number,
+	rebirthCount: number,
+	brainrotGenerateCount: number,
+	littleElfChestGenerateCount: number,
+}
+
+local IslandConfigurationDataModule = require(script:FindFirstChild("IslandConfigurationData"))
+GameConfig.IslandConfigMap = {} :: { [number]: IslandData }
+for _, config in pairs(IslandConfigurationDataModule) do
+	GameConfig.IslandConfigMap[config.id] = config
+end
+
+-- 岛屿刷怪配置
+export type IslandSpawnerData = {
+	id: number,
+	itemType: number,
+	itemId: number,
+	weight: number,
+}
+
+local IslandSpawnerDataModule = require(script:FindFirstChild("IslandSpawnerData"))
+GameConfig.IslandSpawnerMap = {} :: { [number]: { IslandSpawnerData } }
+for _, config in pairs(IslandSpawnerDataModule) do
+	local islandId = config.id
+	if not GameConfig.IslandSpawnerMap[islandId] then
+		GameConfig.IslandSpawnerMap[islandId] = {}
+	end
+	table.insert(GameConfig.IslandSpawnerMap[islandId], config)
+end
+
+-- 小精灵宝箱奖励池配置 (对应 LittleElfChestRewardPoolData.luau)
+export type LittleElfChestRewardPoolData = {
+	id: number,
+	itemType: number,
+	itemId: number,
+	weight: number,
+}
+
+local LittleElfChestRewardPoolDataModule = require(script:FindFirstChild("LittleElfChestRewardPoolData"))
+GameConfig.LittleElfChestRewardPoolMap = {} :: { [number]: { LittleElfChestRewardPoolData } }
+for _, config in pairs(LittleElfChestRewardPoolDataModule) do
+	local chestId = config.id
+	if not GameConfig.LittleElfChestRewardPoolMap[chestId] then
+		GameConfig.LittleElfChestRewardPoolMap[chestId] = {}
+	end
+	table.insert(GameConfig.LittleElfChestRewardPoolMap[chestId], config)
+end
+
+-- 重生配置 (对应 RebirthData.luau)
+export type RebirthData = {
+	id: number,
+	count: number,
+	collectMultiple: number,
+	brickLv: number,
+	speedLv: number,
+}
+
+GameConfig.Rebirth = RebirthDataModule
+GameConfig.RebirthMap = {} :: { [number]: RebirthData }
+for _, config in pairs(RebirthDataModule) do
 	GameConfig.RebirthMap[config.id] = config
 end
 
@@ -287,10 +357,19 @@ GameConfig.BrainrotQueue = {
 	MaxCapacity = 9, -- 背包最多容纳 9 个 Brainrot
 }
 
+-- 商店配置
+export type UpgradeShopData = {
+	id: number,
+	name_t: string,
+	maxLevel: number,
+	abilityList: { number },
+	upgradeCostList: { number },
+}
+
 GameConfig.Shop = {
-	WalkSpeed = UpgradeShopData[1],
-	MaxBricks = UpgradeShopData[2],
-	HomeLevel = UpgradeShopData[3],
+	WalkSpeed = UpgradeShopDataModule[1] :: UpgradeShopData,
+	MaxBricks = UpgradeShopDataModule[2] :: UpgradeShopData,
+	HomeLevel = UpgradeShopDataModule[3] :: UpgradeShopData,
 }
 
 -- 实体模型信息
@@ -434,7 +513,7 @@ function GameConfig.CreateDefaultPlayerSaveInfo(): PlayerSaveInfo
 		shopInfo = {
 			walkSpeedLevel = 1,
 			maxBricksLevel = GameConfig.Inventory.InitialBricksCapacityLevel,
-			rebirthLevel = 1,
+			rebirthLevel = 0,
 		},
 		brainrotsInfo = {
 			ownedBrainrots = {},

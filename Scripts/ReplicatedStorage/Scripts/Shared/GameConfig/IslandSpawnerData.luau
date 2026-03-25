@@ -108,375 +108,231 @@ return {
 		["itemId"] = 4,
 	},
 	[19] = {
-		["id"] = 1,
-		["weight"] = 36,
-		["itemType"] = 3,
-		["itemId"] = 5,
-	},
-	[20] = {
-		["id"] = 1,
-		["weight"] = 35,
-		["itemType"] = 3,
-		["itemId"] = 6,
-	},
-	[21] = {
-		["id"] = 1,
-		["weight"] = 34,
-		["itemType"] = 3,
-		["itemId"] = 7,
-	},
-	[22] = {
-		["id"] = 1,
-		["weight"] = 33,
-		["itemType"] = 3,
-		["itemId"] = 8,
-	},
-	[23] = {
-		["id"] = 1,
-		["weight"] = 32,
-		["itemType"] = 3,
-		["itemId"] = 9,
-	},
-	[24] = {
-		["id"] = 1,
-		["weight"] = 31,
-		["itemType"] = 3,
-		["itemId"] = 10,
-	},
-	[25] = {
-		["id"] = 1,
-		["weight"] = 30,
-		["itemType"] = 3,
-		["itemId"] = 11,
-	},
-	[26] = {
-		["id"] = 1,
-		["weight"] = 29,
-		["itemType"] = 3,
-		["itemId"] = 12,
-	},
-	[27] = {
-		["id"] = 1,
-		["weight"] = 28,
-		["itemType"] = 3,
-		["itemId"] = 13,
-	},
-	[28] = {
-		["id"] = 1,
-		["weight"] = 27,
-		["itemType"] = 3,
-		["itemId"] = 14,
-	},
-	[29] = {
-		["id"] = 1,
-		["weight"] = 26,
-		["itemType"] = 3,
-		["itemId"] = 15,
-	},
-	[30] = {
-		["id"] = 1,
-		["weight"] = 25,
-		["itemType"] = 3,
-		["itemId"] = 16,
-	},
-	[31] = {
 		["id"] = 2,
 		["weight"] = 40,
 		["itemType"] = 1,
 		["itemId"] = 15,
 	},
-	[32] = {
+	[20] = {
 		["id"] = 2,
 		["weight"] = 39,
 		["itemType"] = 1,
 		["itemId"] = 16,
 	},
-	[33] = {
+	[21] = {
 		["id"] = 2,
 		["weight"] = 38,
 		["itemType"] = 1,
 		["itemId"] = 17,
 	},
-	[34] = {
+	[22] = {
 		["id"] = 2,
 		["weight"] = 37,
 		["itemType"] = 1,
 		["itemId"] = 18,
 	},
-	[35] = {
+	[23] = {
 		["id"] = 2,
 		["weight"] = 36,
 		["itemType"] = 1,
 		["itemId"] = 19,
 	},
-	[36] = {
+	[24] = {
 		["id"] = 2,
 		["weight"] = 35,
 		["itemType"] = 1,
 		["itemId"] = 20,
 	},
-	[37] = {
+	[25] = {
 		["id"] = 2,
 		["weight"] = 34,
 		["itemType"] = 1,
 		["itemId"] = 21,
 	},
-	[38] = {
+	[26] = {
 		["id"] = 2,
 		["weight"] = 33,
 		["itemType"] = 1,
 		["itemId"] = 22,
 	},
-	[39] = {
+	[27] = {
 		["id"] = 2,
 		["weight"] = 32,
 		["itemType"] = 1,
 		["itemId"] = 23,
 	},
-	[40] = {
+	[28] = {
 		["id"] = 2,
 		["weight"] = 31,
 		["itemType"] = 1,
 		["itemId"] = 24,
 	},
-	[41] = {
+	[29] = {
 		["id"] = 2,
 		["weight"] = 30,
 		["itemType"] = 1,
 		["itemId"] = 25,
 	},
-	[42] = {
+	[30] = {
 		["id"] = 2,
 		["weight"] = 29,
 		["itemType"] = 1,
 		["itemId"] = 26,
 	},
-	[43] = {
+	[31] = {
 		["id"] = 2,
 		["weight"] = 28,
 		["itemType"] = 1,
 		["itemId"] = 27,
 	},
-	[44] = {
+	[32] = {
 		["id"] = 2,
 		["weight"] = 27,
 		["itemType"] = 1,
 		["itemId"] = 28,
 	},
-	[45] = {
+	[33] = {
 		["id"] = 2,
 		["weight"] = 26,
 		["itemType"] = 1,
 		["itemId"] = 29,
 	},
-	[46] = {
+	[34] = {
 		["id"] = 2,
-		["weight"] = 25,
-		["itemType"] = 2,
-		["itemId"] = 17,
+		["weight"] = 40,
+		["itemType"] = 3,
+		["itemId"] = 1,
 	},
-	[47] = {
+	[35] = {
 		["id"] = 2,
-		["weight"] = 24,
-		["itemType"] = 2,
-		["itemId"] = 18,
+		["weight"] = 39,
+		["itemType"] = 3,
+		["itemId"] = 2,
 	},
-	[48] = {
+	[36] = {
 		["id"] = 2,
-		["weight"] = 23,
-		["itemType"] = 2,
-		["itemId"] = 19,
+		["weight"] = 38,
+		["itemType"] = 3,
+		["itemId"] = 3,
 	},
-	[49] = {
+	[37] = {
 		["id"] = 2,
-		["weight"] = 22,
-		["itemType"] = 2,
-		["itemId"] = 20,
+		["weight"] = 37,
+		["itemType"] = 3,
+		["itemId"] = 4,
 	},
-	[50] = {
-		["id"] = 2,
-		["weight"] = 21,
-		["itemType"] = 2,
-		["itemId"] = 21,
-	},
-	[51] = {
-		["id"] = 2,
-		["weight"] = 20,
-		["itemType"] = 2,
-		["itemId"] = 22,
-	},
-	[52] = {
-		["id"] = 2,
-		["weight"] = 19,
-		["itemType"] = 2,
-		["itemId"] = 23,
-	},
-	[53] = {
-		["id"] = 2,
-		["weight"] = 18,
-		["itemType"] = 2,
-		["itemId"] = 24,
-	},
-	[54] = {
-		["id"] = 2,
-		["weight"] = 17,
-		["itemType"] = 2,
-		["itemId"] = 25,
-	},
-	[55] = {
-		["id"] = 2,
-		["weight"] = 16,
-		["itemType"] = 2,
-		["itemId"] = 26,
-	},
-	[56] = {
+	[38] = {
 		["id"] = 3,
 		["weight"] = 40,
 		["itemType"] = 1,
 		["itemId"] = 30,
 	},
-	[57] = {
+	[39] = {
 		["id"] = 3,
 		["weight"] = 41,
 		["itemType"] = 1,
 		["itemId"] = 31,
 	},
-	[58] = {
+	[40] = {
 		["id"] = 3,
 		["weight"] = 42,
 		["itemType"] = 1,
 		["itemId"] = 32,
 	},
-	[59] = {
+	[41] = {
 		["id"] = 3,
 		["weight"] = 43,
 		["itemType"] = 1,
 		["itemId"] = 33,
 	},
-	[60] = {
+	[42] = {
 		["id"] = 3,
 		["weight"] = 44,
 		["itemType"] = 1,
 		["itemId"] = 34,
 	},
-	[61] = {
+	[43] = {
 		["id"] = 3,
 		["weight"] = 45,
 		["itemType"] = 1,
 		["itemId"] = 35,
 	},
-	[62] = {
+	[44] = {
 		["id"] = 3,
 		["weight"] = 46,
 		["itemType"] = 1,
 		["itemId"] = 36,
 	},
-	[63] = {
+	[45] = {
 		["id"] = 3,
 		["weight"] = 47,
 		["itemType"] = 1,
 		["itemId"] = 37,
 	},
-	[64] = {
+	[46] = {
 		["id"] = 3,
 		["weight"] = 48,
 		["itemType"] = 1,
 		["itemId"] = 38,
 	},
-	[65] = {
+	[47] = {
 		["id"] = 3,
 		["weight"] = 49,
 		["itemType"] = 1,
 		["itemId"] = 39,
 	},
-	[66] = {
+	[48] = {
 		["id"] = 3,
 		["weight"] = 50,
 		["itemType"] = 1,
 		["itemId"] = 40,
 	},
-	[67] = {
+	[49] = {
 		["id"] = 3,
 		["weight"] = 51,
 		["itemType"] = 1,
 		["itemId"] = 41,
 	},
-	[68] = {
+	[50] = {
 		["id"] = 3,
 		["weight"] = 52,
 		["itemType"] = 1,
 		["itemId"] = 42,
 	},
-	[69] = {
+	[51] = {
 		["id"] = 3,
 		["weight"] = 53,
 		["itemType"] = 1,
 		["itemId"] = 43,
 	},
-	[70] = {
+	[52] = {
 		["id"] = 3,
 		["weight"] = 54,
 		["itemType"] = 1,
 		["itemId"] = 44,
 	},
-	[71] = {
+	[53] = {
 		["id"] = 3,
-		["weight"] = 55,
-		["itemType"] = 2,
-		["itemId"] = 27,
+		["weight"] = 40,
+		["itemType"] = 3,
+		["itemId"] = 1,
 	},
-	[72] = {
+	[54] = {
 		["id"] = 3,
-		["weight"] = 56,
-		["itemType"] = 2,
-		["itemId"] = 28,
+		["weight"] = 39,
+		["itemType"] = 3,
+		["itemId"] = 2,
 	},
-	[73] = {
+	[55] = {
 		["id"] = 3,
-		["weight"] = 57,
-		["itemType"] = 2,
-		["itemId"] = 29,
+		["weight"] = 38,
+		["itemType"] = 3,
+		["itemId"] = 3,
 	},
-	[74] = {
+	[56] = {
 		["id"] = 3,
-		["weight"] = 58,
-		["itemType"] = 2,
-		["itemId"] = 30,
-	},
-	[75] = {
-		["id"] = 3,
-		["weight"] = 59,
-		["itemType"] = 2,
-		["itemId"] = 31,
-	},
-	[76] = {
-		["id"] = 3,
-		["weight"] = 60,
-		["itemType"] = 2,
-		["itemId"] = 32,
-	},
-	[77] = {
-		["id"] = 3,
-		["weight"] = 61,
-		["itemType"] = 2,
-		["itemId"] = 33,
-	},
-	[78] = {
-		["id"] = 3,
-		["weight"] = 62,
-		["itemType"] = 2,
-		["itemId"] = 34,
-	},
-	[79] = {
-		["id"] = 3,
-		["weight"] = 63,
-		["itemType"] = 2,
-		["itemId"] = 35,
-	},
-	[80] = {
-		["id"] = 3,
-		["weight"] = 64,
-		["itemType"] = 2,
-		["itemId"] = 36,
+		["weight"] = 37,
+		["itemType"] = 3,
+		["itemId"] = 4,
 	},
 }

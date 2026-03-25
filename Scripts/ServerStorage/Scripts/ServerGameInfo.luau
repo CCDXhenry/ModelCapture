@@ -153,11 +153,12 @@ function ServerGameInfo.GetRebirthMultiplier(player: Player): number
 	if not playerInfo then
 		return 1
 	end
-	local rebirthLevel = playerInfo.shopInfo.rebirthLevel or 1
-	if rebirthLevel <= 1 then
+	local rebirthLevel = playerInfo.shopInfo.rebirthLevel or 0
+	if rebirthLevel <= 0 then
 		return 1
 	end
-	local config = GameConfig.RebirthMap[rebirthLevel - 1]
+	-- rebirthLevel 语义改为 0-based “已重生次数”，1 次重生对应 RebirthMap[1]
+	local config = GameConfig.RebirthMap[rebirthLevel]
 	return if config then config.collectMultiple else 1
 end
 
@@ -168,10 +169,11 @@ function ServerGameInfo.ExecuteRebirth(player: Player, isPaid: boolean): boolean
 		return false
 	end
 
-	local currentRebirthLevel = playerInfo.shopInfo.rebirthLevel or 1
-	local nextRebirthConfig = GameConfig.RebirthMap[currentRebirthLevel]
+	local currentRebirthLevel = playerInfo.shopInfo.rebirthLevel or 0
+	local nextRebirthCount = currentRebirthLevel + 1
+	local nextRebirthConfig = GameConfig.RebirthMap[nextRebirthCount]
 	if not nextRebirthConfig then
-		print("[ServerGameInfo] ExecuteRebirth failed: max rebirth level reached for", player.Name)
+		print("[ServerGameInfo] ExecuteRebirth failed: max rebirth count reached for", player.Name)
 		return false
 	end
 
@@ -197,7 +199,7 @@ function ServerGameInfo.ExecuteRebirth(player: Player, isPaid: boolean): boolean
 	end
 
 	-- 增加重生等级
-	playerInfo.shopInfo.rebirthLevel = currentRebirthLevel + 1
+	playerInfo.shopInfo.rebirthLevel = nextRebirthCount
 	playerInfo.playerInfoChanged = true
 
 	-- 通知客户端重生等级变更

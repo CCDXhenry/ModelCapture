@@ -14,6 +14,19 @@ local BillboardManager = require(clientScripts:WaitForChild("BillboardManager"))
 
 local islandsFolder = workspace:WaitForChild("Islands")
 
+local function LocalizeLittleElfChestInfoUI(ui: BillboardGui)
+	local controller = ui:FindFirstChild("ControllerFrame")
+	if not controller then
+		return
+	end
+
+	local levelLabel = controller:FindFirstChild("LvLabel") :: TextLabel?
+	if levelLabel then
+		TranslationTool.CustomAutoLocalizeTextLabel(levelLabel, GameTexts.UnknownLevel.source, GameTexts.UnknownLevel.key, {})
+	end
+	BillboardManager.Track(ui)
+end
+
 local function LocalizeBrainrotUI(ui: BillboardGui)
 	local controller = ui:FindFirstChild("ControllerFrame")
 	if not controller then
@@ -43,6 +56,8 @@ end
 local function OnIslandDescendantAdded(desc: Instance)
 	if desc:IsA("BillboardGui") and desc.Name == "BrainrotInfoUI" then
 		LocalizeBrainrotUI(desc)
+	elseif desc:IsA("BillboardGui") and desc.Name == "LittleElfChestInfoUI" then
+		LocalizeLittleElfChestInfoUI(desc)
 	elseif desc:IsA("ProximityPrompt") then
 		local parent = desc.Parent
 		if parent and parent.Name == "InteractionAttachment" then

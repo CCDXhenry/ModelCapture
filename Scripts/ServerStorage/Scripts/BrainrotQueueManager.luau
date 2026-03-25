@@ -316,22 +316,31 @@ function BrainrotQueueManager.OpenChest(player: Player, uid: string)
 	if not chestConfig then return end
 
 	-- 2. 随机获得掉落
-	local rewardPool = chestConfig.rewardPool
+	local rewardPool = GameConfig.LittleElfChestRewardPoolMap[chestItem.configId]
 	if not rewardPool or #rewardPool == 0 then
 		warn("[BrainrotQueueManager] OpenChest error: rewardPool is empty for chest", chestItem.configId)
 		return
 	end
 
-	local randomBrainrotId = rewardPool[math.random(1, #rewardPool)]
-	local brainrotConfig = GameConfig.BrainrotIdMap[randomBrainrotId]
-	if not brainrotConfig then
-		warn("[BrainrotQueueManager] OpenChest error: random brainrot config not found", randomBrainrotId)
+	local rewardEntry = rewardPool[math.random(1, #rewardPool)]
+	local rewardType = rewardEntry.itemType
+	local rewardId = rewardEntry.itemId
+
+	local rewardConfig: any
+	if rewardType == GameConfig.ItemType.Brainrot then
+		rewardConfig = GameConfig.BrainrotIdMap[rewardId]
+	elseif rewardType == GameConfig.ItemType.Coil then
+		rewardConfig = GameConfig.CoilIdMap[rewardId]
+	end
+
+	if not rewardConfig then
+		warn("[BrainrotQueueManager] OpenChest error: reward config not found", rewardType, rewardId)
 		return
 	end
 
 	-- 2.5 先把权威结果通知给客户端，用于播放开箱动画
 	local chestLevel = chestItem.level or 1
-	NetMsg.FireNotifyChestOpenResult(player, uid, chestItem.configId, chestLevel, brainrotConfig.id)
+	NetMsg.FireNotifyChestOpenResult(player, uid, chestItem.configId, chestLevel, rewardId)
 
 	-- 3. 移除宝箱，添加新宠物
 	-- 先移除 Tool
@@ -360,11 +369,10 @@ function BrainrotQueueManager.OpenChest(player: Player, uid: string)
 		if not latestPlayerInfo then
 			return
 		end
-		BrainrotQueueManager.AddItem(player, brainrotConfig.id, brainrotConfig.quality, chestLevel, true, GameConfig.ItemType.Brainrot)
+		BrainrotQueueManager.AddItem(player, rewardId, rewardConfig.quality, chestLevel, true, rewardType)
+		-- 提示
+	NetMsg.FireNotifyShowGameTip(player, GameTexts.ReceivedReward.source, GameConfig.GameTipTweenType.FlyUp, GameTexts.ReceivedReward.key, {rewardConfig.name_t})
 	end)
-
-	-- 提示
-	NetMsg.FireNotifyShowGameTip(player, GameTexts.ReceivedReward.source, GameConfig.GameTipTweenType.FlyUp, GameTexts.ReceivedReward.key, {brainrotConfig.name_t})
 end
 
 -- 模块初始化 (服务端监听)

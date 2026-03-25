@@ -26,6 +26,8 @@ local GameTexts = {
 	WingsAssistanceBody = { key = "WingsAssistanceBody", source = "Wings assistance can help you return to your nearest previous island. Do you want to purchase this assistance?" },
 	ReceivedReward = { key = "ReceivedReward", source = "Received: {1}" },
 	RebirthMultiplierFormat = { key = "RebirthMultiplierFormat", source = "Rebirth {1} ({2}x Coin)" },
+	InsufficientRebirthCount = { key = "InsufficientRebirthCount", source = "Insufficient rebirths: need at least {1} rebirths to pick up." },
 	TotalRevenueFormat = { key = "TotalRevenueFormat", source = "{1}/s" },
+	UnknownLevel = { key = "UnknownLevel", source = "Lv.???" },
 }
 return GameTexts

@@ -21,6 +21,7 @@ local actualChests = replicatedStorage:WaitForChild("Models"):WaitForChild("Litt
 local BrainrotCarryingManager = require(serverScripts:FindFirstChild("BrainrotCarryingManager"))
 
 local BrainrotIslandManager = {}
+local rng = Random.new()
 
 -- Forward declaration
 local StartCarryingBrainrot
@@ -139,7 +140,8 @@ function SetupBrainrotInteraction(randomBrainrot: Instance, island: Instance, sp
 
 			local name = if config then config.name_t else randomBrainrot.Name
 			prompt.ActionText = GameTexts.PickUpBrainrot.source
-			prompt.ObjectText = `{name}(等级{level})`
+			local levelStr = if itemType == GameConfig.ItemType.LittleElfChest then "???" else tostring(level)
+			prompt.ObjectText = `{name}(等级{levelStr})`
 			prompt.RequiresLineOfSight = false
 			prompt.MaxActivationDistance = 10
 			prompt.Enabled = true
@@ -147,46 +149,81 @@ function SetupBrainrotInteraction(randomBrainrot: Instance, island: Instance, sp
 		end
 	end
 
+	-- island/rebirthLimit are static for this interaction, so precompute once.
+	local islandId = tonumber(island.Name:match("^Island(%d+)$")) or 1
+	local islandConfig = GameConfig.IslandConfigMap[islandId]
+	local islandRebirthCount = islandConfig and islandConfig.rebirthCount or 0
+
 	prompt.Triggered:Connect(function(player)
+		local playerInfo = ServerGameInfo.GetPlayerInfo(player)
+		local playerRebirthCount = if playerInfo then (playerInfo.shopInfo.rebirthLevel or 0) else 0
+		if playerRebirthCount < islandRebirthCount then
+			NetMsg.FireNotifyShowGameTip(
+				player,
+				GameTexts.InsufficientRebirthCount.source,
+				GameConfig.GameTipTweenType.FlyUp,
+				GameTexts.InsufficientRebirthCount.key,
+				{ tostring(islandRebirthCount) }
+			)
+			return
+		end
 		StartCarryingBrainrot(player, randomBrainrot)
 	end)
 end
 
-local function GetRandomChestConfigId(): number?
-	local chestIds = {}
-	for id, _ in pairs(GameConfig.LittleElfChestIdMap) do
-		table.insert(chestIds, id)
-	end
-	if #chestIds == 0 then
-		return nil
-	end
-	return chestIds[math.random(1, #chestIds)]
+local function GetIslandId(islandName: string): number
+	return tonumber(islandName:match("^Island(%d+)$")) or 1
 end
 
-local function SpawnOneBrainrotInternal(island: Instance): BasePart?
-	-- 判定是否产生宝箱 (10% 几率)
-	local isChest = math.random(1, 100) <= 100
+type IslandSpawnerEntry = { id: number, weight: number, itemType: number, itemId: number }
+
+local function PickWeightedFromIslandPool(pool: { IslandSpawnerEntry }, wantChest: boolean): IslandSpawnerEntry?
+	local totalWeight = 0
+	for _, entry in ipairs(pool) do
+		local isChestEntry = entry.itemType == GameConfig.ItemType.LittleElfChest
+		if isChestEntry == wantChest then
+			totalWeight += entry.weight or 0
+		end
+	end
+	if totalWeight <= 0 then
+		return nil
+	end
+	local rnd = math.random(1, totalWeight)
+	local currentWeight = 0
+	for _, entry in ipairs(pool) do
+		local isChestEntry = entry.itemType == GameConfig.ItemType.LittleElfChest
+		if isChestEntry == wantChest then
+			currentWeight += entry.weight or 0
+			if rnd <= currentWeight then
+				return entry
+			end
+		end
+	end
+	return nil
+end
+
+local function SpawnOneBrainrotInternal(island: Instance, isChest: boolean): BasePart?
+	local islandId = GetIslandId(island.Name)
+	local islandConfig = GameConfig.IslandConfigMap[islandId]
+	if not islandConfig then
+		return nil
+	end
+
 	local config: any = nil
 	local itemType = GameConfig.ItemType.Brainrot
 
-	if isChest then
-		local chestId = GetRandomChestConfigId()
-		if chestId then
-			config = GameConfig.LittleElfChestIdMap[chestId]
-			itemType = GameConfig.ItemType.LittleElfChest
+	local pool = GameConfig.IslandSpawnerMap[islandId]
+	local entry = pool and PickWeightedFromIslandPool(pool, isChest) or nil
+	if entry then
+		itemType = entry.itemType
+		local configId = entry.itemId
+		if itemType == GameConfig.ItemType.LittleElfChest then
+			config = GameConfig.LittleElfChestIdMap[configId]
+		elseif itemType == GameConfig.ItemType.Brainrot then
+			config = GameConfig.BrainrotIdMap[configId]
+		elseif itemType == GameConfig.ItemType.Coil then
+			config = GameConfig.CoilIdMap[configId]
 		end
-	end
-
-	if not config then
-		local brainrotIds = {}
-		for id, _ in pairs(GameConfig.BrainrotIdMap) do
-			table.insert(brainrotIds, id)
-		end
-		if #brainrotIds == 0 then
-			return nil
-		end
-		local randomId = brainrotIds[math.random(1, #brainrotIds)]
-		config = GameConfig.BrainrotIdMap[randomId]
 	end
 
 	if not config then
@@ -203,7 +240,11 @@ local function SpawnOneBrainrotInternal(island: Instance): BasePart?
 	randomBrainrot:SetAttribute("ConfigId", config.id)
 	randomBrainrot:SetAttribute("ItemType", itemType)
 	randomBrainrot:SetAttribute("Quality", config.quality or 1)
-	randomBrainrot:SetAttribute("Level", 1)
+	
+	local minLv = islandConfig.itemMinLv or 1
+	local maxLv = islandConfig.itemMaxLv or 10
+	local level = rng:NextInteger(minLv, maxLv)
+	randomBrainrot:SetAttribute("Level", level)
 	randomBrainrot:SetAttribute("HomeIslandName", island.Name)
 
 	local basePos = if island:IsA("BasePart") then island.Position else Vector3.zero
@@ -227,8 +268,18 @@ end
 
 -- 4. 业务逻辑封装
 local function SpawnBrainrotsOnIsland(island: Instance)
-	for i = 1, 3 do
-		SpawnOneBrainrotInternal(island)
+	local islandId = GetIslandId(island.Name)
+	local islandConfig = GameConfig.IslandConfigMap[islandId]
+	if not islandConfig then return end
+
+	local brainrotCount = islandConfig.brainrotGenerateCount or 3
+	local chestCount = islandConfig.littleElfChestGenerateCount or 1
+
+	for i = 1, brainrotCount do
+		SpawnOneBrainrotInternal(island, false)
+	end
+	for i = 1, chestCount do
+		SpawnOneBrainrotInternal(island, true)
 	end
 end
 
@@ -346,22 +397,36 @@ local function StartSpawnLoop()
 				continue
 			end
 
-			local currentPlayers = #game:GetService("Players"):GetPlayers()
-			local targetCount = math.max(1, currentPlayers) * 3
-
 			for _, island in ipairs(islandsFolder:GetChildren()) do
 				if island.Name:match("^Island%d+$") then
-					local existingCount = 0
+					local islandId = GetIslandId(island.Name)
+					local islandConfig = GameConfig.IslandConfigMap[islandId]
+					if not islandConfig then continue end
+
+					local targetBrainrotCount = islandConfig.brainrotGenerateCount or 3
+					local targetChestCount = islandConfig.littleElfChestGenerateCount or 1
+
+					local currentBrainrotCount = 0
+					local currentChestCount = 0
 					for _, child in ipairs(island:GetChildren()) do
-						if child.Name == "IslandBrainrot" or child.Name == "IslandChest" then
-							existingCount += 1
+						if child.Name == "IslandBrainrot" then
+							currentBrainrotCount += 1
+						elseif child.Name == "IslandChest" then
+							currentChestCount += 1
 						end
 					end
 
-					if existingCount < targetCount then
-						local toSpawn = targetCount - existingCount
+					if currentBrainrotCount < targetBrainrotCount then
+						local toSpawn = targetBrainrotCount - currentBrainrotCount
 						for i = 1, toSpawn do
-							SpawnOneBrainrotInternal(island)
+							SpawnOneBrainrotInternal(island, false)
+						end
+					end
+
+					if currentChestCount < targetChestCount then
+						local toSpawn = targetChestCount - currentChestCount
+						for i = 1, toSpawn do
+							SpawnOneBrainrotInternal(island, true)
 						end
 					end
 				end

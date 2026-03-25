@@ -2,6 +2,7 @@
 local players = game:GetService("Players")
 local replicatedStorage: ReplicatedStorage = game:GetService("ReplicatedStorage")
 local proximityPromptService = game:GetService("ProximityPromptService")
+local runService = game:GetService("RunService")
 local scripts = replicatedStorage:WaitForChild("Scripts")
 local core = replicatedStorage:WaitForChild("Core")
 local coreScripts = core:WaitForChild("Scripts")
@@ -57,13 +58,23 @@ local function ApplySlotVisuals(slotName: string)
 end
 
 -- Helper to update prompt visibility/text without full plot refresh
-local function SetPromptState(attachment: Attachment?, visible: boolean, isOccupied: boolean, plotIndex: number, currentSlotName: string)
+local function SetPromptState(
+	attachment: Attachment?,
+	visible: boolean,
+	isOccupied: boolean,
+	plotIndex: number,
+	currentSlotName: string,
+	applyEnabled: boolean?
+)
 	if not attachment then
 		return
 	end
+	local shouldApplyEnabled = if applyEnabled == nil then true else applyEnabled
 	local prompt = attachment:FindFirstChildOfClass("ProximityPrompt")
 	if prompt then
-		prompt.Enabled = visible
+		if shouldApplyEnabled then
+			prompt.Enabled = visible
+		end
 		promptToPlotMap[prompt] = { pointIndex = plotIndex, slotName = currentSlotName }
 		if isOccupied then
 			TranslationTool.CustomAutoLocalizeProximityPrompt(prompt, GameTexts.PickUpBrainrot.source, GameTexts.PickUpBrainrot.key)
@@ -73,8 +84,145 @@ local function SetPromptState(attachment: Attachment?, visible: boolean, isOccup
 	end
 	local billboard = attachment:FindFirstChildOfClass("BillboardGui")
 	if billboard then
-		billboard.Enabled = visible
+		if shouldApplyEnabled then
+			billboard.Enabled = visible
+		end
 		BillboardManager.Track(billboard)
+	end
+end
+
+local function SetSellButtonVisibility(
+	attachment: Attachment?,
+	visible: boolean,
+	plotIndex: number,
+	slotName: string,
+	applyEnabled: boolean?
+)
+	if not attachment then
+		return
+	end
+	local shouldApplyEnabled = if applyEnabled == nil then true else applyEnabled
+	local prompt = attachment:FindFirstChildOfClass("ProximityPrompt")
+	if prompt then
+		if shouldApplyEnabled then
+			prompt.Enabled = visible
+		end
+		promptToPlotMap[prompt] = { pointIndex = plotIndex, slotName = slotName }
+	end
+	local billboard = attachment:FindFirstChildOfClass("BillboardGui")
+	if billboard then
+		if shouldApplyEnabled then
+			billboard.Enabled = visible
+		end
+		BillboardManager.Track(billboard)
+	end
+end
+
+local function RefreshLocalHomeInteractionFocus()
+	local localInfo = ClientGameInfo.GetLocalPlayerInfo()
+	if not localInfo or localInfo.homeSlot == nil or localInfo.homeSlot == "" then
+		return
+	end
+	local slotName = localInfo.homeSlot
+	local state = slotStateCache[slotName]
+	if not state or not state.active or not state.isLocalPlayer or not state.homeInfo then
+		return
+	end
+	local homeInfo = state.homeInfo
+	local slotModel = homesFolder:FindFirstChild(slotName)
+	if not slotModel then
+		return
+	end
+
+	local char = players.LocalPlayer.Character
+	local charPos: Vector3? = nil
+	if char then
+		local hrp = char:FindFirstChild("HumanoidRootPart") :: BasePart?
+		if hrp then
+			charPos = hrp.Position
+		else
+			charPos = char:GetPivot().Position
+		end
+	end
+
+	local candidates: { { pointIndex: number, plot: Instance, dist: number } } = {}
+	if charPos then
+		for _, floor in ipairs(slotModel:GetChildren()) do
+			if floor.Name:match("^Lv%d+$") then
+				for _, plot in ipairs(floor:GetChildren()) do
+					local pointIndex = tonumber(plot.Name:match("^PlaceModel(%d+)$"))
+					if not pointIndex then
+						continue
+					end
+					local isOccupied = homeInfo.placedModels[tostring(pointIndex)] ~= nil
+					local wantPlace = (not isOccupied and isLocalHoldingBrainrot) or isOccupied
+					local wantSell = isOccupied
+					if wantPlace or wantSell then
+						local rootPart = plot:FindFirstChild("RootPart") :: BasePart?
+						if rootPart then
+							local dist = (rootPart.Position - charPos).Magnitude
+							local placeAttachment = rootPart:FindFirstChild("PlaceAttachment")
+							local placePrompt = placeAttachment
+								and placeAttachment:FindFirstChildOfClass("ProximityPrompt")
+							local maxDist = if placePrompt then placePrompt.MaxActivationDistance else 15
+							if dist <= maxDist then
+								table.insert(candidates, { pointIndex = pointIndex, plot = plot, dist = dist })
+							end
+						end
+					end
+				end
+			end
+		end
+	end
+
+	table.sort(candidates, function(a, b)
+		if a.dist ~= b.dist then
+			return a.dist < b.dist
+		end
+		return a.pointIndex < b.pointIndex
+	end)
+	local winnerPointIndex: number? = if #candidates > 0 then candidates[1].pointIndex else nil
+
+	for _, floor in ipairs(slotModel:GetChildren()) do
+		if floor.Name:match("^Lv%d+$") then
+			for _, plot in ipairs(floor:GetChildren()) do
+				local pointIndex = tonumber(plot.Name:match("^PlaceModel(%d+)$"))
+				if not pointIndex then
+					continue
+				end
+				local isOccupied = homeInfo.placedModels[tostring(pointIndex)] ~= nil
+				local wantPlace = (not isOccupied and isLocalHoldingBrainrot) or isOccupied
+				local wantSell = isOccupied
+				local isWinner = winnerPointIndex ~= nil and pointIndex == winnerPointIndex
+				local showPlace = wantPlace and isWinner
+				local showSell = wantSell and isWinner
+
+				local rootPart = plot:FindFirstChild("RootPart") :: BasePart?
+				local placeAttachment = rootPart and rootPart:FindFirstChild("PlaceAttachment") :: Attachment?
+				local sellAttachment = rootPart and rootPart:FindFirstChild("SellAttachment") :: Attachment?
+
+				if placeAttachment then
+					local placePrompt = placeAttachment:FindFirstChildOfClass("ProximityPrompt")
+					if placePrompt then
+						placePrompt.Enabled = showPlace
+					end
+					local placeBillboard = placeAttachment:FindFirstChildOfClass("BillboardGui")
+					if placeBillboard then
+						placeBillboard.Enabled = showPlace
+					end
+				end
+				if sellAttachment then
+					local sellPrompt = sellAttachment:FindFirstChildOfClass("ProximityPrompt")
+					if sellPrompt then
+						sellPrompt.Enabled = showSell
+					end
+					local sellBillboard = sellAttachment:FindFirstChildOfClass("BillboardGui")
+					if sellBillboard then
+						sellBillboard.Enabled = showSell
+					end
+				end
+			end
+		end
 	end
 end
 
@@ -100,12 +248,22 @@ local function UpdateHomePrompts(slotName: string)
 					local isOccupied = homeInfo.placedModels[tostring(pointIndex)] ~= nil
 					local rootPart = plot:FindFirstChild("RootPart") :: BasePart?
 					local placeAttachment = rootPart and rootPart:FindFirstChild("PlaceAttachment") :: Attachment?
+					local sellAttachment = rootPart and rootPart:FindFirstChild("SellAttachment") :: Attachment?
 
 					local showPlacePrompt = (not isOccupied and isLocalPlayer and isLocalHoldingBrainrot) or (isOccupied and isLocalPlayer)
-					SetPromptState(placeAttachment, showPlacePrompt, isOccupied, pointIndex, slotName)
+					if isLocalPlayer then
+						SetPromptState(placeAttachment, showPlacePrompt, isOccupied, pointIndex, slotName, false)
+						SetSellButtonVisibility(sellAttachment, isOccupied and isLocalPlayer, pointIndex, slotName, false)
+					else
+						SetPromptState(placeAttachment, showPlacePrompt, isOccupied, pointIndex, slotName)
+						SetSellButtonVisibility(sellAttachment, isOccupied and isLocalPlayer, pointIndex, slotName)
+					end
 				end
 			end
 		end
+	end
+	if isLocalPlayer then
+		RefreshLocalHomeInteractionFocus()
 	end
 end
 
@@ -149,9 +307,11 @@ local function SetupBillboardAdaptation(gui: BillboardGui)
 	-- Ensure UIScale exists
 	local uiScale = controller:FindFirstChildOfClass("UIScale")
 	if not uiScale then
-		uiScale = Instance.new("UIScale")
-		uiScale.Name = "UIScale"
-		uiScale.Parent = controller
+		uiScale = Instance.new("UIScale") :: UIScale
+		if uiScale then
+			uiScale.Name = "UIScale"
+			uiScale.Parent = controller
+		end
 	end
 
 	-- Ensure ControllerFrame size is in Offset for BillboardManager
@@ -241,24 +401,6 @@ local function UpdatePlot(folder: Instance, placedData: any?, isLocalPlayer: boo
 
 	local pointIndex = tonumber(folder.Name:match("^PlaceModel(%d+)$"))
 
-	local function SetButtonVisibility(attachment: Attachment?, visible: boolean)
-		if not attachment then
-			return
-		end
-		local prompt = attachment:FindFirstChildOfClass("ProximityPrompt")
-		if prompt then
-			prompt.Enabled = visible
-			if pointIndex then
-				promptToPlotMap[prompt] = { pointIndex = pointIndex, slotName = slotName }
-			end
-		end
-		local billboard = attachment:FindFirstChildOfClass("BillboardGui")
-		if billboard then
-			billboard.Enabled = visible
-			BillboardManager.Track(billboard)
-		end
-	end
-
 	-- 只要 BillboardGui 存在就追踪自适应 (即使当前不显示，Enabled 会在 UpdateUIScales 检查)
 	if infoUI then
 		SetupBillboardAdaptation(infoUI)
@@ -267,11 +409,11 @@ local function UpdatePlot(folder: Instance, placedData: any?, isLocalPlayer: boo
 	-- 4. Set prompt/UI visibility based on occupancy
 	local isOccupied = placedData ~= nil
 	local showPlacePrompt = (not isOccupied and isLocalPlayer and isLocalHoldingBrainrot) or (isOccupied and isLocalPlayer)
+	local deferPromptEnabled = isLocalPlayer
 	if pointIndex then
-		SetPromptState(placeAttachment, showPlacePrompt, isOccupied, pointIndex, slotName)
+		SetPromptState(placeAttachment, showPlacePrompt, isOccupied, pointIndex, slotName, not deferPromptEnabled)
+		SetSellButtonVisibility(sellAttachment, isOccupied and isLocalPlayer, pointIndex, slotName, not deferPromptEnabled)
 	end
-
-	SetButtonVisibility(sellAttachment, isOccupied and isLocalPlayer)
 
 	if lightEmitter then
 		lightEmitter.Enabled = false
@@ -392,10 +534,10 @@ local function UpdatePlot(folder: Instance, placedData: any?, isLocalPlayer: boo
 			collectText.Visible = isOccupied
 			if isOccupied then
 				local playerInfo = ClientGameInfo.GetLocalPlayerInfo()
-				local rebirthLevel = if playerInfo then (playerInfo.shopInfo.rebirthLevel or 1) else 1
+					local rebirthLevel = if playerInfo then (playerInfo.shopInfo.rebirthLevel or 0) else 0
 				local multiplier = 1
-				if rebirthLevel > 1 then
-					local rbConfig = GameConfig.RebirthMap[rebirthLevel - 1]
+					if rebirthLevel > 0 then
+						local rbConfig = GameConfig.RebirthMap[rebirthLevel]
 					multiplier = if rbConfig then rbConfig.collectMultiple else 1
 				end
 				local finalYield = math.ceil(yield * multiplier)
@@ -651,21 +793,21 @@ local function UpdateRebirthMultiplierUI(slotName: string, homeInfo: any, isLoca
 	end
 
 	-- 2. Calculate Rebirth Multiplier
-	local finalRebirthLevel: number = rebirthLevel or 1
+	local finalRebirthLevel: number = rebirthLevel or 0
 
 	-- 如果没有传入 rebirthLevel 且不是本地玩家，尝试再次查找一次（作为兜底）
 	if not rebirthLevel and not isLocalPlayer then
 		for _, p in ipairs(players:GetPlayers()) do
 			local info = ClientGameInfo.GetOtherPlayerInfo(p.UserId)
 			if info and info.homeSlot == slotName then
-				finalRebirthLevel = info.rebirthLevel or 1
+				finalRebirthLevel = info.rebirthLevel or 0
 				break
 			end
 		end
 	elseif not rebirthLevel and isLocalPlayer then
 		local playerInfo = ClientGameInfo.GetLocalPlayerInfo()
 		if playerInfo then
-			finalRebirthLevel = playerInfo.shopInfo.rebirthLevel or 1
+			finalRebirthLevel = playerInfo.shopInfo.rebirthLevel or 0
 		end
 	end
 
@@ -675,8 +817,8 @@ local function UpdateRebirthMultiplierUI(slotName: string, homeInfo: any, isLoca
 	-- Rebirth Info Label
 	local levelStr = tostring(finalRebirthLevel)
 	local multiplier = 1
-	if finalRebirthLevel > 1 then
-		local rbConfig = GameConfig.RebirthMap[finalRebirthLevel - 1]
+	if finalRebirthLevel > 0 then
+		local rbConfig = GameConfig.RebirthMap[finalRebirthLevel]
 		multiplier = if rbConfig then rbConfig.collectMultiple else 1
 	end
 	local multiplierStr = string.format("%.1f", multiplier)
@@ -986,6 +1128,9 @@ function UpdateHomeVisuals(slotName: string, homeInfo: any, isLocalPlayer: boole
 	local state = slotStateCache[slotName]
 	--print("[UpdateRebirthMultiplierUI] Updating UI for slot", slotName, "isLocalPlayer", isLocalPlayer, "rebirthLevel", state and state.rebirthLevel)
 	UpdateRebirthMultiplierUI(slotName, homeInfo, isLocalPlayer, state and state.rebirthLevel)
+	if isLocalPlayer then
+		RefreshLocalHomeInteractionFocus()
+	end
 end
 
 -- Refresh all online players' homes (syncs state)
@@ -1003,7 +1148,7 @@ local function RefreshAllHomes()
 			active = true,
 			homeInfo = localInfo.homeInfo,
 			isLocalPlayer = true,
-			rebirthLevel = if localInfo.shopInfo then localInfo.shopInfo.rebirthLevel else 1,
+			rebirthLevel = if localInfo.shopInfo then localInfo.shopInfo.rebirthLevel else 0,
 		}
 	end
 
@@ -1017,7 +1162,7 @@ local function RefreshAllHomes()
 				active = true,
 				homeInfo = otherInfo.homeInfo,
 				isLocalPlayer = false,
-				rebirthLevel = otherInfo.rebirthLevel or 1,
+				rebirthLevel = otherInfo.rebirthLevel or 0,
 			}
 		end
 	end
@@ -1146,7 +1291,7 @@ function HomeClientManager.Init()
 					localInfo.homeSlot,
 					localInfo.homeInfo,
 					true,
-					if localInfo.shopInfo then localInfo.shopInfo.rebirthLevel else 1
+					if localInfo.shopInfo then localInfo.shopInfo.rebirthLevel else 0
 				)
 			end
 		end
@@ -1164,6 +1309,7 @@ function HomeClientManager.Init()
 	end
 
 	RefreshAllHomes()
+	runService.RenderStepped:Connect(RefreshLocalHomeInteractionFocus)
 	proximityPromptService.PromptTriggered:Connect(OnPromptTriggered)
 
 	-- Monitor for streaming / replication of parts
@@ -1200,7 +1346,7 @@ function HomeClientManager.Init()
 				active = true,
 				homeInfo = otherInfo.homeInfo,
 				isLocalPlayer = false,
-				rebirthLevel = otherInfo.rebirthLevel or 1,
+				rebirthLevel = otherInfo.rebirthLevel or 0,
 			}
 			ApplySlotVisuals(otherInfo.homeSlot)
 		end

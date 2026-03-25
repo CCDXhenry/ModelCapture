@@ -5,6 +5,8 @@ return {
 		["brainrotGenerateCount"] = 5,
 		["littleElfChestGenerateCount"] = 2,
 		["id"] = 1,
+		["islandName"] = "Island1",
+		["rebirthCount"] = 0,
 	},
 	[2] = {
 		["itemMinLv"] = 11,
@@ -12,6 +14,8 @@ return {
 		["brainrotGenerateCount"] = 5,
 		["littleElfChestGenerateCount"] = 2,
 		["id"] = 2,
+		["islandName"] = "Island2",
+		["rebirthCount"] = 1,
 	},
 	[3] = {
 		["itemMinLv"] = 21,
@@ -19,6 +23,8 @@ return {
 		["brainrotGenerateCount"] = 5,
 		["littleElfChestGenerateCount"] = 2,
 		["id"] = 3,
+		["islandName"] = "Island3",
+		["rebirthCount"] = 2,
 	},
 	[4] = {
 		["itemMinLv"] = 31,
@@ -26,6 +32,8 @@ return {
 		["brainrotGenerateCount"] = 5,
 		["littleElfChestGenerateCount"] = 2,
 		["id"] = 4,
+		["islandName"] = "Island4",
+		["rebirthCount"] = 0,
 	},
 	[5] = {
 		["itemMinLv"] = 41,
@@ -33,6 +41,8 @@ return {
 		["brainrotGenerateCount"] = 5,
 		["littleElfChestGenerateCount"] = 2,
 		["id"] = 5,
+		["islandName"] = "Island5",
+		["rebirthCount"] = 1,
 	},
 	[6] = {
 		["itemMinLv"] = 51,
@@ -40,6 +50,8 @@ return {
 		["brainrotGenerateCount"] = 5,
 		["littleElfChestGenerateCount"] = 2,
 		["id"] = 6,
+		["islandName"] = "Island6",
+		["rebirthCount"] = 2,
 	},
 	[7] = {
 		["itemMinLv"] = 61,
@@ -47,6 +59,8 @@ return {
 		["brainrotGenerateCount"] = 5,
 		["littleElfChestGenerateCount"] = 2,
 		["id"] = 7,
+		["islandName"] = "Island7",
+		["rebirthCount"] = 3,
 	},
 	[8] = {
 		["itemMinLv"] = 71,
@@ -54,6 +68,8 @@ return {
 		["brainrotGenerateCount"] = 5,
 		["littleElfChestGenerateCount"] = 2,
 		["id"] = 8,
+		["islandName"] = "Island8",
+		["rebirthCount"] = 4,
 	},
 	[9] = {
 		["itemMinLv"] = 81,
@@ -61,6 +77,8 @@ return {
 		["brainrotGenerateCount"] = 5,
 		["littleElfChestGenerateCount"] = 2,
 		["id"] = 9,
+		["islandName"] = "Island9",
+		["rebirthCount"] = 5,
 	},
 	[10] = {
 		["itemMinLv"] = 91,
@@ -68,6 +86,8 @@ return {
 		["brainrotGenerateCount"] = 5,
 		["littleElfChestGenerateCount"] = 2,
 		["id"] = 10,
+		["islandName"] = "Island10",
+		["rebirthCount"] = 6,
 	},
 	[11] = {
 		["itemMinLv"] = 101,
@@ -75,6 +95,8 @@ return {
 		["brainrotGenerateCount"] = 5,
 		["littleElfChestGenerateCount"] = 2,
 		["id"] = 11,
+		["islandName"] = "Island11",
+		["rebirthCount"] = 7,
 	},
 	[12] = {
 		["itemMinLv"] = 111,
@@ -82,6 +104,8 @@ return {
 		["brainrotGenerateCount"] = 5,
 		["littleElfChestGenerateCount"] = 2,
 		["id"] = 12,
+		["islandName"] = "Island12",
+		["rebirthCount"] = 8,
 	},
 	[13] = {
 		["itemMinLv"] = 121,
@@ -89,5 +113,7 @@ return {
 		["brainrotGenerateCount"] = 5,
 		["littleElfChestGenerateCount"] = 2,
 		["id"] = 13,
+		["islandName"] = "Island13",
+		["rebirthCount"] = 9,
 	},
 }

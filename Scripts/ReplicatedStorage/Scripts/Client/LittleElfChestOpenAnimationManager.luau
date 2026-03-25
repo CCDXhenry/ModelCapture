@@ -166,17 +166,17 @@ local function CreateDisplayModel(tool: Tool, brainrotId: number): (Model?, Base
 	return visualModel, root
 end
 
-local function PickRandomBrainrotId(pool: { number }, lastId: number?): number?
+local function PickRandomEntry(pool: { any }, lastId: number?): any?
 	if #pool <= 0 then
 		return nil
 	end
-	local randomId = pool[math.random(1, #pool)]
+	local randomEntry = pool[math.random(1, #pool)]
 	if #pool > 1 and lastId then
-		while randomId == lastId do
-			randomId = pool[math.random(1, #pool)]
+		while randomEntry.itemId == lastId do
+			randomEntry = pool[math.random(1, #pool)]
 		end
 	end
-	return randomId
+	return randomEntry
 end
 
 local function CreateAnchoredModelFromConfig(folder: Folder, resourceName: string, parentInst: Instance, modelName: string, targetCFrame: CFrame): (Model?, BasePart?)
@@ -207,7 +207,8 @@ end
 
 local function PlayInWorld(uid: string, chestConfigId: number, chestLevel: number, finalBrainrotId: number, originCFrame: CFrame)
 	local chestConfig = GameConfig.LittleElfChestIdMap[chestConfigId]
-	if not chestConfig or not chestConfig.rewardPool or #chestConfig.rewardPool == 0 then
+	local rewardPool = GameConfig.LittleElfChestRewardPoolMap[chestConfigId]
+	if not chestConfig or not rewardPool or #rewardPool == 0 then
 		return
 	end
 	local container = Instance.new("Folder")
@@ -321,10 +322,11 @@ local function PlayInWorld(uid: string, chestConfigId: number, chestLevel: numbe
 	end
 
 	for _ = 1, RandomCount do
-		local randomId = PickRandomBrainrotId(chestConfig.rewardPool, lastId)
-		if not randomId then
+		local randomEntry = PickRandomEntry(rewardPool, lastId)
+		if not randomEntry then
 			break
 		end
+		local randomId = randomEntry.itemId
 		lastId = randomId
 		ShowOne(randomId, false)
 	end
@@ -349,7 +351,8 @@ function LittleElfChestOpenAnimationManager.Play(tool: Tool?, uid: string, chest
 		end
 
 		local chestConfig = GameConfig.LittleElfChestIdMap[chestConfigId]
-		if not chestConfig or not chestConfig.rewardPool or #chestConfig.rewardPool == 0 then
+		local rewardPool = GameConfig.LittleElfChestRewardPoolMap[chestConfigId]
+		if not chestConfig or not rewardPool or #rewardPool == 0 then
 			return
 		end
 
@@ -377,10 +380,11 @@ function LittleElfChestOpenAnimationManager.Play(tool: Tool?, uid: string, chest
 			if not tool.Parent then
 				return
 			end
-			local randomId = PickRandomBrainrotId(chestConfig.rewardPool, lastId)
-			if not randomId then
+			local randomEntry = PickRandomEntry(rewardPool, lastId)
+			if not randomEntry then
 				return
 			end
+			local randomId = randomEntry.itemId
 			lastId = randomId
 
 			local showModel, root = CreateDisplayModel(tool, randomId)
