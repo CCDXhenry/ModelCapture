@@ -197,14 +197,14 @@ local function CheckBrickExists(targetPos: Vector3, character: Model): boolean
 	return false
 end
 
--- Area check helper
-local function IsInFloatBlockZone(targetPos: Vector3): boolean
+-- FloatBlock：单点竖直射线；四角全命中才视为整块在禁区（与服务端一致）
+local function IsPointOverFloatBlock(pos: Vector3): boolean
 	local floatBlockFolder = workspace:FindFirstChild("FloatBlock")
 	if not floatBlockFolder then
 		return false
 	end
 
-	local rayOrigin = targetPos + Vector3.new(0, 50, 0)
+	local rayOrigin = pos + Vector3.new(0, 50, 0)
 	local rayDirection = Vector3.new(0, -60, 0)
 	local raycastParams = RaycastParams.new()
 	raycastParams.FilterType = Enum.RaycastFilterType.Include
@@ -214,7 +214,26 @@ local function IsInFloatBlockZone(targetPos: Vector3): boolean
 	return result ~= nil
 end
 
-local function IsAtSafeZone(targetPos: Vector3): boolean
+local function IsEntireBrickFootprintOverFloatBlock(center: Vector3): boolean
+	local size = GameConfig.Paving.BrickSize
+	local hx = size.X * 0.5
+	local hz = size.Z * 0.5
+	local y = center.Y
+	local corners = {
+		Vector3.new(center.X - hx, y, center.Z - hz),
+		Vector3.new(center.X + hx, y, center.Z - hz),
+		Vector3.new(center.X - hx, y, center.Z + hz),
+		Vector3.new(center.X + hx, y, center.Z + hz),
+	}
+	for _, p in corners do
+		if not IsPointOverFloatBlock(p) then
+			return false
+		end
+	end
+	return true
+end
+
+local function IsAtSafeZone(targetPos: Vector3, playerRootY: number): boolean
 	local groundFolder = workspace:FindFirstChild("Ground")
 	local islandsFolder = workspace:FindFirstChild("Islands")
 	local homesFolder = workspace:FindFirstChild("PlayersHome")
@@ -238,7 +257,21 @@ local function IsAtSafeZone(targetPos: Vector3): boolean
 	if #filterInstances > 0 then
 		raycastParams.FilterDescendantsInstances = filterInstances
 		local result = workspace:Raycast(rayOrigin, rayDirection, raycastParams)
-		return result ~= nil
+		if not result then
+			return false
+		end
+		local hy = result.Position.Y
+		-- 深处海底：不挡铺砖
+		local maxDepth = GameConfig.Paving.SafeZoneMaxDepthBelowSeaLevel or 4
+		if hy < SEA_LEVEL - maxDepth then
+			return false
+		end
+		-- 岛体/陆地在水平面下的延伸：命中点明显低于当前角色根部时，说明还不是「脚底下那块可走面」，前方仍应铺桥
+		local maxBelowRoot = GameConfig.Paving.SafeZoneHitMaxBelowPlayerRoot or 2.5
+		if hy < playerRootY - maxBelowRoot then
+			return false
+		end
+		return true
 	end
 	return false
 end
@@ -367,7 +400,7 @@ local function OnHeartbeat(dt: number)
 			if stationaryTime >= RENEWAL_INTERVAL then
 				stationaryTime = 0
 				-- 加上射线检测与安全区检测
-				if not IsAtSafeZone(targetPos) and not IsInFloatBlockZone(targetPos) and not CheckBrickExists(targetPos, character) then
+				if not IsAtSafeZone(targetPos, rootPart.Position.Y) and not IsEntireBrickFootprintOverFloatBlock(targetPos) and not CheckBrickExists(targetPos, character) then
 					RequestPlaceBrick(targetPos)
 				end
 			end
@@ -375,7 +408,7 @@ local function OnHeartbeat(dt: number)
 			lastStationaryPos = targetPos
 			stationaryTime = 0
 			-- [顺发] 当检测到刚停下时，立即尝试续期一次，不再等待计时器
-			if not IsAtSafeZone(targetPos) and not IsInFloatBlockZone(targetPos) and not CheckBrickExists(targetPos, character) then
+			if not IsAtSafeZone(targetPos, rootPart.Position.Y) and not IsEntireBrickFootprintOverFloatBlock(targetPos) and not CheckBrickExists(targetPos, character) then
 				RequestPlaceBrick(targetPos)
 			end
 		end
@@ -397,13 +430,13 @@ local function OnHeartbeat(dt: number)
 			local startPos = lastPavePosition
 			for i = 1, stepCount do
 				local interimPos = GetSnappedPosition(startPos + unitDir * (i * GRID_SIZE))
-				if not IsAtSafeZone(interimPos) and not IsInFloatBlockZone(interimPos) and not CheckBrickExists(interimPos, character) then
+				if not IsAtSafeZone(interimPos, rootPart.Position.Y) and not IsEntireBrickFootprintOverFloatBlock(interimPos) and not CheckBrickExists(interimPos, character) then
 					RequestPlaceBrick(interimPos)
 				end
 				lastPavePosition = interimPos
 			end
 		else
-			if not IsAtSafeZone(targetPos) and not IsInFloatBlockZone(targetPos) and not CheckBrickExists(targetPos, character) then
+			if not IsAtSafeZone(targetPos, rootPart.Position.Y) and not IsEntireBrickFootprintOverFloatBlock(targetPos) and not CheckBrickExists(targetPos, character) then
 				lastPavePosition = targetPos
 				RequestPlaceBrick(targetPos)
 			else
@@ -411,7 +444,7 @@ local function OnHeartbeat(dt: number)
 			end
 		end
 	else
-		if not IsAtSafeZone(targetPos) and not IsInFloatBlockZone(targetPos) and not CheckBrickExists(targetPos, character) then
+		if not IsAtSafeZone(targetPos, rootPart.Position.Y) and not IsEntireBrickFootprintOverFloatBlock(targetPos) and not CheckBrickExists(targetPos, character) then
 			lastPavePosition = targetPos
 			RequestPlaceBrick(targetPos)
 		end

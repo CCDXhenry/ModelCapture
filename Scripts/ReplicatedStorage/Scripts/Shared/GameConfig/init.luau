@@ -285,7 +285,7 @@ end
 
 -- 宠物质量配置 (已迁移到 GameConfig.BrainrotQualityConfig)
 
---宠物品质
+--品质
 GameConfig.BrainrotQualityConfig = {
 	[1] = {
 		rarity = "Common",
@@ -293,29 +293,44 @@ GameConfig.BrainrotQualityConfig = {
 		textColor = Color3.fromRGB(255, 255, 255),
 	},
 	[2] = {
-		rarity = "Rare",
-		image = "rbxassetid://16865599122",
-		textColor = Color3.fromRGB(136, 255, 0),
+		rarity = "Uncommon",
+		image = "rbxassetid://16865599320",
+		textColor = Color3.fromRGB(168, 230, 163),
 	},
 	[3] = {
-		rarity = "Epic",
-		image = "rbxassetid://16865598960",
-		textColor = Color3.fromRGB(212, 0, 255),
+		rarity = "Rare",
+		image = "rbxassetid://16865599122",
+		textColor = Color3.fromRGB(0, 255, 0),
 	},
 	[4] = {
-		rarity = "Legend",
-		image = "rbxassetid://16865598826",
-		textColor = Color3.fromRGB(250, 59, 1),
+		rarity = "Epic",
+		image = "rbxassetid://16865598960",
+		textColor = Color3.fromRGB(30, 144, 255),
 	},
 	[5] = {
-		rarity = "Mythic",
-		image = "rbxassetid://16865598729",
-		textColor = Color3.fromRGB(253, 203, 1),
+		rarity = "Legendary",
+		image = "rbxassetid://16865598826",
+		textColor = Color3.fromRGB(128, 0, 128),
 	},
 	[6] = {
-		rarity = "Mythic",
+		rarity = "Mythical",
 		image = "rbxassetid://16865598729",
-		textColor = Color3.fromRGB(253, 203, 1),
+		textColor = Color3.fromRGB(75, 0, 130),
+	},
+	[7] = {
+		rarity = "Cosmic",
+		image = "rbxassetid://16865598729",
+		textColor = Color3.fromRGB(255, 165, 0),
+	},
+	[8] = {
+		rarity = "Secret",
+		image = "rbxassetid://16865598729",
+		textColor = Color3.fromRGB(255, 215, 0),
+	},
+	[9] = {
+		rarity = "Celestial",
+		image = "rbxassetid://16865598729",
+		textColor = Color3.fromRGB(240, 230, 140),
 	},
 }
 --=========================================
@@ -338,6 +353,10 @@ GameConfig.Paving = {
 	DeathRescueProductId = 3561975643, -- 翅膀援助购买产品ID (TODO: 修改实际ID)
 	StartActivationRange = 5, -- 修改：从 1 增加到 5，确保护跑时有足够的重合区域。
 	PavingDistanceLimit = 30, -- 距离玩家超过此距离则不让铺
+	-- 安全区射线：命中 Ground/Islands/PlayersHome 时，若命中点低于海平面超过此深度，视为深渊/海底不挡铺砖（避免空隙下远处地形误判为安全区）
+	SafeZoneMaxDepthBelowSeaLevel = 4,
+	-- 安全区射线：命中点若比 HumanoidRootPart 低超过此值，视为岛体水下/侧面延伸，不挡前方铺预测砖（解决「离岛还有一段距离就不出黄砖」）；略调大则更保守、略调小则更敢铺
+	SafeZoneHitMaxBelowPlayerRoot = 1.5,
 	StationaryRenewalThreshold = 0.7, -- 剩余寿命低于 70% 时才允许原地续期
 	StationaryRenewalInterval = 0.2, -- 原地续期检测间隔 (加快响应)
 	RebirthProductId = 3562550008, -- 付费重生产品ID

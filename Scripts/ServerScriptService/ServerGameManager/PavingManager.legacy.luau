@@ -60,6 +60,43 @@ if not pavedBricksFolder then
 	pavedBricksFolder.Parent = workspace
 end
 
+-- 调试：workspace:SetAttribute("PavingDebugFloatBlockRays", true) 显示 FloatBlock 四角竖直射线的命中情况
+local DEBUG_FLOATBLOCK_RAYS_ATTR = "PavingDebugFloatBlockRays"
+local FLOATBLOCK_RAY_ORIGIN_Y = 50
+local FLOATBLOCK_RAY_LENGTH = 60
+local DEBUG_RAY_LIFETIME = 4
+
+local function GetOrCreateDebugRaysFolder(): Folder
+	local existing = workspace:FindFirstChild("PavingDebugFloatBlockRays")
+	if existing and existing:IsA("Folder") then
+		return existing
+	end
+	local folder = Instance.new("Folder")
+	folder.Name = "PavingDebugFloatBlockRays"
+	folder.Parent = workspace
+	return folder
+end
+
+local function CreateDebugRaySegment(from: Vector3, to: Vector3, color: Color3, parent: Instance)
+	local dist = (to - from).Magnitude
+	if dist < 0.01 then
+		return
+	end
+	local mid = from:Lerp(to, 0.5)
+	local p = Instance.new("Part")
+	p.Name = "FloatBlockRay"
+	p.Anchored = true
+	p.CanCollide = false
+	p.CanQuery = false
+	p.CastShadow = false
+	p.Material = Enum.Material.Neon
+	p.Color = color
+	p.Size = Vector3.new(0.12, 0.12, dist)
+	p.CFrame = CFrame.new(mid, to)
+	p.Parent = parent
+	game:GetService("Debris"):AddItem(p, DEBUG_RAY_LIFETIME)
+end
+
 local function GetBrickFromPool(): Part
 	local brick = table.remove(brickPool)
 	if not brick then
@@ -119,21 +156,63 @@ local function ReturnBrickToPool(brick: Part)
 	table.insert(brickPool, brick)
 end
 
--- [新增] 服务端 FloatBlock 检测
-local function IsInFloatBlockZone(pos: Vector3): boolean
+-- FloatBlock：单点竖直射线（与砖块水平尺寸组合为「整块 footprint 才禁铺」）
+local function RaycastFloatBlockAtPoint(samplePos: Vector3): RaycastResult?
 	local floatBlockFolder = workspace:FindFirstChild("FloatBlock")
 	if not floatBlockFolder then
-		return false
+		return nil
 	end
 
-	local rayOrigin = pos + Vector3.new(0, 50, 0)
-	local rayDirection = Vector3.new(0, -60, 0)
+	local rayOrigin = samplePos + Vector3.new(0, FLOATBLOCK_RAY_ORIGIN_Y, 0)
+	local rayDirection = Vector3.new(0, -FLOATBLOCK_RAY_LENGTH, 0)
 	local raycastParams = RaycastParams.new()
 	raycastParams.FilterType = Enum.RaycastFilterType.Include
 	raycastParams.FilterDescendantsInstances = { floatBlockFolder }
 
-	local result = workspace:Raycast(rayOrigin, rayDirection, raycastParams)
-	return result ~= nil
+	return workspace:Raycast(rayOrigin, rayDirection, raycastParams)
+end
+
+local function IsPointOverFloatBlock(pos: Vector3): boolean
+	return RaycastFloatBlockAtPoint(pos) ~= nil
+end
+
+local function GetBrickFootprintCornerPositions(center: Vector3): { Vector3 }
+	local size = GameConfig.Paving.BrickSize
+	local hx = size.X * 0.5
+	local hz = size.Z * 0.5
+	local y = center.Y
+	return {
+		Vector3.new(center.X - hx, y, center.Z - hz),
+		Vector3.new(center.X + hx, y, center.Z - hz),
+		Vector3.new(center.X - hx, y, center.Z + hz),
+		Vector3.new(center.X + hx, y, center.Z + hz),
+	}
+end
+
+local function IsEntireBrickFootprintOverFloatBlock(center: Vector3): boolean
+	for _, p in GetBrickFootprintCornerPositions(center) do
+		if not IsPointOverFloatBlock(p) then
+			return false
+		end
+	end
+	return true
+end
+
+-- 可视化：从 samplePos 向上偏移处向下打射线；绿色=命中 FloatBlock，红色=未命中（线段画满射程）
+local function VisualizeFloatBlockRaysForBrickCenter(center: Vector3)
+	local folder = GetOrCreateDebugRaysFolder()
+	local hitColor = Color3.fromRGB(80, 255, 120)
+	local missColor = Color3.fromRGB(255, 80, 80)
+	for _, samplePos in GetBrickFootprintCornerPositions(center) do
+		local rayOrigin = samplePos + Vector3.new(0, FLOATBLOCK_RAY_ORIGIN_Y, 0)
+		local rayEnd = rayOrigin + Vector3.new(0, -FLOATBLOCK_RAY_LENGTH, 0)
+		local result = RaycastFloatBlockAtPoint(samplePos)
+		if result then
+			CreateDebugRaySegment(rayOrigin, result.Position, hitColor, folder)
+		else
+			CreateDebugRaySegment(rayOrigin, rayEnd, missColor, folder)
+		end
+	end
 end
 
 local function OnRequestPlaceBrickBatch(player: Player, positions: any)
@@ -157,13 +236,19 @@ local function OnRequestPlaceBrickBatch(player: Player, positions: any)
 		return
 	end
 
+	local showFloatBlockRays = workspace:GetAttribute(DEBUG_FLOATBLOCK_RAYS_ATTR) == true
+
 	for _, position in ipairs(positions) do
 		if typeof(position) ~= "Vector3" then
 			continue
 		end
 
-		-- [新增] 检测是否在 FloatBlock 区域
-		if IsInFloatBlockZone(position) then
+		if showFloatBlockRays then
+			VisualizeFloatBlockRaysForBrickCenter(position)
+		end
+
+		-- 仅当砖块底面四角均落在 FloatBlock 上方时才禁铺
+		if IsEntireBrickFootprintOverFloatBlock(position) then
 			continue
 		end
 
