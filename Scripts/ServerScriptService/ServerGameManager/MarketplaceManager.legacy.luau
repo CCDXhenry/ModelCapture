@@ -43,6 +43,14 @@ local function ProcessReceipt(receiptInfo: GameConfig.ReceiptInfo): Enum.Product
 	elseif receiptInfo.ProductId == GameConfig.Paving.RebirthProductId then
 		local success = ServerGameInfo.ExecuteRebirth(player, true)
 		return if success then Enum.ProductPurchaseDecision.PurchaseGranted else Enum.ProductPurchaseDecision.NotProcessedYet
+	elseif receiptInfo.ProductId == GameConfig.ShopPaid.WalkSpeed10ProductId then
+		ServerGameInfo.UpgradeAbilityPaid(player, "WalkSpeed", 10)
+		AnalyticsTool.AddProductPurchaseEvent(player, receiptInfo)
+		return Enum.ProductPurchaseDecision.PurchaseGranted
+	elseif receiptInfo.ProductId == GameConfig.ShopPaid.MaxBricks10ProductId then
+		ServerGameInfo.UpgradeAbilityPaid(player, "MaxBricks", 10)
+		AnalyticsTool.AddProductPurchaseEvent(player, receiptInfo)
+		return Enum.ProductPurchaseDecision.PurchaseGranted
 	end
 
 	return Enum.ProductPurchaseDecision.NotProcessedYet

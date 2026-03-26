@@ -9,6 +9,8 @@ local NetMsg = require(sharedScripts:WaitForChild("NetMsg"))
 local ClientMsg = require(clientScripts:WaitForChild("ClientMsg"))
 local UIManager = require(clientScripts:WaitForChild("UIManager"))
 local ClientGameInfo = require(clientScripts:WaitForChild("ClientGameInfo"))
+local players: Players = game:GetService("Players")
+local marketplaceService: MarketplaceService = game:GetService("MarketplaceService")
 local core = ReplicatedStorage:WaitForChild("Core")
 local NumberExtension = require(core:WaitForChild("Scripts"):WaitForChild("Shared"):WaitForChild("NumberExtension"))
 local TranslationTool = require(core:WaitForChild("Scripts"):WaitForChild("Client"):WaitForChild("TranslationTool"))
@@ -144,10 +146,67 @@ local function bindButton(frame: Frame, skillType: number, levelAdd: number)
 	end)
 end
 
+local function getMaxUpgradeableSteps(abilityName: string, currentLevel: number, levelAdd: number): number
+	local shopData = GameConfig.Shop[abilityName]
+	local nextLevel = currentLevel
+	local steps = 0
+	for _ = 1, levelAdd do
+		local upgradeCost = shopData.upgradeCostList[nextLevel]
+		if upgradeCost == nil then
+			break
+		end
+		steps += 1
+		nextLevel += 1
+	end
+	return steps
+end
+
+local function bindPaymentButton(frame: Frame, skillType: number, levelAdd: number, productId: number)
+	-- PaymentButton 由 UI 侧新增；这里绑定其点击事件并触发内购
+	local paymentButton = frame:WaitForChild("PaymentButton") :: any
+	paymentButton.Activated:Connect(function()
+		local playerInfo = ClientGameInfo.GetLocalPlayerInfo()
+		if not playerInfo then
+			return
+		end
+
+		local abilityName, currentLevel
+		if skillType == GameConfig.SkillType.WalkSpeed then
+			abilityName = "WalkSpeed"
+			currentLevel = playerInfo.shopInfo.walkSpeedLevel
+		elseif skillType == GameConfig.SkillType.MaxBricks then
+			abilityName = "MaxBricks"
+			currentLevel = playerInfo.shopInfo.maxBricksLevel
+		else
+			return
+		end
+
+		local maxSteps = getMaxUpgradeableSteps(abilityName, currentLevel, levelAdd)
+		if maxSteps <= 0 then
+			ClientMsg.FireShowGameTip(GameTexts.MaxLevel.source, GameConfig.GameTipTweenType.FlyUp, GameTexts.MaxLevel.key)
+			return
+		end
+
+		if productId == 0 then
+			warn(`[UpgradeShopFrame] ShopPaid productId is 0 for {abilityName}`)
+			return
+		end
+
+		if not players.LocalPlayer then
+			return
+		end
+
+		marketplaceService:PromptProductPurchase(players.LocalPlayer, productId)
+	end)
+end
+
 bindButton(upgradeWalkSpeedFrame1, GameConfig.SkillType.WalkSpeed, 1)
 bindButton(upgradeWalkSpeedFrame10, GameConfig.SkillType.WalkSpeed, 10)
 bindButton(upgradeMaxBricksFrame1, GameConfig.SkillType.MaxBricks, 1)
 bindButton(upgradeMaxBricksFrame10, GameConfig.SkillType.MaxBricks, 10)
+
+bindPaymentButton(upgradeWalkSpeedFrame10, GameConfig.SkillType.WalkSpeed, 10, GameConfig.ShopPaid.WalkSpeed10ProductId)
+bindPaymentButton(upgradeMaxBricksFrame10, GameConfig.SkillType.MaxBricks, 10, GameConfig.ShopPaid.MaxBricks10ProductId)
 
 local function OnCloseWindow(windowId: string)
 	if windowId == thisFrame:GetAttribute("WindowId") then

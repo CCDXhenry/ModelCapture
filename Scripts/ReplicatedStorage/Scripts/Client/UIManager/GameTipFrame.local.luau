@@ -91,6 +91,11 @@ local popUpNoButton: TextButton?
 local popUpTitleLabel: TextLabel?
 local popUpTipInfoLabel: TextLabel?
 local popUpTimeLabel: TextLabel?
+local rescueFlightPopUpTipFrame: Frame? = gameTipFrame:FindFirstChild("RescueFlightPopUpTipFrame") :: Frame
+local rescueFlightYesButton: TextButton?
+local rescueFlightNoButton: TextButton?
+local rescueFlightTipInfoLabel: TextLabel?
+local rescueFlightTimeLabel: TextLabel?
 
 local activePopUpConnectionYes: RBXScriptConnection?
 local activePopUpConnectionNo: RBXScriptConnection?
@@ -103,6 +108,27 @@ if popUpTipFrame then
 	popUpTipInfoLabel = popUpTipFrame:FindFirstChild("TipInfoLabel") :: TextLabel
 	if popUpYesButton then
 		popUpTimeLabel = popUpYesButton:FindFirstChild("TimeLabel") :: TextLabel
+	end
+end
+
+-- RescueFlightPopUpTipFrame
+if rescueFlightPopUpTipFrame == nil and popUpTipFrame then
+	local rescueFrameClone = popUpTipFrame:Clone()
+	rescueFrameClone.Name = "RescueFlightPopUpTipFrame"
+	local titleLabelClone = rescueFrameClone:FindFirstChild("TitleLabel")
+	if titleLabelClone then
+		titleLabelClone:Destroy()
+	end
+	rescueFrameClone.Visible = false
+	rescueFrameClone.Parent = gameTipFrame
+	rescueFlightPopUpTipFrame = rescueFrameClone
+end
+if rescueFlightPopUpTipFrame then
+	rescueFlightYesButton = rescueFlightPopUpTipFrame:FindFirstChild("YesButton") :: TextButton
+	rescueFlightNoButton = rescueFlightPopUpTipFrame:FindFirstChild("NoButton") :: TextButton
+	rescueFlightTipInfoLabel = rescueFlightPopUpTipFrame:FindFirstChild("TipInfoLabel") :: TextLabel
+	if rescueFlightYesButton then
+		rescueFlightTimeLabel = rescueFlightYesButton:FindFirstChild("TimeLabel") :: TextLabel
 	end
 end
 
@@ -269,6 +295,9 @@ local function HidePopUpTipFrame()
 	if popUpTipFrame then
 		popUpTipFrame.Visible = false
 	end
+	if rescueFlightPopUpTipFrame then
+		rescueFlightPopUpTipFrame.Visible = false
+	end
 	if activePopUpConnectionYes then
 		activePopUpConnectionYes:Disconnect()
 		activePopUpConnectionYes = nil
@@ -283,14 +312,14 @@ local function HidePopUpTipFrame()
 	end
 end
 
-local function StartPopUpCountdown(timeoutCallback: () -> ())
-	if not popUpTimeLabel then return end
+local function StartPopUpCountdown(targetTimeLabel: TextLabel?, timeoutCallback: () -> ())
+	if not targetTimeLabel then return end
 	if popUpCountdownCoroutine and coroutine.status(popUpCountdownCoroutine) ~= "dead" and popUpCountdownCoroutine ~= coroutine.running() then
 		coroutine.close(popUpCountdownCoroutine)
 	end
 	local newCoroutine = coroutine.create(function()
 		for i = GIFT_POPUP_COUNTDOWN_TIME, 0, -1 do
-			TranslationTool.CustomAutoLocalizeTextLabel(popUpTimeLabel, string.gsub(GameTexts.CountdownFormat.source, "{1}", tostring(i)), GameTexts.CountdownFormat.key, {tostring(i)})
+			TranslationTool.CustomAutoLocalizeTextLabel(targetTimeLabel, string.gsub(GameTexts.CountdownFormat.source, "{1}", tostring(i)), GameTexts.CountdownFormat.key, {tostring(i)})
 			task.wait(1)
 		end
 		timeoutCallback()
@@ -316,7 +345,7 @@ local function OnShowGiftConfirmPopup(targetPlayerId: number, targetPlayerName: 
 	activePopUpConnectionNo = popUpNoButton.MouseButton1Click:Connect(function()
 		HidePopUpTipFrame()
 	end)
-	StartPopUpCountdown(function() HidePopUpTipFrame() end)
+	StartPopUpCountdown(popUpTimeLabel, function() HidePopUpTipFrame() end)
 end
 
 local function OnShowGiftRequestPopup(senderId: number, senderName: string, brainrotName: string, brainrotLevel: number)
@@ -337,30 +366,27 @@ local function OnShowGiftRequestPopup(senderId: number, senderName: string, brai
 		NetMsg.FireRequestRespondGift(senderId, false)
 		HidePopUpTipFrame()
 	end)
-	StartPopUpCountdown(function() HidePopUpTipFrame() end)
+	StartPopUpCountdown(popUpTimeLabel, function() HidePopUpTipFrame() end)
 end
 
 local function OnShowRescuePopup()
-	if not popUpTipFrame or not popUpYesButton or not popUpNoButton or not popUpTitleLabel or not popUpTipInfoLabel then return end
+	if not rescueFlightPopUpTipFrame or not rescueFlightYesButton or not rescueFlightNoButton or not rescueFlightTipInfoLabel then return end
 	HidePopUpTipFrame()
-	popUpTipFrame.Visible = true
-	popUpTitleLabel.TextColor3 = Color3.fromRGB(255, 215, 0) -- Gold color
+	rescueFlightPopUpTipFrame.Visible = true
+	TranslationTool.CustomAutoLocalizeTextLabel(rescueFlightTipInfoLabel, GameTexts.RescueFlightBody.source, GameTexts.RescueFlightBody.key)
 	
-	TranslationTool.CustomAutoLocalizeTextLabel(popUpTitleLabel, GameTexts.WingsAssistanceTitle.source, GameTexts.WingsAssistanceTitle.key)
-	TranslationTool.CustomAutoLocalizeTextLabel(popUpTipInfoLabel, GameTexts.WingsAssistanceBody.source, GameTexts.WingsAssistanceBody.key, {})
-	
-	activePopUpConnectionYes = popUpYesButton.MouseButton1Click:Connect(function()
+	activePopUpConnectionYes = rescueFlightYesButton.MouseButton1Click:Connect(function()
 		local marketplaceService = game:GetService("MarketplaceService")
 		marketplaceService:PromptProductPurchase(players.LocalPlayer, GameConfig.Paving.DeathRescueProductId)
 		HidePopUpTipFrame()
 	end)
 	
-	activePopUpConnectionNo = popUpNoButton.MouseButton1Click:Connect(function()
+	activePopUpConnectionNo = rescueFlightNoButton.MouseButton1Click:Connect(function()
 		ClientMsg.FireResumeFalling()
 		HidePopUpTipFrame()
 	end)
 	
-	StartPopUpCountdown(function() 
+	StartPopUpCountdown(rescueFlightTimeLabel, function() 
 		ClientMsg.FireResumeFalling()
 		HidePopUpTipFrame() 
 	end)

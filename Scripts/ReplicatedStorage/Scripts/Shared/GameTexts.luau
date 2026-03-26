@@ -24,6 +24,7 @@ local GameTexts = {
 	BackpackFull = { key = "", source = "Backpack is full!" },
 	WingsAssistanceTitle = { key = "WingsAssistanceTitle", source = "Wings Assistance" },
 	WingsAssistanceBody = { key = "WingsAssistanceBody", source = "Wings assistance can help you return to your nearest previous island. Do you want to purchase this assistance?" },
+	RescueFlightBody = { key = "", source = "Resurrect at the place of your death?" },
 	ReceivedReward = { key = "ReceivedReward", source = "Received: {1}" },
 	RebirthMultiplierFormat = { key = "RebirthMultiplierFormat", source = "Rebirth {1} ({2}x Coin)" },
 	InsufficientRebirthCount = { key = "InsufficientRebirthCount", source = "Insufficient rebirths: need at least {1} rebirths to pick up." },

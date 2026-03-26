@@ -385,11 +385,40 @@ export type UpgradeShopData = {
 	upgradeCostList: { number },
 }
 
+local transformedShopData: { [number]: UpgradeShopData } = {}
+for _, entry in pairs(UpgradeShopDataModule) do
+	local skillType = entry.type
+	if not transformedShopData[skillType] then
+		transformedShopData[skillType] = {
+			id = skillType,
+			name_t = entry.name_t,
+			maxLevel = 0,
+			abilityList = {},
+			upgradeCostList = {},
+		}
+	end
+	local target = transformedShopData[skillType]
+	target.abilityList[entry.lv] = entry.ability
+	target.upgradeCostList[entry.lv] = entry.upgradeCost
+	target.maxLevel = math.max(target.maxLevel, entry.lv)
+end
+
 GameConfig.Shop = {
-	WalkSpeed = UpgradeShopDataModule[1] :: UpgradeShopData,
-	MaxBricks = UpgradeShopDataModule[2] :: UpgradeShopData,
-	HomeLevel = UpgradeShopDataModule[3] :: UpgradeShopData,
+	WalkSpeed = transformedShopData[GameConfig.SkillType.WalkSpeed],
+	MaxBricks = transformedShopData[GameConfig.SkillType.MaxBricks],
+	HomeLevel = transformedShopData[GameConfig.SkillType.HomeLevel],
 }
+
+-- 商店付费配置（内购商品ID：后续由你替换真实数值）
+export type ShopPaidConfig = {
+	WalkSpeed10ProductId: number,
+	MaxBricks10ProductId: number,
+}
+
+GameConfig.ShopPaid = {
+	WalkSpeed10ProductId = 3563778722,
+	MaxBricks10ProductId = 3563778785,
+} :: ShopPaidConfig
 
 -- 实体模型信息
 export type ModelInfo = {

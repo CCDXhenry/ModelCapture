@@ -94,9 +94,9 @@ local function OnRescueStart()
 	local humanoid = character:FindFirstChild("Humanoid") :: Humanoid
 	if not rootPart or not humanoid then return end
 
-	-- Ensure anchored and suspended
+	-- Ensure anchored
 	rootPart.Anchored = true
-	humanoid.PlatformStand = true
+	humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
 	
 	-- Attach simple wings mask
 	local wings = AttachWings(character)
@@ -105,7 +105,7 @@ local function OnRescueStart()
 	local startPos = rootPart.Position
 	local highCFrame = rootPart.CFrame + Vector3.new(0, 100, 0)
 	
-	local flyUpInfo = TweenInfo.new(2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+	local flyUpInfo = TweenInfo.new(1.2, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
 	local flyUpTween = tweenService:Create(rootPart, flyUpInfo, {CFrame = highCFrame})
 	
 	flyUpTween:Play()
@@ -132,10 +132,10 @@ local function OnRescueStart()
 			end
 		end
 		
-		-- Calculate fly time based on distance
+		-- Calculate fly time based on distance (Increasing overall speed)
 		local highPos = highCFrame.Position
 		local distance = (Vector3.new(islandPos.X, highPos.Y, islandPos.Z) - highPos).Magnitude
-		local speed = 50 -- Studs per second
+		local speed = 120 -- Studs per second (Previously 50)
 		local flyTime = distance / speed
 		
 		local targetHighPos = Vector3.new(islandPos.X, highPos.Y, islandPos.Z)
@@ -144,8 +144,10 @@ local function OnRescueStart()
 		local lookCFrame = CFrame.lookAt(highPos, targetHighPos)
 		rootPart.CFrame = lookCFrame
 		
+		humanoid:ChangeState(Enum.HumanoidStateType.Freefall)
+		
 		local targetCFrame = CFrame.new(targetHighPos) * lookCFrame.Rotation
-		local glideInfo = TweenInfo.new(flyTime, Enum.EasingStyle.Linear)
+		local glideInfo = TweenInfo.new(flyTime, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
 		local glideTween = tweenService:Create(rootPart, glideInfo, {CFrame = targetCFrame})
 		
 		glideTween:Play()
@@ -155,8 +157,9 @@ local function OnRescueStart()
 		rootPart.CFrame = CFrame.new(targetHighPos)
 	end
 	
-	-- Phase 3: Drop down
-	local dropInfo = TweenInfo.new(1.5, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+	-- Phase 3: Drop down (Faster and CubicIn for more impact)
+	humanoid:ChangeState(Enum.HumanoidStateType.Freefall)
+	local dropInfo = TweenInfo.new(0.6, Enum.EasingStyle.Cubic, Enum.EasingDirection.In)
 	local dropTween = tweenService:Create(rootPart, dropInfo, {CFrame = CFrame.new(islandPos)})
 	dropTween:Play()
 	dropTween.Completed:Wait()

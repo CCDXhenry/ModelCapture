@@ -527,6 +527,66 @@ function ServerGameInfo.UpgradeAbility(player: Player, abilityName: string, leve
 	return true
 end
 
+-- 付费升级：不扣除金币，仅校验 upgradeCostList 是否还能继续升级，并尽可能升级到上限
+function ServerGameInfo.UpgradeAbilityPaid(player: Player, abilityName: string, levelAdd: number?): boolean
+	local playerInfo: GameConfig.PlayerInfo? = ServerGameInfo.GetPlayerInfo(player)
+	if playerInfo == nil then
+		return false
+	end
+
+	local shopData: any = GameConfig.Shop[abilityName]
+	if shopData == nil then
+		return false
+	end
+
+	local currentLevel: number
+	if abilityName == "WalkSpeed" then
+		currentLevel = playerInfo.shopInfo.walkSpeedLevel
+	elseif abilityName == "MaxBricks" then
+		currentLevel = playerInfo.shopInfo.maxBricksLevel
+	elseif abilityName == "HomeLevel" then
+		currentLevel = playerInfo.homeInfo.level
+	else
+		return false
+	end
+
+	local addLevels: number = levelAdd or 1
+	local nextLevel = currentLevel
+	local upgradedCount = 0
+
+	for _ = 1, addLevels do
+		-- upgradeCostList[nextLevel] 存在代表：从 nextLevel 升到 nextLevel + 1 可行
+		local upgradeCost = shopData.upgradeCostList[nextLevel]
+		if upgradeCost == nil then
+			break
+		end
+		nextLevel += 1
+		upgradedCount += 1
+	end
+
+	if upgradedCount <= 0 then
+		return false
+	end
+
+	if abilityName == "WalkSpeed" then
+		playerInfo.shopInfo.walkSpeedLevel = nextLevel
+		ServerGameInfo.ApplyWalkSpeed(player)
+		NetMsg.FireNotifyPlayerSkillLevelUpdate(player, GameConfig.SkillType.WalkSpeed, nextLevel)
+	elseif abilityName == "MaxBricks" then
+		playerInfo.shopInfo.maxBricksLevel = nextLevel
+		NetMsg.FireNotifyPlayerSkillLevelUpdate(player, GameConfig.SkillType.MaxBricks, nextLevel)
+		ServerGameInfo.UpdateInventoryBricks(player, 0) -- 触发客户端库存同步
+	elseif abilityName == "HomeLevel" then
+		playerInfo.homeInfo.level = nextLevel
+		ServerGameInfo.NotifyPlayerHomeInfoUpdate(player.UserId)
+		NetMsg.FireNotifyPlayerSkillLevelUpdate(player, GameConfig.SkillType.HomeLevel, nextLevel)
+	end
+
+	playerInfo.playerInfoChanged = true
+	print("[ServerGameInfo] UpgradeAbilityPaid for", player.Name, "ability", abilityName, "to level", nextLevel)
+	return true
+end
+
 --更新家园等级
 function ServerGameInfo.UpdateHomeLevel(player: Player, levelAdd: number)
 	local playerInfo: GameConfig.PlayerInfo = playerInfoMap[player.UserId]

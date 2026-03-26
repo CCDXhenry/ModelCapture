@@ -17,7 +17,7 @@ return {
 		["iconImageId"] = "rbxassetid://73490385699318",
 		["name_t"] = "Fire Coil",
 		["gravitationalValue"] = 1,
-		["speedValue"] = 15,
+		["speedValue"] = 20,
 		["modelRes"] = "FireCoil",
 		["extraJumps"] = 0,
 	},
