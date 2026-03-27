@@ -20,6 +20,7 @@ local ButtonInteractionTweenInfo: TweenInfo = TweenInfo.new(0.1) --按钮交互�
 UIManager.WindowId = {
 	UpgradeShop = "UpgradeShopFrame",
 	SellShop = "SellShopFrame",
+	Rebirth = "RebirthFrame",
 }
 
 type WindowConfig = {
@@ -37,6 +38,11 @@ local WindowConfigs: { [string]: WindowConfig } = {
 		FrameName = "SellShopFrame",
 		scriptName = "SellShopFrame",
 		isModal = false,
+	},
+	[UIManager.WindowId.Rebirth] = {
+		FrameName = "RebirthFrame",
+		scriptName = "RebirthFrame",
+		isModal = true,
 	},
 }
 
@@ -99,6 +105,7 @@ local function ApplyButtonEffects(button: GuiButton)
 		end
 		local inputTypeString: string?, _: Enum.UserInputType = UserInutExtension.GetInputType()
 		if inputTypeString == UserInutExtension.InputTypeString.Keyboard_Mouse then
+			print("MouseEnter")
 			mouseEnterTween:Play()
 		end
 	end)

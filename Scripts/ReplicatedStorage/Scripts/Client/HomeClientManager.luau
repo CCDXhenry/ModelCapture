@@ -1355,13 +1355,45 @@ function HomeClientManager.Init()
 	ClientMsg.ConnectPlayerHomeInfoUpdate(function(playerId, homeSlot, homeInfo, rebirthLevel)
 		local isLocal = (playerId == players.LocalPlayer.UserId)
 		local currentState = slotStateCache[homeSlot]
+		local resolvedRebirthLevel = rebirthLevel
+		if resolvedRebirthLevel == nil then
+			if isLocal then
+				local localInfo = ClientGameInfo.GetLocalPlayerInfo()
+				resolvedRebirthLevel = if localInfo and localInfo.shopInfo then localInfo.shopInfo.rebirthLevel else 0
+			else
+				resolvedRebirthLevel = currentState and currentState.rebirthLevel
+			end
+		end
 		slotStateCache[homeSlot] = {
 			active = true,
 			homeInfo = homeInfo,
 			isLocalPlayer = isLocal,
-			rebirthLevel = rebirthLevel or (currentState and currentState.rebirthLevel),
+			rebirthLevel = resolvedRebirthLevel,
 		}
 		ApplySlotVisuals(homeSlot)
+	end)
+
+	ClientMsg.ConnectLocalPlayerSkillLevelUpdate(function(skillType, level)
+		if skillType ~= GameConfig.SkillType.RebirthLevel then
+			return
+		end
+		local localInfo = ClientGameInfo.GetLocalPlayerInfo()
+		if not localInfo or not localInfo.homeSlot or localInfo.homeSlot == "" then
+			return
+		end
+		local homeSlot = localInfo.homeSlot
+		local currentState = slotStateCache[homeSlot]
+		slotStateCache[homeSlot] = {
+			active = true,
+			homeInfo = localInfo.homeInfo,
+			isLocalPlayer = true,
+			rebirthLevel = level,
+		}
+		if currentState and currentState.active and currentState.homeInfo == localInfo.homeInfo then
+			UpdateRebirthMultiplierUI(homeSlot, localInfo.homeInfo, true, level)
+		else
+			ApplySlotVisuals(homeSlot)
+		end
 	end)
 
 	ClientMsg.ConnectAllPlayersModelYieldsUpdate(function(allYields)

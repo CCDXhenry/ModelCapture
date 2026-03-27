@@ -164,7 +164,7 @@ function ClientGameInfo.UpdatePlayerHomeInfo(playerId: number, homeSlot: string,
 		otherPlayerInfoMap[playerId].rebirthLevel = rebirthLevel
 		print("[ClientGameInfo] UpdatePlayerHomeInfo for OtherPlayer", playerId)
 	end
-	ClientMsg.FirePlayerHomeInfoUpdate(playerId, homeSlot, homeInfo)
+	ClientMsg.FirePlayerHomeInfoUpdate(playerId, homeSlot, homeInfo, rebirthLevel)
 end
 
 --自己获得了通行证
@@ -188,6 +188,8 @@ function ClientGameInfo.UpdateSkillLevel(skillType: number, level: number)
 		localPlayerInfo.shopInfo.walkSpeedLevel = level
 	elseif skillType == GameConfig.SkillType.MaxBricks then
 		localPlayerInfo.shopInfo.maxBricksLevel = level
+	elseif skillType == GameConfig.SkillType.RebirthLevel then
+		localPlayerInfo.shopInfo.rebirthLevel = level
 	end
 
 	print("[ClientGameInfo] UpdateSkillLevel", skillType, level)

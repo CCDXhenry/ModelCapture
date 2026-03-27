@@ -31,6 +31,10 @@ local maxBricksFrame: Frame = lobbyFrame:FindFirstChild("MaxBricksFrame") :: Fra
 local maxBricksText: TextLabel = maxBricksFrame:FindFirstChild("NumberText") :: TextLabel
 local walkSpeedFrame: Frame = lobbyFrame:FindFirstChild("WalkSpeedFrame") :: Frame
 local walkSpeedText: TextLabel = walkSpeedFrame:FindFirstChild("NumberText") :: TextLabel
+local bottomButtonsFrame = lobbyFrame:FindFirstChild("BottomButtonsFrame")
+local rebirthFrame: Frame? = (lobbyFrame:FindFirstChild("RebirthFrame") or (if bottomButtonsFrame then bottomButtonsFrame:FindFirstChild("RebirthFrame") else nil)) :: Frame?
+local rebirthButton: GuiButton? = if rebirthFrame then (rebirthFrame:FindFirstChild("Button") :: any) else nil
+local rebirthNumberText: TextLabel? = if rebirthFrame then (rebirthFrame:FindFirstChild("NumberText") :: TextLabel?) else nil
 
 local maxBricksAddButton: GuiButton? = maxBricksFrame:FindFirstChild("AddButton") :: any
 local walkSpeedAddButton: GuiButton? = walkSpeedFrame:FindFirstChild("AddButton") :: any
@@ -48,6 +52,12 @@ end
 if walkSpeedAddButton then
 	walkSpeedAddButton.Activated:Connect(function()
 		UIManager.OpenWindow(UIManager.WindowId.UpgradeShop)
+	end)
+end
+
+if rebirthButton then
+	rebirthButton.Activated:Connect(function()
+		UIManager.OpenWindow(UIManager.WindowId.Rebirth)
 	end)
 end
 
@@ -128,12 +138,27 @@ local function RefreshView()
 	RefreshUpgradeValues()
 end
 
+local function RefreshRebirthDisplay()
+	local localPlayerInfo = ClientGameInfo.GetLocalPlayerInfo()
+	if not localPlayerInfo or not rebirthNumberText then
+		return
+	end
+	local rebirthLevel = localPlayerInfo.shopInfo.rebirthLevel or 0
+	TranslationTool.CustomAutoLocalizeTextLabel(
+		rebirthNumberText,
+		GameTexts.RebirthCountBracket.source,
+		GameTexts.RebirthCountBracket.key,
+		{ tostring(rebirthLevel) }
+	)
+end
+
 local function OnLocalPlayerCoinCountChanged()
 	RefreshCoinCountText()
 end
 
 local function OnLocalPlayerInfoInit()
 	RefreshView()
+	RefreshRebirthDisplay()
 end
 
 local function ConnectHumanoid(char: Model)
@@ -160,11 +185,15 @@ end
 
 local function OnLocalPlayerSkillLevelChanged(skillType: number, level: number)
 	RefreshUpgradeValues()
+	if skillType == GameConfig.SkillType.RebirthLevel then
+		RefreshRebirthDisplay()
+	end
 end
 
 UIAdapter.AddAdaptiveFrame(lobbyFrame, UIAdapter.AdaptiveType.FullScreen)
 
 RefreshView()
+RefreshRebirthDisplay()
 
 ClientMsg.ConnectLocalPlayerCurrencyUpdate(OnLocalPlayerCoinCountChanged)
 ClientMsg.ConnectLocalPlayerInfoInit(OnLocalPlayerInfoInit)

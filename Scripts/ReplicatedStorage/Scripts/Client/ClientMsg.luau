@@ -83,11 +83,11 @@ function ClientMsg.ConnectLocalPlayerCarriedUpdate(callback: (carriedInfo: GameC
 end
 
 --玩家家园信息更新
-function ClientMsg.FirePlayerHomeInfoUpdate(playerId: number, homeSlot: string, homeInfo: any)
-	playerHomeInfoUpdateEvent:Fire(playerId, homeSlot, homeInfo)
+function ClientMsg.FirePlayerHomeInfoUpdate(playerId: number, homeSlot: string, homeInfo: any, rebirthLevel: number?)
+	playerHomeInfoUpdateEvent:Fire(playerId, homeSlot, homeInfo, rebirthLevel)
 end
 
-function ClientMsg.ConnectPlayerHomeInfoUpdate(callback: (playerId: number, homeSlot: string, homeInfo: any) -> ())
+function ClientMsg.ConnectPlayerHomeInfoUpdate(callback: (playerId: number, homeSlot: string, homeInfo: any, rebirthLevel: number?) -> ())
 	playerHomeInfoUpdateEvent.Event:Connect(callback)
 end
 
