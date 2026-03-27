@@ -24,6 +24,9 @@ local lastRefillTime = 0
 local LOCAL_PREDICT_TTL = GameConfig.Paving.LocalPredictTTL
 local LOCAL_PREDICT_BATCH_INTERVAL = GameConfig.Paving.BatchInterval
 local MAX_INTERPOLATION_STEPS = GameConfig.Paving.MaxInterpolationSteps
+local SHOW_LOCAL_PREDICT_ATTR = "PavingShowLocalPredictBricks"
+local LOCAL_PREDICT_VISIBLE_TRANSPARENCY = 0.5
+local LOCAL_PREDICT_HIDDEN_TRANSPARENCY = 1
 
 local localBrickFolder = Instance.new("Folder")
 localBrickFolder.Name = "LocalPredictBricks"
@@ -40,11 +43,27 @@ local localBrickPool: { Part } = {}
 local pendingPaveQueue: { Vector3 } = {}
 local lastBatchTime = 0
 
+local function IsLocalPredictVisible(): boolean
+	local attr = workspace:GetAttribute(SHOW_LOCAL_PREDICT_ATTR)
+	if type(attr) == "boolean" then
+		return attr
+	end
+	return true
+end
+
+local function GetLocalPredictTransparency(): number
+	return if IsLocalPredictVisible() then LOCAL_PREDICT_VISIBLE_TRANSPARENCY else LOCAL_PREDICT_HIDDEN_TRANSPARENCY
+end
+
+local function ApplyLocalPredictDisplay(part: Part)
+	part.Transparency = GetLocalPredictTransparency()
+end
+
 -- Object pool management
 local function GetBrickFromPool(): Part?
 	local brick = table.remove(localBrickPool)
 	if brick then
-		brick.Transparency = 0.5
+		ApplyLocalPredictDisplay(brick)
 		brick.Parent = localBrickFolder
 		return brick
 	end
@@ -58,7 +77,7 @@ local function GetBrickFromPool(): Part?
 	brick.Anchored = true
 	brick.CanCollide = true
 	brick.CanQuery = false
-	brick.Transparency = 1
+	ApplyLocalPredictDisplay(brick)
 	brick.Color = Color3.fromRGB(255, 255, 0)
 	brick.Material = Enum.Material.Neon
 	brick.CastShadow = false
@@ -66,6 +85,16 @@ local function GetBrickFromPool(): Part?
 	brick.Parent = localBrickFolder
 	return brick
 end
+
+workspace:GetAttributeChangedSignal(SHOW_LOCAL_PREDICT_ATTR):Connect(function()
+	local transparency = GetLocalPredictTransparency()
+	for _, entry in pairs(localBrickMap) do
+		entry.part.Transparency = transparency
+	end
+	for _, pooledPart in ipairs(localBrickPool) do
+		pooledPart.Transparency = transparency
+	end
+end)
 
 local function ReturnBrickToPool(brick: Part)
 	brick.Parent = nil
@@ -233,17 +262,11 @@ local function IsEntireBrickFootprintOverFloatBlock(center: Vector3): boolean
 	return true
 end
 
-local function IsAtSafeZone(targetPos: Vector3, playerRootY: number): boolean
-	local groundFolder = workspace:FindFirstChild("Ground")
+local function GetSafeZoneFilterInstances(): { Instance }
+	local filterInstances = {}
+	local groundFolder = workspace:FindFirstChild("Ground") or workspace:FindFirstChild("ground")
 	local islandsFolder = workspace:FindFirstChild("Islands")
 	local homesFolder = workspace:FindFirstChild("PlayersHome")
-
-	local rayOrigin = targetPos + Vector3.new(0, 50, 0)
-	local rayDirection = Vector3.new(0, -60, 0)
-	local raycastParams = RaycastParams.new()
-	raycastParams.FilterType = Enum.RaycastFilterType.Include
-
-	local filterInstances = {}
 	if groundFolder then
 		table.insert(filterInstances, groundFolder)
 	end
@@ -253,27 +276,39 @@ local function IsAtSafeZone(targetPos: Vector3, playerRootY: number): boolean
 	if homesFolder then
 		table.insert(filterInstances, homesFolder)
 	end
+	return filterInstances
+end
 
-	if #filterInstances > 0 then
-		raycastParams.FilterDescendantsInstances = filterInstances
-		local result = workspace:Raycast(rayOrigin, rayDirection, raycastParams)
-		if not result then
-			return false
-		end
-		local hy = result.Position.Y
-		-- 深处海底：不挡铺砖
-		local maxDepth = GameConfig.Paving.SafeZoneMaxDepthBelowSeaLevel or 4
-		if hy < SEA_LEVEL - maxDepth then
-			return false
-		end
-		-- 岛体/陆地在水平面下的延伸：命中点明显低于当前角色根部时，说明还不是「脚底下那块可走面」，前方仍应铺桥
-		local maxBelowRoot = GameConfig.Paving.SafeZoneHitMaxBelowPlayerRoot or 2.5
-		if hy < playerRootY - maxBelowRoot then
-			return false
-		end
-		return true
+local function IsPointOverSafeZone(pos: Vector3): boolean
+	local filterInstances = GetSafeZoneFilterInstances()
+	if #filterInstances <= 0 then
+		return false
 	end
-	return false
+	local rayOrigin = pos + Vector3.new(0, 50, 0)
+	local rayDirection = Vector3.new(0, -60, 0)
+	local raycastParams = RaycastParams.new()
+	raycastParams.FilterType = Enum.RaycastFilterType.Include
+	raycastParams.FilterDescendantsInstances = filterInstances
+	return workspace:Raycast(rayOrigin, rayDirection, raycastParams) ~= nil
+end
+
+local function IsEntireBrickFootprintOverSafeZone(center: Vector3): boolean
+	local size = GameConfig.Paving.BrickSize
+	local hx = size.X * 0.5
+	local hz = size.Z * 0.5
+	local y = center.Y
+	local corners = {
+		Vector3.new(center.X - hx, y, center.Z - hz),
+		Vector3.new(center.X + hx, y, center.Z - hz),
+		Vector3.new(center.X - hx, y, center.Z + hz),
+		Vector3.new(center.X + hx, y, center.Z + hz),
+	}
+	for _, p in corners do
+		if not IsPointOverSafeZone(p) then
+			return false
+		end
+	end
+	return true
 end
 
 local function OnHeartbeat(dt: number)
@@ -400,7 +435,7 @@ local function OnHeartbeat(dt: number)
 			if stationaryTime >= RENEWAL_INTERVAL then
 				stationaryTime = 0
 				-- 加上射线检测与安全区检测
-				if not IsAtSafeZone(targetPos, rootPart.Position.Y) and not IsEntireBrickFootprintOverFloatBlock(targetPos) and not CheckBrickExists(targetPos, character) then
+				if not IsEntireBrickFootprintOverSafeZone(targetPos) and not IsEntireBrickFootprintOverFloatBlock(targetPos) and not CheckBrickExists(targetPos, character) then
 					RequestPlaceBrick(targetPos)
 				end
 			end
@@ -408,7 +443,7 @@ local function OnHeartbeat(dt: number)
 			lastStationaryPos = targetPos
 			stationaryTime = 0
 			-- [顺发] 当检测到刚停下时，立即尝试续期一次，不再等待计时器
-			if not IsAtSafeZone(targetPos, rootPart.Position.Y) and not IsEntireBrickFootprintOverFloatBlock(targetPos) and not CheckBrickExists(targetPos, character) then
+			if not IsEntireBrickFootprintOverSafeZone(targetPos) and not IsEntireBrickFootprintOverFloatBlock(targetPos) and not CheckBrickExists(targetPos, character) then
 				RequestPlaceBrick(targetPos)
 			end
 		end
@@ -430,13 +465,13 @@ local function OnHeartbeat(dt: number)
 			local startPos = lastPavePosition
 			for i = 1, stepCount do
 				local interimPos = GetSnappedPosition(startPos + unitDir * (i * GRID_SIZE))
-				if not IsAtSafeZone(interimPos, rootPart.Position.Y) and not IsEntireBrickFootprintOverFloatBlock(interimPos) and not CheckBrickExists(interimPos, character) then
+				if not IsEntireBrickFootprintOverSafeZone(interimPos) and not IsEntireBrickFootprintOverFloatBlock(interimPos) and not CheckBrickExists(interimPos, character) then
 					RequestPlaceBrick(interimPos)
 				end
 				lastPavePosition = interimPos
 			end
 		else
-			if not IsAtSafeZone(targetPos, rootPart.Position.Y) and not IsEntireBrickFootprintOverFloatBlock(targetPos) and not CheckBrickExists(targetPos, character) then
+			if not IsEntireBrickFootprintOverSafeZone(targetPos) and not IsEntireBrickFootprintOverFloatBlock(targetPos) and not CheckBrickExists(targetPos, character) then
 				lastPavePosition = targetPos
 				RequestPlaceBrick(targetPos)
 			else
@@ -444,7 +479,7 @@ local function OnHeartbeat(dt: number)
 			end
 		end
 	else
-		if not IsAtSafeZone(targetPos, rootPart.Position.Y) and not IsEntireBrickFootprintOverFloatBlock(targetPos) and not CheckBrickExists(targetPos, character) then
+		if not IsEntireBrickFootprintOverSafeZone(targetPos) and not IsEntireBrickFootprintOverFloatBlock(targetPos) and not CheckBrickExists(targetPos, character) then
 			lastPavePosition = targetPos
 			RequestPlaceBrick(targetPos)
 		end

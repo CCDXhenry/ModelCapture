@@ -2,6 +2,7 @@
 local serverStorage: ServerStorage = game:GetService("ServerStorage")
 local serverScripts = serverStorage:WaitForChild("Scripts")
 local ServerGameInfo = require(serverScripts:FindFirstChild("ServerGameInfo"))
+local BrainrotQueueManager = require(serverScripts:FindFirstChild("BrainrotQueueManager"))
 local AnalyticsTool = require(serverScripts:FindFirstChild("AnalyticsTool"))
 local replicatedStorage: ReplicatedStorage = game:GetService("ReplicatedStorage")
 local scripts = replicatedStorage:WaitForChild("Scripts")
@@ -10,6 +11,55 @@ local GameConfig = require(sharedScripts:FindFirstChild("GameConfig"))
 local NetMsg = require(sharedScripts:FindFirstChild("NetMsg"))
 local players: Players = game:GetService("Players")
 local marketplaceService: MarketplaceService = game:GetService("MarketplaceService")
+
+local function GrantShopBundleReward(player: Player, reward: GameConfig.RewardInfo)
+	if reward.rewardType == GameConfig.RewardType.Currency then
+		ServerGameInfo.UpdatePlayerCurrency(
+			player,
+			GameConfig.CurrencyType.Coin,
+			reward.rewardCount,
+			GameConfig.ItemCountChangeReason.GainFromPurchase
+		)
+		return
+	end
+
+	if reward.rewardType == GameConfig.RewardType.Brainrot then
+		local config = GameConfig.BrainrotIdMap[reward.rewardId]
+		if config then
+			BrainrotQueueManager.AddItem(player, reward.rewardId, config.quality, reward.rewardLv or 1, false, GameConfig.ItemType.Brainrot)
+		end
+		return
+	end
+
+	if reward.rewardType == GameConfig.RewardType.Coil then
+		local config = GameConfig.CoilIdMap[reward.rewardId]
+		if config then
+			BrainrotQueueManager.AddItem(player, reward.rewardId, config.quality, reward.rewardLv or 1, false, GameConfig.ItemType.Coil)
+		end
+		return
+	end
+
+	if reward.rewardType == GameConfig.RewardType.LittleElfChest then
+		local config = GameConfig.LittleElfChestIdMap[reward.rewardId]
+		if config then
+			BrainrotQueueManager.AddItem(player, reward.rewardId, config.quality, reward.rewardLv or 1, false, GameConfig.ItemType.LittleElfChest)
+		end
+		return
+	end
+end
+
+local function GrantShopBundleByProductId(player: Player, productId: number): boolean
+	for _, bundleId in ipairs(GameConfig.ShopBundleList) do
+		local bundleData = GameConfig.ShopBundleById[bundleId]
+		if bundleData and bundleData.config.productId == productId then
+			for _, reward in ipairs(bundleData.rewards) do
+				GrantShopBundleReward(player, reward)
+			end
+			return true
+		end
+	end
+	return false
+end
 
 local function OnPromptGamePassPurchaseFinished(player: Instance, gamePassId: number, wasPurchased: boolean)
 	if not wasPurchased then
@@ -49,6 +99,9 @@ local function ProcessReceipt(receiptInfo: GameConfig.ReceiptInfo): Enum.Product
 		return Enum.ProductPurchaseDecision.PurchaseGranted
 	elseif receiptInfo.ProductId == GameConfig.ShopPaid.MaxBricks10ProductId then
 		ServerGameInfo.UpgradeAbilityPaid(player, "MaxBricks", 10)
+		AnalyticsTool.AddProductPurchaseEvent(player, receiptInfo)
+		return Enum.ProductPurchaseDecision.PurchaseGranted
+	elseif GrantShopBundleByProductId(player, receiptInfo.ProductId) then
 		AnalyticsTool.AddProductPurchaseEvent(player, receiptInfo)
 		return Enum.ProductPurchaseDecision.PurchaseGranted
 	end

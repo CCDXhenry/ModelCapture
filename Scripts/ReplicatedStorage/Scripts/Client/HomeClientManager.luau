@@ -751,6 +751,25 @@ local function UpdateTeleportPoint(tpModel: Model, isLocalPlayer: boolean)
 	end
 end
 
+local function GetHomeOwnerPlayer(slotName: string, isLocalPlayer: boolean): Player?
+	if isLocalPlayer then
+		return players.LocalPlayer
+	end
+
+	for _, player in ipairs(players:GetPlayers()) do
+		if player.UserId == players.LocalPlayer.UserId then
+			continue
+		end
+
+		local otherInfo = ClientGameInfo.GetOtherPlayerInfo(player.UserId)
+		if otherInfo and otherInfo.homeSlot == slotName then
+			return player
+		end
+	end
+
+	return nil
+end
+
 -- Updates the rebirth multiplier UI for the home
 local function UpdateRebirthMultiplierUI(slotName: string, homeInfo: any, isLocalPlayer: boolean, rebirthLevel: number?)
 	print("[UpdateRebirthMultiplierUI] Updating UI for slot", slotName, "isLocalPlayer", isLocalPlayer)
@@ -759,31 +778,63 @@ local function UpdateRebirthMultiplierUI(slotName: string, homeInfo: any, isLoca
 		return
 	end
 
-	-- 1. Find RebirthMultiplierPart in the new model path
-	local rebirthMultiplierModel = slotModel:FindFirstChild("RebirthMultiplierModel")
-	local rebirthMultiplierPart = rebirthMultiplierModel and rebirthMultiplierModel:FindFirstChild("RebirthMultiplierPart") :: BasePart?
-
-	if not rebirthMultiplierPart then
+	-- 1. Find parts in PublicModel path
+	local publicModel = slotModel:FindFirstChild("PublicModel")
+	if not publicModel then
 		return
 	end
 
-	local infoUI: BillboardGui? = rebirthMultiplierPart:FindFirstChild("InfoUI") :: BillboardGui?
-	if not infoUI then
+	local rebirthMultiplierPart = publicModel:FindFirstChild("RebirthMultiplierPart") :: BasePart?
+	local rebirthInfoUI: BillboardGui? = rebirthMultiplierPart and rebirthMultiplierPart:FindFirstChild("InfoUI") :: BillboardGui?
+	if not rebirthInfoUI then
 		return
 	end
 
-	-- 确保 UI 基础配置
-	infoUI.Enabled = true
-	infoUI.AlwaysOnTop = false
-	infoUI.MaxDistance = 100
-
-	local controllerFrame: Frame? = infoUI:FindFirstChild("ControllerFrame") :: Frame?
+	-- RebirthMultiplierPart 上的倍率/收益 UI
+	rebirthInfoUI.Enabled = true
+	rebirthInfoUI.AlwaysOnTop = false
+	rebirthInfoUI.MaxDistance = 100
+	local controllerFrame: Frame? = rebirthInfoUI:FindFirstChild("ControllerFrame") :: Frame?
 	if not controllerFrame then
 		return
 	end
 
+	-- PlayerInfoPart 上的头像/名称 UI
+	local playerInfoPart = publicModel:FindFirstChild("PlayerInfoPart") :: Part?
+	local playerInfoUI: BillboardGui? = playerInfoPart and playerInfoPart:FindFirstChild("InfoUI") :: BillboardGui?
+	local playerControllerFrame: Frame? = playerInfoUI and playerInfoUI:FindFirstChild("ControllerFrame") :: Frame?
+	local playerIconImg: ImageLabel? = playerControllerFrame and playerControllerFrame:FindFirstChild("PlayerIconImg") :: ImageLabel?
+	local playerNameLabel: TextLabel? = playerControllerFrame and playerControllerFrame:FindFirstChild("PlayerNameLabel") :: TextLabel?
+	local ownerPlayer = GetHomeOwnerPlayer(slotName, isLocalPlayer)
+	if ownerPlayer then
+		if playerInfoUI then
+			playerInfoUI.Enabled = true
+			playerInfoUI.AlwaysOnTop = false
+			playerInfoUI.MaxDistance = 100
+		end
+		if playerNameLabel then
+			playerNameLabel.Text = if ownerPlayer.DisplayName ~= "" then ownerPlayer.DisplayName else ownerPlayer.Name
+		end
+
+		if playerIconImg then
+			local ok, image = pcall(function()
+				return players:GetUserThumbnailAsync(
+					ownerPlayer.UserId,
+					Enum.ThumbnailType.HeadShot,
+					Enum.ThumbnailSize.Size150x150
+				)
+			end)
+			if ok and type(image) == "string" then
+				playerIconImg.Image = image
+			end
+		end
+	end
+
 	-- 确保 UI 追踪自适应
-	SetupBillboardAdaptation(infoUI)
+	SetupBillboardAdaptation(rebirthInfoUI)
+	if playerInfoUI then
+		SetupBillboardAdaptation(playerInfoUI)
+	end
 
 	local rebirthInfoLabel: TextLabel? = controllerFrame:FindFirstChild("RebirthInfoLabel") :: TextLabel?
 	local totalRevenueLabel: TextLabel? = controllerFrame:FindFirstChild("TotalRevenueLabel") :: TextLabel?
@@ -840,7 +891,7 @@ local function UpdateRebirthMultiplierUI(slotName: string, homeInfo: any, isLoca
 	local totalFinalRevenue = math.ceil(totalBaseRevenue * multiplier)
 
 	-- 4. Update UI
-	infoUI.Enabled = true
+	rebirthInfoUI.Enabled = true
 
 	-- Total Revenue Label
 	local revenueStr = NumberExtension.FormatBigNumberAA(totalFinalRevenue)
@@ -854,12 +905,17 @@ function ClearHomeVisuals(slotName: string)
 		return
 	end
 
-	-- Hide RebirthMultiplier UI
-	local rebirthMultiplierModel = slotModel:FindFirstChild("RebirthMultiplierModel")
-	local rbPart = rebirthMultiplierModel and rebirthMultiplierModel:FindFirstChild("RebirthMultiplierPart")
-	local infoUI = rbPart and rbPart:FindFirstChild("InfoUI") :: BillboardGui?
-	if infoUI then
-		infoUI.Enabled = false
+	-- Hide PublicModel UIs
+	local publicModel = slotModel:FindFirstChild("PublicModel")
+	local rebirthMultiplierPart = publicModel and publicModel:FindFirstChild("RebirthMultiplierPart")
+	local rebirthInfoUI = rebirthMultiplierPart and rebirthMultiplierPart:FindFirstChild("InfoUI") :: BillboardGui?
+	if rebirthInfoUI then
+		rebirthInfoUI.Enabled = false
+	end
+	local playerInfoPart = publicModel and publicModel:FindFirstChild("PlayerInfoPart")
+	local playerInfoUI = playerInfoPart and playerInfoPart:FindFirstChild("InfoUI") :: BillboardGui?
+	if playerInfoUI then
+		playerInfoUI.Enabled = false
 	end
 
 	for _, child in ipairs(slotModel:GetChildren()) do

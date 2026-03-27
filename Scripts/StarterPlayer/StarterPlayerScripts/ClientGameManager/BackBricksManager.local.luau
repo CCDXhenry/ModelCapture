@@ -75,7 +75,7 @@ local function UpdateBackBricks()
 
 	-- 检测是否在安全区 (地面 / 岛屿 / 玩家房屋)
 	local isInSafeZone = false
-	local groundFolder = workspace:FindFirstChild("Ground")
+	local groundFolder = workspace:FindFirstChild("Ground") or workspace:FindFirstChild("ground")
 	local islandsFolder = workspace:FindFirstChild("Islands")
 	local homesFolder = workspace:FindFirstChild("PlayersHome")
 

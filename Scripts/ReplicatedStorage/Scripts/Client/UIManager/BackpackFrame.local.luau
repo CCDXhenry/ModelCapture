@@ -81,6 +81,15 @@ local function GetNameForConfigId(configId: number, itemType: number?): string
 	return "???"
 end
 
+-- 根据 ConfigId 获取线圈描述
+local function GetCoilDescription(configId: number): string
+	local coilConfig = GameConfig.CoilIdMap[configId]
+	if coilConfig and coilConfig.description and coilConfig.description ~= "" then
+		return coilConfig.description
+	end
+	return ""
+end
+
 -- 获取分辨色
 local function GetQualityColor(quality: number): Color3
 	local qualityCfg = GameConfig.BrainrotQualityConfig[quality]
@@ -88,6 +97,17 @@ local function GetQualityColor(quality: number): Color3
 		return qualityCfg.textColor
 	end
 	return Color3.fromRGB(255, 255, 255)
+end
+
+local function GetDisplayQuality(item: GameConfig.BrainrotQueueItem): number
+	local typeVal = item.itemType or GameConfig.ItemType.Brainrot
+	if typeVal == GameConfig.ItemType.Coil then
+		local coilConfig = GameConfig.CoilIdMap[item.configId]
+		if coilConfig and coilConfig.quality then
+			return coilConfig.quality
+		end
+	end
+	return item.quality
 end
 
 -- 创建一个格子
@@ -103,6 +123,9 @@ local function CreateSlot(index: number, item: GameConfig.BrainrotQueueItem): Im
 	local toolIconImage = slot:FindFirstChild("ToolIconImage") :: ImageLabel
 	local qualityImage = slot:FindFirstChild("QualityImage") :: ImageLabel
 	local equippedImage = slot:FindFirstChild("EquippedImage") :: ImageLabel
+	local toolUsageEffectFrame = slot:FindFirstChild("ToolUsageEffectFrame") :: Frame?
+	local toolUsageEffectText = if toolUsageEffectFrame then (toolUsageEffectFrame:FindFirstChild("ToolUsageEffectText") :: TextLabel?) else nil
+	local isCoil = (item.itemType or GameConfig.ItemType.Brainrot) == GameConfig.ItemType.Coil
 
 	-- 设置图标
 	if toolIconImage then
@@ -112,13 +135,18 @@ local function CreateSlot(index: number, item: GameConfig.BrainrotQueueItem): Im
 	-- 设置名称
 	if toolNameText then
 		toolNameText.Text = GetNameForConfigId(item.configId, item.itemType)
-		local qualityColor = GetQualityColor(item.quality)
+		local qualityColor = GetQualityColor(GetDisplayQuality(item))
 		toolNameText.TextColor3 = qualityColor
 	end
 	
 	-- 设置等级
 	if toolLvText then
-		toolLvText.Text = "Lv." .. tostring(item.level or 1)
+		local typeVal = item.itemType or GameConfig.ItemType.Brainrot
+		if typeVal == GameConfig.ItemType.Coil then
+			toolLvText.Text = ""
+		else
+			toolLvText.Text = "Lv." .. tostring(item.level or 1)
+		end
 	end
 
 	-- 设置数字索引
@@ -128,12 +156,20 @@ local function CreateSlot(index: number, item: GameConfig.BrainrotQueueItem): Im
 	
 	-- 设置品质背景颜色
 	if qualityImage then
-		qualityImage.ImageColor3 = GetQualityColor(item.quality)
+		qualityImage.ImageColor3 = GetQualityColor(GetDisplayQuality(item))
 	end
 	
 	-- 初始化选中框
 	if equippedImage then
 		equippedImage.Visible = false
+	end
+
+	-- 初始化悬浮描述框
+	if toolUsageEffectFrame then
+		toolUsageEffectFrame.Visible = false
+	end
+	if toolUsageEffectText then
+		toolUsageEffectText.Text = if isCoil then GetCoilDescription(item.configId) else ""
 	end
 
 	-- 存储 uid和索引
@@ -144,6 +180,21 @@ local function CreateSlot(index: number, item: GameConfig.BrainrotQueueItem): Im
 	-- 点击事件 (点击格子装备/卸装)
 	slot.Activated:Connect(function()
 		BackpackInputManager.ToggleTool(index)
+	end)
+
+	slot.MouseEnter:Connect(function()
+		if not isCoil then
+			return
+		end
+		if toolUsageEffectFrame then
+			toolUsageEffectFrame.Visible = true
+		end
+	end)
+
+	slot.MouseLeave:Connect(function()
+		if toolUsageEffectFrame then
+			toolUsageEffectFrame.Visible = false
+		end
 	end)
 	
 	return slot

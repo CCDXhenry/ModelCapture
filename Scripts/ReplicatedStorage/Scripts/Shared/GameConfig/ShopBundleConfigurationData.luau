@@ -1,0 +1,42 @@
+return {
+	[1] = {
+		["bgIconId"] = "rbxassetid://77886307507247",
+		["productId"] = 3564256003,
+		["id"] = 1,
+		["price"] = 199,
+		["name_t"] = "Beginner Pack",
+		["sortId"] = 1,
+	},
+	[2] = {
+		["bgIconId"] = "rbxassetid://83983663285653",
+		["productId"] = 3564256068,
+		["id"] = 2,
+		["price"] = 199,
+		["name_t"] = "Pro Pack",
+		["sortId"] = 2,
+	},
+	[3] = {
+		["bgIconId"] = "rbxassetid://123495708111145",
+		["productId"] = 3564256133,
+		["id"] = 3,
+		["price"] = 199,
+		["name_t"] = "Sprite Chest",
+		["sortId"] = 3,
+	},
+	[4] = {
+		["bgIconId"] = "rbxassetid://107017979973801",
+		["productId"] = 3564256184,
+		["id"] = 4,
+		["price"] = 199,
+		["name_t"] = "Double Jump Coil",
+		["sortId"] = 4,
+	},
+	[5] = {
+		["bgIconId"] = "rbxassetid://80037247271171",
+		["productId"] = 3564256258,
+		["id"] = 5,
+		["price"] = 199,
+		["name_t"] = "Gravity Coil",
+		["sortId"] = 5,
+	},
+}

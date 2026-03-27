@@ -11,6 +11,8 @@ local UpgradeShopDataModule = require(script:FindFirstChild("UpgradeShopData"))
 local CoilDataModule = require(script:FindFirstChild("CoilData"))
 local LittleElfChestDataModule = require(script:FindFirstChild("LittleElfChestData"))
 local RebirthDataModule = require(script:FindFirstChild("RebirthData"))
+local ShopBundleConfigurationDataModule = require(script:FindFirstChild("ShopBundleConfigurationData"))
+local ShopBundleDataModule = require(script:FindFirstChild("ShopBundleData"))
 
 --游戏版本
 GameConfig.GameVersion = "1.0.0"
@@ -49,13 +51,16 @@ export type RewardInfo = {
 	rewardType: number,
 	rewardId: number,
 	rewardCount: number,
-	rewardSource: number,
+	rewardSource: number?,
+	rewardLv: number?,
 }
 
 --奖励类型
 GameConfig.RewardType = {
 	Currency = 1, --货币
 	Brainrot = 2, --宠物
+	Coil = 3, --线圈
+	LittleElfChest = 4, --小精灵宝箱
 }
 
 --货币类型
@@ -186,6 +191,7 @@ export type CoilData = {
 	name_t: string,
 	description: string,
 	iconImageId: string,
+	quality: number,
 }
 
 GameConfig.Coils = CoilDataModule
@@ -339,7 +345,6 @@ GameConfig.BrainrotQualityConfig = {
 
 -- 1. 玩家铺砖逻辑
 GameConfig.Paving = {
-	BasePlaceCooldown = 0.2, -- 单位: 秒/块
 	BaseCollapseTime = 10, -- 砖块生命周期: 10秒
 	SteppedPenalty = 5, -- 被其他玩家踩踏一次扣5秒寿命
 	MinCollapseTime = 0.5, -- 被踩踏后的保底存活时间（容错）
@@ -353,10 +358,6 @@ GameConfig.Paving = {
 	DeathRescueProductId = 3561975643, -- 翅膀援助购买产品ID (TODO: 修改实际ID)
 	StartActivationRange = 5, -- 修改：从 1 增加到 5，确保护跑时有足够的重合区域。
 	PavingDistanceLimit = 30, -- 距离玩家超过此距离则不让铺
-	-- 安全区射线：命中 Ground/Islands/PlayersHome 时，若命中点低于海平面超过此深度，视为深渊/海底不挡铺砖（避免空隙下远处地形误判为安全区）
-	SafeZoneMaxDepthBelowSeaLevel = 4,
-	-- 安全区射线：命中点若比 HumanoidRootPart 低超过此值，视为岛体水下/侧面延伸，不挡前方铺预测砖（解决「离岛还有一段距离就不出黄砖」）；略调大则更保守、略调小则更敢铺
-	SafeZoneHitMaxBelowPlayerRoot = 1.5,
 	StationaryRenewalThreshold = 0.7, -- 剩余寿命低于 70% 时才允许原地续期
 	StationaryRenewalInterval = 0.2, -- 原地续期检测间隔 (加快响应)
 	RebirthProductId = 3562550008, -- 付费重生产品ID
@@ -385,6 +386,20 @@ export type UpgradeShopData = {
 	upgradeCostList: { number },
 }
 
+export type ShopBundleConfigurationData = {
+	id: number,
+	productId: number,
+	price: number,
+	name_t: string,
+	sortId: number,
+	bgIconId: string,
+}
+
+export type ShopBundleData = {
+	config: ShopBundleConfigurationData,
+	rewards: { RewardInfo },
+}
+
 local transformedShopData: { [number]: UpgradeShopData } = {}
 for _, entry in pairs(UpgradeShopDataModule) do
 	local skillType = entry.type
@@ -408,6 +423,39 @@ GameConfig.Shop = {
 	MaxBricks = transformedShopData[GameConfig.SkillType.MaxBricks],
 	HomeLevel = transformedShopData[GameConfig.SkillType.HomeLevel],
 }
+
+GameConfig.ShopBundleById = {} :: { [number]: ShopBundleData }
+GameConfig.ShopBundleList = {} :: { number }
+for _, config: ShopBundleConfigurationData in pairs(ShopBundleConfigurationDataModule) do
+	GameConfig.ShopBundleById[config.id] = {
+		config = config,
+		rewards = {},
+	}
+	table.insert(GameConfig.ShopBundleList, config.id)
+end
+table.sort(GameConfig.ShopBundleList, function(idA, idB)
+	local configA = GameConfig.ShopBundleById[idA]
+	local configB = GameConfig.ShopBundleById[idB]
+	if configA == nil or configB == nil then
+		return idA < idB
+	end
+	if configA.config.sortId == configB.config.sortId then
+		return configA.config.id < configB.config.id
+	end
+	return configA.config.sortId < configB.config.sortId
+end)
+for _, rewardEntry in pairs(ShopBundleDataModule) do
+	local bundle = GameConfig.ShopBundleById[rewardEntry.id]
+	if bundle then
+		local rewardInfo: RewardInfo = {
+			rewardType = rewardEntry.rewardType,
+			rewardId = rewardEntry.rewardId,
+			rewardCount = rewardEntry.rewardCount,
+			rewardLv = rewardEntry.rewardLv,
+		}
+		table.insert(bundle.rewards, rewardInfo)
+	end
+end
 
 -- 商店付费配置（内购商品ID：后续由你替换真实数值）
 export type ShopPaidConfig = {

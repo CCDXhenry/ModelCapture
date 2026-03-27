@@ -176,6 +176,36 @@ local function IsPointOverFloatBlock(pos: Vector3): boolean
 	return RaycastFloatBlockAtPoint(pos) ~= nil
 end
 
+local function GetSafeZoneFilterInstances(): { Instance }
+	local filterInstances = {}
+	local groundFolder = workspace:FindFirstChild("Ground") or workspace:FindFirstChild("ground")
+	local islandsFolder = workspace:FindFirstChild("Islands")
+	local homesFolder = workspace:FindFirstChild("PlayersHome")
+	if groundFolder then
+		table.insert(filterInstances, groundFolder)
+	end
+	if islandsFolder then
+		table.insert(filterInstances, islandsFolder)
+	end
+	if homesFolder then
+		table.insert(filterInstances, homesFolder)
+	end
+	return filterInstances
+end
+
+local function IsPointOverSafeZone(samplePos: Vector3): boolean
+	local filterInstances = GetSafeZoneFilterInstances()
+	if #filterInstances <= 0 then
+		return false
+	end
+	local rayOrigin = samplePos + Vector3.new(0, FLOATBLOCK_RAY_ORIGIN_Y, 0)
+	local rayDirection = Vector3.new(0, -FLOATBLOCK_RAY_LENGTH, 0)
+	local raycastParams = RaycastParams.new()
+	raycastParams.FilterType = Enum.RaycastFilterType.Include
+	raycastParams.FilterDescendantsInstances = filterInstances
+	return workspace:Raycast(rayOrigin, rayDirection, raycastParams) ~= nil
+end
+
 local function GetBrickFootprintCornerPositions(center: Vector3): { Vector3 }
 	local size = GameConfig.Paving.BrickSize
 	local hx = size.X * 0.5
@@ -192,6 +222,15 @@ end
 local function IsEntireBrickFootprintOverFloatBlock(center: Vector3): boolean
 	for _, p in GetBrickFootprintCornerPositions(center) do
 		if not IsPointOverFloatBlock(p) then
+			return false
+		end
+	end
+	return true
+end
+
+local function IsEntireBrickFootprintOverSafeZone(center: Vector3): boolean
+	for _, p in GetBrickFootprintCornerPositions(center) do
+		if not IsPointOverSafeZone(p) then
 			return false
 		end
 	end
@@ -245,6 +284,11 @@ local function OnRequestPlaceBrickBatch(player: Player, positions: any)
 
 		if showFloatBlockRays then
 			VisualizeFloatBlockRaysForBrickCenter(position)
+		end
+
+		-- 若整块砖 footprint 完全位于安全区（Ground/Islands/PlayersHome），则禁铺
+		if IsEntireBrickFootprintOverSafeZone(position) then
+			continue
 		end
 
 		-- 仅当砖块底面四角均落在 FloatBlock 上方时才禁铺

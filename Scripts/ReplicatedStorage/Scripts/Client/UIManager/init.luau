@@ -21,6 +21,7 @@ UIManager.WindowId = {
 	UpgradeShop = "UpgradeShopFrame",
 	SellShop = "SellShopFrame",
 	Rebirth = "RebirthFrame",
+	StoreBundle = "StoreBundleFrame",
 }
 
 type WindowConfig = {
@@ -42,6 +43,11 @@ local WindowConfigs: { [string]: WindowConfig } = {
 	[UIManager.WindowId.Rebirth] = {
 		FrameName = "RebirthFrame",
 		scriptName = "RebirthFrame",
+		isModal = true,
+	},
+	[UIManager.WindowId.StoreBundle] = {
+		FrameName = "StoreBundleFrame",
+		scriptName = "StoreBundleFrame",
 		isModal = true,
 	},
 }
@@ -105,7 +111,6 @@ local function ApplyButtonEffects(button: GuiButton)
 		end
 		local inputTypeString: string?, _: Enum.UserInputType = UserInutExtension.GetInputType()
 		if inputTypeString == UserInutExtension.InputTypeString.Keyboard_Mouse then
-			print("MouseEnter")
 			mouseEnterTween:Play()
 		end
 	end)

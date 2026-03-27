@@ -35,6 +35,8 @@ local bottomButtonsFrame = lobbyFrame:FindFirstChild("BottomButtonsFrame")
 local rebirthFrame: Frame? = (lobbyFrame:FindFirstChild("RebirthFrame") or (if bottomButtonsFrame then bottomButtonsFrame:FindFirstChild("RebirthFrame") else nil)) :: Frame?
 local rebirthButton: GuiButton? = if rebirthFrame then (rebirthFrame:FindFirstChild("Button") :: any) else nil
 local rebirthNumberText: TextLabel? = if rebirthFrame then (rebirthFrame:FindFirstChild("NumberText") :: TextLabel?) else nil
+local storeBundleEntryFrame: Frame? = (lobbyFrame:FindFirstChild("StoreBundleFrame") or (if bottomButtonsFrame then bottomButtonsFrame:FindFirstChild("StoreBundleFrame") else nil)) :: Frame?
+local storeBundleButton: GuiButton? = if storeBundleEntryFrame then (storeBundleEntryFrame:FindFirstChild("Button") :: any) else nil
 
 local maxBricksAddButton: GuiButton? = maxBricksFrame:FindFirstChild("AddButton") :: any
 local walkSpeedAddButton: GuiButton? = walkSpeedFrame:FindFirstChild("AddButton") :: any
@@ -58,6 +60,12 @@ end
 if rebirthButton then
 	rebirthButton.Activated:Connect(function()
 		UIManager.OpenWindow(UIManager.WindowId.Rebirth)
+	end)
+end
+
+if storeBundleButton then
+	storeBundleButton.Activated:Connect(function()
+		UIManager.OpenWindow(UIManager.WindowId.StoreBundle)
 	end)
 end
 
