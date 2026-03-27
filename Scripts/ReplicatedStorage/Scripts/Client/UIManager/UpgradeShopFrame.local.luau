@@ -225,3 +225,5 @@ end)
 
 ClientMsg.ConnectCloseWindow(OnCloseWindow)
 refreshAll()
+
+UIAdapter.AddAdaptiveFrame(thisFrame, UIAdapter.AdaptiveType.FullScreen)
