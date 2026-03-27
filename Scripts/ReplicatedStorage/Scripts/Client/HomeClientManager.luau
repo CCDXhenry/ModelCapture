@@ -45,6 +45,16 @@ local pendingUpdates = {}
 local promptToPlotMap: { [ProximityPrompt]: { pointIndex: number, slotName: string } } = {}
 local isLocalHoldingBrainrot = false
 
+local function LocalizeQualityLabel(qualityLabel: TextLabel, quality: number)
+	local qualityTextName = GameConfig.BrainrotQualityTextMap[quality]
+	local qualityTextData = if qualityTextName then ((GameTexts :: any)[qualityTextName] :: { source: string, key: string }?) else nil
+	if qualityTextData then
+		TranslationTool.CustomAutoLocalizeTextLabel(qualityLabel, qualityTextData.source, qualityTextData.key, {})
+	else
+		TranslationTool.CustomAutoLocalizeTextLabel(qualityLabel, "", "", {})
+	end
+end
+
 -- Forward declarations
 local UpdateHomeVisuals, ClearHomeVisuals
 
@@ -500,7 +510,7 @@ local function UpdatePlot(folder: Instance, placedData: any?, isLocalPlayer: boo
 				end
 			end
 			if qualityLabel then
-				qualityLabel.Text = if qualityCfg then qualityCfg.rarity else ""
+				LocalizeQualityLabel(qualityLabel, brainrotData.quality)
 				if qualityCfg then
 					qualityLabel.TextColor3 = qualityCfg.textColor
 				end
@@ -712,7 +722,7 @@ local function UpdatePlot(folder: Instance, placedData: any?, isLocalPlayer: boo
 					end
 				end
 				if qualityLabel then
-					qualityLabel.Text = if qualityCfg then qualityCfg.rarity else ""
+					LocalizeQualityLabel(qualityLabel, brainrotData.quality)
 					if qualityCfg then
 						qualityLabel.TextColor3 = qualityCfg.textColor
 					end

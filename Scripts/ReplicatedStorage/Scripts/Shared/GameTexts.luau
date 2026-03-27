@@ -36,5 +36,14 @@ local GameTexts = {
 	InsufficientRebirthCount = { key = "InsufficientRebirthCount", source = "Insufficient rebirths: need at least {1} rebirths to pick up." },
 	TotalRevenueFormat = { key = "TotalRevenueFormat", source = "{1}/s" },
 	UnknownLevel = { key = "UnknownLevel", source = "Lv.???" },
+	QualityCommon = { key = "", source = "Common" },
+	QualityUncommon = { key = "", source = "Uncommon" },
+	QualityRare = { key = "", source = "Rare" },
+	QualityEpic = { key = "", source = "Epic" },
+	QualityLegendary = { key = "", source = "Legendary" },
+	QualityMythical = { key = "", source = "Mythical" },
+	QualityCosmic = { key = "", source = "Cosmic" },
+	QualitySecret = { key = "", source = "Secret" },
+	QualityCelestial = { key = "", source = "Celestial" },
 }
 return GameTexts

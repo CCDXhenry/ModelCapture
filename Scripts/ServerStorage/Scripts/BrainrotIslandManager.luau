@@ -176,6 +176,26 @@ local function GetIslandId(islandName: string): number
 end
 
 type IslandSpawnerEntry = { id: number, weight: number, itemType: number, itemId: number }
+type IslandBoundsData = {
+	center: Vector3,
+	halfX: number,
+	halfY: number,
+	halfZ: number,
+}
+
+local SpawnSamplingConfig = {
+	BoundsPadding = 3,
+	MinCellSize = 6,
+	MaxCellSize = 16,
+	CellCountMultiple = 2,
+	MinSpacing = 6,
+	MaxSpacing = 14,
+	PreferredSpacingScale = 0.8,
+	AttemptsPerSpawn = 20,
+	FallbackSampleCount = 20,
+	RaycastStartOffset = 80,
+	RaycastDistance = 180,
+}
 
 local function PickWeightedFromIslandPool(pool: { IslandSpawnerEntry }, wantChest: boolean): IslandSpawnerEntry?
 	local totalWeight = 0
@@ -200,6 +220,217 @@ local function PickWeightedFromIslandPool(pool: { IslandSpawnerEntry }, wantChes
 		end
 	end
 	return nil
+end
+
+local function GetIslandBoundsData(island: Instance): IslandBoundsData?
+	if island:IsA("Model") then
+		local cf, size = island:GetBoundingBox()
+		return {
+			center = cf.Position,
+			halfX = math.max(size.X * 0.5 - SpawnSamplingConfig.BoundsPadding, SpawnSamplingConfig.MinCellSize),
+			halfY = math.max(size.Y * 0.5, 4),
+			halfZ = math.max(size.Z * 0.5 - SpawnSamplingConfig.BoundsPadding, SpawnSamplingConfig.MinCellSize),
+		}
+	elseif island:IsA("BasePart") then
+		return {
+			center = island.Position,
+			halfX = math.max(island.Size.X * 0.5 - SpawnSamplingConfig.BoundsPadding, SpawnSamplingConfig.MinCellSize),
+			halfY = math.max(island.Size.Y * 0.5, 4),
+			halfZ = math.max(island.Size.Z * 0.5 - SpawnSamplingConfig.BoundsPadding, SpawnSamplingConfig.MinCellSize),
+		}
+	end
+	return nil
+end
+
+local function CollectIslandSpawnPositions(island: Instance): { Vector3 }
+	local positionList = {} :: { Vector3 }
+	for _, child in ipairs(island:GetChildren()) do
+		if (child.Name == "IslandBrainrot" or child.Name == "IslandChest") and child:IsA("BasePart") then
+			table.insert(positionList, child.Position)
+		end
+	end
+	return positionList
+end
+
+local function GetTargetSpawnCount(islandId: number): number
+	local islandConfig = GameConfig.IslandConfigMap[islandId]
+	if not islandConfig then
+		return 4
+	end
+	local brainrotCount = islandConfig.brainrotGenerateCount or 0
+	local chestCount = islandConfig.littleElfChestGenerateCount or 0
+	return math.max(brainrotCount + chestCount, 4)
+end
+
+local function BuildIslandGrid(boundsData: IslandBoundsData, targetCount: number): (number, number, number)
+	local width = boundsData.halfX * 2
+	local depth = boundsData.halfZ * 2
+	local area = math.max(width * depth, 1)
+	local expectedCellCount = math.max(targetCount * SpawnSamplingConfig.CellCountMultiple, 4)
+	local targetCellSize = math.sqrt(area / expectedCellCount)
+	local cellSize = math.clamp(targetCellSize, SpawnSamplingConfig.MinCellSize, SpawnSamplingConfig.MaxCellSize)
+	local cellCountX = math.max(1, math.floor(width / cellSize))
+	local cellCountZ = math.max(1, math.floor(depth / cellSize))
+	return cellSize, cellCountX, cellCountZ
+end
+
+local function PositionToGridIndex(
+	pos: Vector3,
+	boundsData: IslandBoundsData,
+	cellSize: number,
+	cellCountX: number,
+	cellCountZ: number
+): (number, number)
+	local minX = boundsData.center.X - boundsData.halfX
+	local minZ = boundsData.center.Z - boundsData.halfZ
+	local cellX = math.floor((pos.X - minX) / cellSize) + 1
+	local cellZ = math.floor((pos.Z - minZ) / cellSize) + 1
+	return math.clamp(cellX, 1, cellCountX), math.clamp(cellZ, 1, cellCountZ)
+end
+
+local function PickLeastOccupiedCell(
+	existingPositions: { Vector3 },
+	boundsData: IslandBoundsData,
+	cellSize: number,
+	cellCountX: number,
+	cellCountZ: number
+): (number, number)
+	local occupancyMap = {} :: { [number]: number }
+	for _, pos in ipairs(existingPositions) do
+		local cellX, cellZ = PositionToGridIndex(pos, boundsData, cellSize, cellCountX, cellCountZ)
+		local idx = (cellZ - 1) * cellCountX + cellX
+		occupancyMap[idx] = (occupancyMap[idx] or 0) + 1
+	end
+
+	local candidateList = {} :: { { x: number, z: number } }
+	local minOccupancy = math.huge
+	for z = 1, cellCountZ do
+		for x = 1, cellCountX do
+			local idx = (z - 1) * cellCountX + x
+			local count = occupancyMap[idx] or 0
+			if count < minOccupancy then
+				minOccupancy = count
+				table.clear(candidateList)
+				table.insert(candidateList, { x = x, z = z })
+			elseif count == minOccupancy then
+				table.insert(candidateList, { x = x, z = z })
+			end
+		end
+	end
+
+	if #candidateList == 0 then
+		return 1, 1
+	end
+	local pick = candidateList[rng:NextInteger(1, #candidateList)]
+	return pick.x, pick.z
+end
+
+local function BuildCandidateXZInCell(
+	boundsData: IslandBoundsData,
+	cellX: number,
+	cellZ: number,
+	cellSize: number
+): Vector3
+	local minX = boundsData.center.X - boundsData.halfX
+	local minZ = boundsData.center.Z - boundsData.halfZ
+	local x0 = minX + (cellX - 1) * cellSize
+	local z0 = minZ + (cellZ - 1) * cellSize
+	local x = x0 + rng:NextNumber() * cellSize
+	local z = z0 + rng:NextNumber() * cellSize
+	return Vector3.new(
+		math.clamp(x, minX, boundsData.center.X + boundsData.halfX),
+		boundsData.center.Y,
+		math.clamp(z, minZ, boundsData.center.Z + boundsData.halfZ)
+	)
+end
+
+local function RaycastIslandGround(island: Instance, boundsData: IslandBoundsData, candidateXZ: Vector3): Vector3?
+	local raycastParams = RaycastParams.new()
+	raycastParams.FilterDescendantsInstances = { island }
+	raycastParams.FilterType = Enum.RaycastFilterType.Include
+
+	local rayOrigin = Vector3.new(
+		candidateXZ.X,
+		boundsData.center.Y + boundsData.halfY + SpawnSamplingConfig.RaycastStartOffset,
+		candidateXZ.Z
+	)
+	local rayDirection = Vector3.new(0, -SpawnSamplingConfig.RaycastDistance, 0)
+	local raycastResult = workspace:Raycast(rayOrigin, rayDirection, raycastParams)
+	if raycastResult then
+		return raycastResult.Position
+	end
+	return nil
+end
+
+local function ComputeMinSpacing(boundsData: IslandBoundsData, targetCount: number): number
+	local area = math.max(boundsData.halfX * 2 * boundsData.halfZ * 2, 1)
+	local avgArea = area / math.max(targetCount, 1)
+	local preferredSpacing = math.sqrt(avgArea) * SpawnSamplingConfig.PreferredSpacingScale
+	return math.clamp(preferredSpacing, SpawnSamplingConfig.MinSpacing, SpawnSamplingConfig.MaxSpacing)
+end
+
+local function GetNearestDistanceSquared(candidatePos: Vector3, existingPositions: { Vector3 }): number
+	if #existingPositions == 0 then
+		return math.huge
+	end
+	local nearestDistanceSq = math.huge
+	for _, pos in ipairs(existingPositions) do
+		local distanceSq = (Vector3.new(candidatePos.X, 0, candidatePos.Z) - Vector3.new(pos.X, 0, pos.Z)).Magnitude ^ 2
+		if distanceSq < nearestDistanceSq then
+			nearestDistanceSq = distanceSq
+		end
+	end
+	return nearestDistanceSq
+end
+
+local function PickSpawnPositionWithSpacing(island: Instance, islandId: number): Vector3
+	local boundsData = GetIslandBoundsData(island)
+	if not boundsData then
+		local basePos = if island:IsA("BasePart") then island.Position else Vector3.zero
+		return basePos + Vector3.new(0, 5, 0)
+	end
+
+	local targetCount = GetTargetSpawnCount(islandId)
+	local existingPositions = CollectIslandSpawnPositions(island)
+	local cellSize, cellCountX, cellCountZ = BuildIslandGrid(boundsData, targetCount)
+	local minSpacing = ComputeMinSpacing(boundsData, targetCount)
+	local minSpacingSq = minSpacing * minSpacing
+
+	for _ = 1, SpawnSamplingConfig.AttemptsPerSpawn do
+		local cellX, cellZ = PickLeastOccupiedCell(existingPositions, boundsData, cellSize, cellCountX, cellCountZ)
+		local candidateXZ = BuildCandidateXZInCell(boundsData, cellX, cellZ, cellSize)
+		local groundedPos = RaycastIslandGround(island, boundsData, candidateXZ)
+		if groundedPos then
+			local nearestDistanceSq = GetNearestDistanceSquared(groundedPos, existingPositions)
+			if nearestDistanceSq >= minSpacingSq then
+				return groundedPos
+			end
+		end
+	end
+
+	-- 回退策略：在全岛候选中选择“离现有刷怪点最远”的位置。
+	local bestPos: Vector3? = nil
+	local bestScore = -1
+	for _ = 1, SpawnSamplingConfig.FallbackSampleCount do
+		local candidateXZ = Vector3.new(
+			boundsData.center.X + rng:NextNumber(-boundsData.halfX, boundsData.halfX),
+			boundsData.center.Y,
+			boundsData.center.Z + rng:NextNumber(-boundsData.halfZ, boundsData.halfZ)
+		)
+		local groundedPos = RaycastIslandGround(island, boundsData, candidateXZ)
+		if groundedPos then
+			local nearestDistanceSq = GetNearestDistanceSquared(groundedPos, existingPositions)
+			if nearestDistanceSq > bestScore then
+				bestScore = nearestDistanceSq
+				bestPos = groundedPos
+			end
+		end
+	end
+
+	if bestPos then
+		return bestPos
+	end
+	return boundsData.center + Vector3.new(0, 5, 0)
 end
 
 local function SpawnOneBrainrotInternal(island: Instance, isChest: boolean): BasePart?
@@ -247,13 +478,7 @@ local function SpawnOneBrainrotInternal(island: Instance, isChest: boolean): Bas
 	randomBrainrot:SetAttribute("Level", level)
 	randomBrainrot:SetAttribute("HomeIslandName", island.Name)
 
-	local basePos = if island:IsA("BasePart") then island.Position else Vector3.zero
-	local rayOrigin = basePos + Vector3.new(math.random(-40, 40), 50, math.random(-40, 40))
-	local raycastParams = RaycastParams.new()
-	raycastParams.FilterDescendantsInstances = { island }
-	raycastParams.FilterType = Enum.RaycastFilterType.Include
-	local raycastResult = workspace:Raycast(rayOrigin, Vector3.new(0, -100, 0), raycastParams)
-	local spawnPos = raycastResult and raycastResult.Position or (basePos + Vector3.new(rayOrigin.X - basePos.X, 5, rayOrigin.Z - basePos.Z))
+	local spawnPos = PickSpawnPositionWithSpacing(island, islandId)
 
 	local sizeY = 0
 	randomBrainrot.CFrame = CFrame.new(spawnPos)
@@ -336,7 +561,8 @@ local function OnRequestPlaceCarryingBrainrot(player: Player, pointIndex: number
 			end
 
 			local qualityCfg = GameConfig.BrainrotQualityConfig[quality :: number]
-			local rarity: GameConfig.ModelRarity = (if qualityCfg then qualityCfg.rarity else "Common") :: any
+			local defaultQualityCfg = GameConfig.BrainrotQualityConfig[1]
+			local rarity: GameConfig.ModelRarity = (if qualityCfg then qualityCfg.rarity else if defaultQualityCfg then defaultQualityCfg.rarity else "Common") :: any
 			local placedLevel = tonumber(carryingBrainrot:GetAttribute("Level")) or 1
 
 			ServerGameInfo.UpdatePlayerPlacedModel(player, pointIndex, {

@@ -75,12 +75,14 @@ function HomeManager.OnRequestPickupHomeModel(player: Player, pointIndex: number
 			heldBrainrot:Destroy()
 
 			-- 把手里扣掉的放到展台上
+			local heldQualityCfg = GameConfig.BrainrotQualityConfig[heldQuality]
+			local defaultQualityCfg = GameConfig.BrainrotQualityConfig[1]
 			local newPlacedData = {
 				configId = heldConfigId,
 				level = heldLevel,
 				quality = heldQuality,
 				instanceId = heldUid or HttpService:GenerateGUID(false),
-				rarity = GameConfig.BrainrotQualityConfig[heldQuality] and GameConfig.BrainrotQualityConfig[heldQuality].rarity or "Common"
+				rarity = if heldQualityCfg then heldQualityCfg.rarity else if defaultQualityCfg then defaultQualityCfg.rarity else "Common",
 			}
 			ServerGameInfo.UpdatePlayerPlacedModel(player, pointIndex, newPlacedData :: any)
 

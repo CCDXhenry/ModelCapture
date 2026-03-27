@@ -126,6 +126,7 @@ function AttachInfoUIToModel(targetParent: Instance, adornee: BasePart, configId
 	local controller = newBrainrotUI:FindFirstChild("Controller") or newBrainrotUI:FindFirstChild("ControllerFrame")
 	if controller then
 		local nameLabel = controller:FindFirstChild("NameLabel") :: TextLabel?
+		local qualityLabel = controller:FindFirstChild("QualityLabel") :: TextLabel?
 		local levelText = controller:FindFirstChild("LvLabel") :: TextLabel?
 		local abilityText = controller:FindFirstChild("AbilityText") :: TextLabel?
 		local sellPriceText = controller:FindFirstChild("SellPriceText") :: TextLabel?
@@ -136,6 +137,18 @@ function AttachInfoUIToModel(targetParent: Instance, adornee: BasePart, configId
 			nameLabel.Text = data.name_t or ""
 			if qualityCfg then
 				nameLabel.TextColor3 = qualityCfg.textColor
+			end
+		end
+		if qualityLabel then
+			local qualityTextName = GameConfig.BrainrotQualityTextMap[quality]
+			local qualityTextData = if qualityTextName then ((GameTexts :: any)[qualityTextName] :: { source: string, key: string }?) else nil
+			if qualityTextData then
+				TranslationTool.CustomAutoLocalizeTextLabel(qualityLabel, qualityTextData.source, qualityTextData.key, {})
+			else
+				TranslationTool.CustomAutoLocalizeTextLabel(qualityLabel, "", "", {})
+			end
+			if qualityCfg then
+				qualityLabel.TextColor3 = qualityCfg.textColor
 			end
 		end
 		if levelText then

@@ -339,6 +339,18 @@ GameConfig.BrainrotQualityConfig = {
 		textColor = Color3.fromRGB(240, 230, 140),
 	},
 }
+
+GameConfig.BrainrotQualityTextMap = {
+	[1] = "QualityCommon",
+	[2] = "QualityUncommon",
+	[3] = "QualityRare",
+	[4] = "QualityEpic",
+	[5] = "QualityLegendary",
+	[6] = "QualityMythical",
+	[7] = "QualityCosmic",
+	[8] = "QualitySecret",
+	[9] = "QualityCelestial",
+}
 --=========================================
 -- 抓模型 (Catch Model) 核心数值配置
 --=========================================
