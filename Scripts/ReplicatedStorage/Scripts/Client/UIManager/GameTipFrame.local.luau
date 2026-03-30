@@ -135,6 +135,26 @@ end
 --TopTipText
 local topTipText: TextLabel? = gameTipFrame:FindFirstChild("TopTipText") :: TextLabel
 local topTipFadeCoroutine: thread?
+
+local EARTHQUAKE_WARNING_COLOR = Color3.fromRGB(255, 210, 0)
+local EARTHQUAKE_DANGER_COLOR = Color3.fromRGB(255, 60, 60)
+
+local countdownText: TextLabel? = gameTipFrame:FindFirstChild("CountdownText") :: TextLabel
+if countdownText == nil and topTipText ~= nil then
+	local label = Instance.new("TextLabel")
+	label.Name = "CountdownText"
+	label.AnchorPoint = Vector2.new(0.5, 0.5)
+	label.Size = UDim2.new(0, 140, 0, 80)
+	label.Position = UDim2.new(0.5, 0, 0.4, 0)
+	label.BackgroundTransparency = 1
+	label.TextScaled = true
+	label.Font = Enum.Font.GothamBold
+	label.TextColor3 = EARTHQUAKE_WARNING_COLOR
+	label.Text = ""
+	label.Visible = false
+	label.Parent = gameTipFrame
+	countdownText = label
+end
 local function PlayPopTween(ui: ImageLabel, popTime: number, maxScale: number, hideOnMax: boolean)
 	ui.ImageTransparency = 0
 	ui.Visible = true
@@ -392,6 +412,49 @@ local function OnShowRescuePopup()
 	end)
 end
 
+local function OnEarthquakeUiUpdate(phase: string, countdownSeconds: number?)
+	if not topTipText then
+		return
+	end
+	if topTipFadeCoroutine then
+		coroutine.close(topTipFadeCoroutine)
+		topTipFadeCoroutine = nil
+	end
+	topTipText.TextTransparency = 0
+	local topStroke = topTipText:FindFirstChild("UIStroke") :: UIStroke?
+	if topStroke then
+		topStroke.Transparency = 0
+	end
+	if phase == "warning" then
+		topTipText.Visible = true
+		TranslationTool.CustomAutoLocalizeTextLabel(topTipText, GameTexts.EarthquakeImminent.source, GameTexts.EarthquakeImminent.key, {})
+		topTipText.TextColor3 = EARTHQUAKE_WARNING_COLOR
+		if countdownText then
+			countdownText.Visible = true
+			if type(countdownSeconds) == "number" then
+				countdownText.Text = tostring(countdownSeconds)
+			end
+			countdownText.TextColor3 = EARTHQUAKE_WARNING_COLOR
+		end
+	elseif phase == "active" then
+		topTipText.Visible = true
+		TranslationTool.CustomAutoLocalizeTextLabel(topTipText, GameTexts.EarthquakeActive.source, GameTexts.EarthquakeActive.key, {})
+		topTipText.TextColor3 = EARTHQUAKE_DANGER_COLOR
+		if countdownText then
+			countdownText.Visible = true
+			if type(countdownSeconds) == "number" then
+				countdownText.Text = tostring(countdownSeconds)
+			end
+			countdownText.TextColor3 = EARTHQUAKE_DANGER_COLOR
+		end
+	elseif phase == "hide" then
+		topTipText.Visible = false
+		if countdownText then
+			countdownText.Visible = false
+		end
+	end
+end
+
 local function OnShowTopTipText(textSource: string, color: Color3, duration: number, args: {string}?, key: string?)
 	if not topTipText then return end
 	if topTipFadeCoroutine then
@@ -430,5 +493,6 @@ ClientMsg.ConnectShowAddRewardsTip(OnShowAddRewardsTip)
 ClientMsg.ConnectShowGiftConfirmPopup(OnShowGiftConfirmPopup)
 ClientMsg.ConnectShowGiftRequestPopup(OnShowGiftRequestPopup)
 ClientMsg.ConnectShowTopTipText(OnShowTopTipText)
+ClientMsg.ConnectEarthquakeUiUpdate(OnEarthquakeUiUpdate)
 ClientMsg.ConnectShowRescuePopup(OnShowRescuePopup)
 --ClientMsg.ConnectShowRewardFrame(OnShowRewardFrame)

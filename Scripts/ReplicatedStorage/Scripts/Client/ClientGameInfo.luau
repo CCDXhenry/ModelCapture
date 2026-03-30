@@ -149,7 +149,7 @@ function ClientGameInfo.UpdateAllPlayersModelYields(allYields: { [string]: { [st
 		end
 	end
 	ClientMsg.FireAllPlayersModelYieldsUpdate(allYields)
-	print("[ClientGameInfo] All players model yields updated and signal fired")
+	--print("[ClientGameInfo] All players model yields updated and signal fired")
 end
 
 --更新自己或其他玩家的房屋信息

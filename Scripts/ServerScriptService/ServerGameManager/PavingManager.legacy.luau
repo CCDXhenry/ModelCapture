@@ -146,13 +146,16 @@ local function GetBrickFromPool(): Part
 	return part
 end
 
--- 辅助函数：归还砖块到对象池
+-- 辅助函数：归还砖块到对象池（安全版本：防止误删替代砖块的网格条目）
 local function ReturnBrickToPool(brick: Part)
 	local key = GetPosKey(brick.Position)
-	activeBricksGrid[key] = nil -- 清理空间字典
+	if activeBricksGrid[key] == brick then
+		activeBricksGrid[key] = nil
+	end
 	activeBricks[brick] = nil
 	brick.Parent = nil
 	brick:SetAttribute("IsGhost", nil)
+	brick:SetAttribute("EarthquakeDropped", nil)
 	table.insert(brickPool, brick)
 end
 
@@ -291,8 +294,8 @@ local function OnRequestPlaceBrickBatch(player: Player, positions: any)
 			continue
 		end
 
-		-- 仅当砖块底面四角均落在 FloatBlock 上方时才禁铺
-		if IsEntireBrickFootprintOverFloatBlock(position) then
+		-- 仅当砖块底面四角均落在 FloatBlock 上方时才禁铺（预警～地震结束期间允许在 FloatBlock 上铺砖自救）
+		if workspace:GetAttribute("EarthquakeRescuePaving") ~= true and IsEntireBrickFootprintOverFloatBlock(position) then
 			continue
 		end
 
@@ -388,4 +391,18 @@ NetMsg.ConnectRequestPlaceBrickBatch(OnRequestPlaceBrickBatch)
 runService.Heartbeat:Connect(OnHeartbeat)
 players.PlayerRemoving:Connect(OnPlayerRemoving)
 
-return {}
+local function OnEarthquakeDropBrick(brick: Part)
+	local key = GetPosKey(brick.Position)
+	if activeBricksGrid[key] == brick then
+		activeBricksGrid[key] = nil
+	end
+	activeBricks[brick] = nil
+end
+
+local function ReleaseBrickAfterEarthquake(brick: Part)
+	ReturnBrickToPool(brick)
+end
+
+local PavingEarthquakeBridge = require(serverScripts:WaitForChild("PavingEarthquakeBridge"))
+PavingEarthquakeBridge.RegisterReleasePavedBrickAfterEarthquake(ReleaseBrickAfterEarthquake)
+PavingEarthquakeBridge.RegisterOnEarthquakeDropBrick(OnEarthquakeDropBrick)

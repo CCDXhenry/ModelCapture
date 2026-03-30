@@ -49,6 +49,12 @@ local notifyChestOpenResultEvent: RemoteEvent = remoteEventsFolder:FindFirstChil
 local requestRebirthEvent: RemoteEvent = remoteEventsFolder:FindFirstChild("RequestRebirth") :: RemoteEvent
 local requestPaidRebirthEvent: RemoteEvent = remoteEventsFolder:FindFirstChild("RequestPaidRebirth") :: RemoteEvent
 
+-- Earthquake
+local notifyEarthquakeStateEvent: RemoteEvent = remoteEventsFolder:FindFirstChild("NotifyEarthquakeState") :: RemoteEvent
+local notifyEarthquakeJudgeDropEvent: RemoteEvent = remoteEventsFolder:FindFirstChild("NotifyEarthquakeJudgeDrop") :: RemoteEvent
+local notifyEarthquakeRecoverEvent: RemoteEvent = remoteEventsFolder:FindFirstChild("NotifyEarthquakeRecover") :: RemoteEvent
+local notifyEarthquakeWarningEvent: RemoteEvent = remoteEventsFolder:FindFirstChild("NotifyEarthquakeWarning") :: RemoteEvent
+
 --客户端请求设置背景音乐音量
 function NetMsg.FireRequestSetBGMVolume(volume: number)
 	requestSetBGMVolumeEvent:FireServer(volume)
@@ -134,7 +140,7 @@ end
 
 -- 客户端请求批量放置砖块 (跑酷)
 function NetMsg.FireRequestPlaceBrickBatch(positions: { Vector3 })
-	print("[NetMsg] FireRequestPlaceBrickBatch with", #positions, "points")
+	--print("[NetMsg] FireRequestPlaceBrickBatch with", #positions, "points")
 	requestPlaceBrickBatchEvent:FireServer(positions)
 end
 function NetMsg.ConnectRequestPlaceBrickBatch(callback: (player: Player, positions: { Vector3 }) -> ())
@@ -390,6 +396,75 @@ end
 
 function NetMsg.ConnectRequestPaidRebirth(callback: (player: Player) -> ())
 	requestPaidRebirthEvent.OnServerEvent:Connect(callback)
+end
+
+-- 服务端广播地震开始/结束状态
+function NetMsg.FireNotifyEarthquakeState(earthquakeId: number, isStart: boolean, duration: number, judgeCount: number)
+	notifyEarthquakeStateEvent:FireAllClients(earthquakeId, isStart, duration, judgeCount)
+end
+
+function NetMsg.FireNotifyEarthquakeStateToPlayer(
+	player: Player,
+	earthquakeId: number,
+	isStart: boolean,
+	duration: number,
+	judgeCount: number
+)
+	notifyEarthquakeStateEvent:FireClient(player, earthquakeId, isStart, duration, judgeCount)
+end
+
+function NetMsg.ConnectNotifyEarthquakeState(callback: (earthquakeId: number, isStart: boolean, duration: number, judgeCount: number) -> ())
+	notifyEarthquakeStateEvent.OnClientEvent:Connect(callback)
+end
+
+-- 服务端广播地震预警（距开始剩余秒数）
+function NetMsg.FireNotifyEarthquakeWarning(earthquakeId: number, secondsUntilStart: number)
+	notifyEarthquakeWarningEvent:FireAllClients(earthquakeId, secondsUntilStart)
+end
+
+function NetMsg.FireNotifyEarthquakeWarningToPlayer(player: Player, earthquakeId: number, secondsUntilStart: number)
+	notifyEarthquakeWarningEvent:FireClient(player, earthquakeId, secondsUntilStart)
+end
+
+function NetMsg.ConnectNotifyEarthquakeWarning(callback: (earthquakeId: number, secondsUntilStart: number) -> ())
+	notifyEarthquakeWarningEvent.OnClientEvent:Connect(callback)
+end
+
+-- 服务端广播本轮判定掉落结果
+function NetMsg.FireNotifyEarthquakeJudgeDrop(
+	earthquakeId: number,
+	judgeIndex: number,
+	droppedFloatBlocks: { any },
+	droppedPavedBricks: { any }
+)
+	notifyEarthquakeJudgeDropEvent:FireAllClients(earthquakeId, judgeIndex, droppedFloatBlocks, droppedPavedBricks)
+end
+
+function NetMsg.FireNotifyEarthquakeJudgeDropToPlayer(
+	player: Player,
+	earthquakeId: number,
+	judgeIndex: number,
+	droppedFloatBlocks: { any },
+	droppedPavedBricks: { any }
+)
+	notifyEarthquakeJudgeDropEvent:FireClient(player, earthquakeId, judgeIndex, droppedFloatBlocks, droppedPavedBricks)
+end
+
+function NetMsg.ConnectNotifyEarthquakeJudgeDrop(
+	callback: (earthquakeId: number, judgeIndex: number, droppedFloatBlocks: { any }, droppedPavedBricks: { any }) -> ()
+)
+	notifyEarthquakeJudgeDropEvent.OnClientEvent:Connect(callback)
+end
+
+-- 服务端广播地震回浮结果
+function NetMsg.FireNotifyEarthquakeRecover(earthquakeId: number, recoverFloatBlocks: { any }, recoverPavedBricks: { any })
+	notifyEarthquakeRecoverEvent:FireAllClients(earthquakeId, recoverFloatBlocks, recoverPavedBricks)
+end
+
+function NetMsg.ConnectNotifyEarthquakeRecover(
+	callback: (earthquakeId: number, recoverFloatBlocks: { any }, recoverPavedBricks: { any }) -> ()
+)
+	notifyEarthquakeRecoverEvent.OnClientEvent:Connect(callback)
 end
 
 return NetMsg

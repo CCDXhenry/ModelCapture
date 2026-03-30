@@ -21,6 +21,7 @@ local ShopClientManager = require(clientScripts:WaitForChild("ShopClientManager"
 local PlayerInteractClientManager = require(clientScripts:WaitForChild("PlayerInteractClientManager"))
 local BrainrotClientManager = require(clientScripts:WaitForChild("BrainrotClientManager"))
 local CoilClientManager = require(clientScripts:WaitForChild("CoilClientManager"))
+local EarthquakeClientManager = require(clientScripts:WaitForChild("EarthquakeClientManager"))
 local starterGui: StarterGui = game:GetService("StarterGui")
 local contentProvider: ContentProvider = game:GetService("ContentProvider")
 local modelOriginsFolder: Folder? = replicatedStorage:FindFirstChild("Models") :: Folder?
@@ -67,6 +68,7 @@ local function InitUI()
 	PlayerInteractClientManager.Init()
 	BrainrotClientManager.Init()
 	CoilClientManager.Init()
+	EarthquakeClientManager.Init()
 	-- 初始化背包输入控制
 	local BackpackInputManager = require(clientScripts:WaitForChild("BackpackInputManager"))
 	BackpackInputManager.Init()

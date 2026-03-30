@@ -45,5 +45,7 @@ local GameTexts = {
 	QualityCosmic = { key = "", source = "Cosmic" },
 	QualitySecret = { key = "", source = "Secret" },
 	QualityCelestial = { key = "", source = "Celestial" },
+	EarthquakeImminent = { key = "", source = "Earthquake imminent" },
+	EarthquakeActive = { key = "", source = "Earthquake in progress" },
 }
 return GameTexts

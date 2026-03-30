@@ -161,7 +161,7 @@ local function CreateToolForItem(player: Player, item: GameConfig.BrainrotQueueI
 
 	if tool then
 		tool.Parent = player.Backpack
-		print("[BrainrotQueueManager] Created Tool for uid:", item.uid, "name:", tool.Name)
+		--print("[BrainrotQueueManager] Created Tool for uid:", item.uid, "name:", tool.Name)
 	end
 	return tool
 end

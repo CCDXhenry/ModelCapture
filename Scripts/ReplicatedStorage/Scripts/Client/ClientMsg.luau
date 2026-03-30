@@ -5,7 +5,7 @@ local replicatedStorage: ReplicatedStorage = game:GetService("ReplicatedStorage"
 local scripts = replicatedStorage:WaitForChild("Scripts")
 local sharedScripts = scripts:WaitForChild("Shared")
 local GameConfig = require(sharedScripts:FindFirstChild("GameConfig"))
-local bindableEventsFolder: Folder = replicatedStorage:FindFirstChild("BindableEvents") :: Folder
+local bindableEventsFolder: Folder = replicatedStorage:WaitForChild("BindableEvents") :: Folder
 local closeWindowEvent: BindableEvent = bindableEventsFolder:FindFirstChild("CloseWindow") :: BindableEvent
 local localPlayerInfoInitEvent: BindableEvent = bindableEventsFolder:FindFirstChild("LocalPlayerInfoInit") :: BindableEvent
 local otherPlayerInfoInitEvent: BindableEvent = bindableEventsFolder:FindFirstChild("OtherPlayerInfoInit") :: BindableEvent
@@ -27,6 +27,7 @@ local showTopTipTextEvent: BindableEvent = bindableEventsFolder:FindFirstChild("
 local brainrotQueueUpdateEvent: BindableEvent = bindableEventsFolder:FindFirstChild("BrainrotQueueUpdate") :: BindableEvent
 local showRescuePopupEvent: BindableEvent = bindableEventsFolder:FindFirstChild("ShowRescuePopup") :: BindableEvent
 local resumeFallingEvent: BindableEvent = bindableEventsFolder:FindFirstChild("ResumeFalling") :: BindableEvent
+local earthquakeUiUpdateEvent: BindableEvent = bindableEventsFolder:FindFirstChild("EarthquakeUiUpdate") :: BindableEvent
 
 --关闭窗口事件
 function ClientMsg.FireCloseWindow(windowName: string)
@@ -172,6 +173,15 @@ end
 
 function ClientMsg.ConnectShowTopTipText(callback: (textSource: string, color: Color3, duration: number, args: {string}?, key: string?) -> ())
 	showTopTipTextEvent.Event:Connect(callback)
+end
+
+-- 地震 UI：phase 为 "warning" | "active" | "hide"；countdownSeconds 为预警距开始剩余秒数，或地震进行中剩余时长（秒）
+function ClientMsg.FireEarthquakeUiUpdate(phase: string, countdownSeconds: number?)
+	earthquakeUiUpdateEvent:Fire(phase, countdownSeconds)
+end
+
+function ClientMsg.ConnectEarthquakeUiUpdate(callback: (phase: string, countdownSeconds: number?) -> ())
+	earthquakeUiUpdateEvent.Event:Connect(callback)
 end
 
 -- Brainrot 背包队列更新

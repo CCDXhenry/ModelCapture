@@ -230,12 +230,49 @@ export type IslandData = {
 	rebirthCount: number,
 	brainrotGenerateCount: number,
 	littleElfChestGenerateCount: number,
+
+	-- 岛屿地震配置（从 GameConfig.Earthquake 拆分）
+	judgeCount: number?,
+	floatBlockDropCountJudge: number?,
+	pavedBrickDropCountJudge: number?,
+	dropRecoverDelayMin: number?,
+	dropRecoverDelayMax: number?,
 }
 
 local IslandConfigurationDataModule = require(script:FindFirstChild("IslandConfigurationData"))
 GameConfig.IslandConfigMap = {} :: { [number]: IslandData }
 for _, config in pairs(IslandConfigurationDataModule) do
 	GameConfig.IslandConfigMap[config.id] = config
+end
+
+--=========================================
+-- 岛屿地震配置（从 GameConfig.Earthquake 拆分）
+--=========================================
+export type IslandEarthquakeData = {
+	judgeCount: number,
+	floatBlockDropCountJudge: number,
+	pavedBrickDropCountJudge: number,
+	DropRecoverDelayMin: number,
+	DropRecoverDelayMax: number,
+}
+
+local DEFAULT_ISLAND_JUDGE_COUNT = 4
+local DEFAULT_FLOAT_BLOCK_DROP_COUNT_JUDGE = 1
+local DEFAULT_PAVED_BRICK_DROP_COUNT_JUDGE = 5
+local DEFAULT_DROP_RECOVER_DELAY_MIN = 2.5
+local DEFAULT_DROP_RECOVER_DELAY_MAX = 4.5
+
+GameConfig.IslandEarthquakeConfigMap = {} :: { [number]: IslandEarthquakeData }
+for islandId, islandData in pairs(GameConfig.IslandConfigMap) do
+	local anyIslandData = islandData :: any
+
+	GameConfig.IslandEarthquakeConfigMap[islandId] = {
+		judgeCount = anyIslandData.judgeCount or DEFAULT_ISLAND_JUDGE_COUNT,
+		floatBlockDropCountJudge = anyIslandData.floatBlockDropCountJudge or DEFAULT_FLOAT_BLOCK_DROP_COUNT_JUDGE,
+		pavedBrickDropCountJudge = anyIslandData.pavedBrickDropCountJudge or DEFAULT_PAVED_BRICK_DROP_COUNT_JUDGE,
+		DropRecoverDelayMin = anyIslandData.dropRecoverDelayMin or DEFAULT_DROP_RECOVER_DELAY_MIN,
+		DropRecoverDelayMax = anyIslandData.dropRecoverDelayMax or DEFAULT_DROP_RECOVER_DELAY_MAX,
+	}
 end
 
 -- 岛屿刷怪配置
@@ -373,6 +410,29 @@ GameConfig.Paving = {
 	StationaryRenewalThreshold = 0.7, -- 剩余寿命低于 70% 时才允许原地续期
 	StationaryRenewalInterval = 0.2, -- 原地续期检测间隔 (加快响应)
 	RebirthProductId = 3562550008, -- 付费重生产品ID
+}
+
+-- 地震系统配置
+GameConfig.Earthquake = {
+	IntervalMin = 10, -- 两次地震最短间隔
+	IntervalMax = 12, -- 两次地震最长间隔
+	Duration = 12, -- 单次地震总时长
+	CooldownAfterEnd = 2, -- 地震结束后冷却
+	MinPlayersToTrigger = 1, -- 最少在线人数
+
+	-- 客户端表现参数
+	IntenseShakeAmplitude = 0.45, -- 强烈抖动振幅
+	IntenseShakeFrequency = 24, -- 强烈抖动频率
+	PreFallIntenseDuration = 0.4, -- 掉落前强抖时长
+	FallDuration = 0.45, -- 下落时长
+	RiseDuration = 1.15, -- 回浮时长
+	FallOffsetY = 26, -- 下沉高度（海平面以下）
+	WarningSeconds = 5, -- 地震来临前预警时长（秒）
+	-- 玩家砖震落后销毁延迟（应与客户端强抖+下落总时长接近）
+	PavedBrickDestroyDelayAfterDrop = 1.15,
+	-- 地震时本地镜头抖动（CameraOffset，避免移动锚固平台导致与服务器物理不同步穿模）
+	ScreenShakeAmplitude = 0.42,
+	ScreenShakeFrequency = 15,
 }
 
 -- 2. 模型与收益逻辑 (已废弃 GameConfig.Models，现在由 BrainrotData.json 驱动)
