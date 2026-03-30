@@ -22,11 +22,16 @@ local PlayerInteractClientManager = require(clientScripts:WaitForChild("PlayerIn
 local BrainrotClientManager = require(clientScripts:WaitForChild("BrainrotClientManager"))
 local CoilClientManager = require(clientScripts:WaitForChild("CoilClientManager"))
 local starterGui: StarterGui = game:GetService("StarterGui")
+local contentProvider: ContentProvider = game:GetService("ContentProvider")
+local modelOriginsFolder: Folder? = replicatedStorage:FindFirstChild("Models") :: Folder?
+local uiOriginsFolder: Folder? = replicatedStorage:FindFirstChild("UI") :: Folder?
+local soundOriginsFolder: Folder? = workspace:FindFirstChild("Sounds") :: Folder?
 
 local DesignScreenSize: Vector2 = Vector2.new(1920, 1080)
 local GameTipZIndex: number = 2000
 local soundsFolder: Folder = workspace:FindFirstChild("Sounds")
 local bgmSound: Sound = soundsFolder:FindFirstChild("BGM") :: Sound
+local PreloadAssets: () -> ()
 
 local function InitUI()
 	local playerGui: PlayerGui = players.LocalPlayer:WaitForChild("PlayerGui")
@@ -80,11 +85,149 @@ local function OnNotifyPlayerInfoInit(
 		SoundTool.SetSoundEffectVolume(localPlayerInfo.settingInfo.soundEffectVolume)
 	end
 	SoundTool.PlayBGM(bgmSound)
-	--初始化UI
+	-- 玩家信息就绪后初始化UI/系统
 	task.spawn(function()
 		InitUI()
 	end)
 end
+
+PreloadAssets = function()
+	local preloadStartTime = os.clock()
+	local assetList: { Instance } = {}
+	local meshMap: { [string]: boolean } = {}
+	local decalMap: { [string]: boolean } = {}
+	local imageMap: { [string]: boolean } = {}
+	local soundMap: { [string]: boolean } = {}
+	local animationMap: { [string]: boolean } = {}
+	local failedAssetList: { string } = {}
+	local folderList: { Instance } = {}
+	if modelOriginsFolder ~= nil then
+		table.insert(folderList, modelOriginsFolder)
+	end
+	if soundOriginsFolder ~= nil then
+		table.insert(folderList, soundOriginsFolder)
+	end
+	if uiOriginsFolder ~= nil then
+		table.insert(folderList, uiOriginsFolder)
+	end
+
+	local function AddMesh(meshId: string)
+		if meshId == "" or meshMap[meshId] ~= nil then
+			return
+		end
+		local specialMesh = Instance.new("SpecialMesh")
+		specialMesh.MeshId = meshId
+		table.insert(assetList, specialMesh)
+		meshMap[meshId] = true
+	end
+
+	local function AddDecal(textureId: string)
+		if textureId == "" or decalMap[textureId] ~= nil then
+			return
+		end
+		local decal = Instance.new("Decal")
+		decal.Texture = textureId
+		table.insert(assetList, decal)
+		decalMap[textureId] = true
+	end
+
+	local function AddImage(imageId: string)
+		if imageId == "" or imageMap[imageId] ~= nil then
+			return
+		end
+		local image = Instance.new("ImageLabel")
+		image.Image = imageId
+		table.insert(assetList, image)
+		imageMap[imageId] = true
+	end
+
+	local function AddSound(soundId: string)
+		if soundId == "" or soundMap[soundId] ~= nil then
+			return
+		end
+		local sound = Instance.new("Sound")
+		sound.SoundId = soundId
+		table.insert(assetList, sound)
+		soundMap[soundId] = true
+	end
+
+	local function AddAnimation(animationId: string)
+		if animationId == "" or animationMap[animationId] ~= nil then
+			return
+		end
+		local animation = Instance.new("Animation")
+		animation.AnimationId = animationId
+		table.insert(assetList, animation)
+		animationMap[animationId] = true
+	end
+
+	for _, folder: Instance in folderList do
+		for _, descendant: Instance in folder:GetDescendants() do
+			if descendant:IsA("MeshPart") then
+				AddMesh(descendant.MeshId)
+				AddDecal(descendant.TextureID)
+			elseif descendant:IsA("SpecialMesh") then
+				AddMesh(descendant.MeshId)
+				AddDecal(descendant.TextureId)
+			elseif descendant:IsA("Decal") then
+				AddDecal(descendant.Texture)
+			elseif descendant:IsA("Texture") then
+				AddDecal(descendant.Texture)
+			elseif descendant:IsA("Sound") then
+				AddSound(descendant.SoundId)
+			elseif descendant:IsA("Animation") then
+				AddAnimation(descendant.AnimationId)
+			elseif descendant:IsA("ParticleEmitter") then
+				AddDecal(descendant.Texture)
+			elseif descendant:IsA("Beam") then
+				AddDecal(descendant.Texture)
+			elseif descendant:IsA("ImageLabel") then
+				AddImage(descendant.Image)
+			elseif descendant:IsA("ImageButton") then
+				AddImage(descendant.Image)
+			end
+		end
+	end
+	--预加载GameConfig图片资源
+	local otherImageList: { string } = {}
+	table.insert(otherImageList, GameConfig.CoinIconImage)
+	table.insert(otherImageList, GameConfig.RbImage)
+
+	for _, otherImage: string in otherImageList do
+		AddImage(otherImage)
+	end
+
+	print(string.format("[ClientGameManager] PreloadAssets start. candidates=%d", #assetList))
+	local preloadSuccess, preloadErr = pcall(function()
+		contentProvider:PreloadAsync(assetList, function(assetId: string, assetFetchStatus: Enum.AssetFetchStatus)
+			if assetFetchStatus ~= Enum.AssetFetchStatus.Success then
+				table.insert(failedAssetList, assetId)
+				warn("[ClientGameManager] LoadAssetResult", assetId, assetFetchStatus)
+			end
+		end)
+	end)
+
+	if not preloadSuccess then
+		warn("[ClientGameManager] PreloadAssets failed:", preloadErr)
+	end
+
+	for _, instance: Instance in assetList do
+		instance:Destroy()
+	end
+	table.clear(assetList)
+
+	local elapsedTime = os.clock() - preloadStartTime
+	print(string.format(
+		"[ClientGameManager] PreloadAssets complete. failed=%d elapsed=%.2fs",
+		#failedAssetList,
+		elapsedTime
+	))
+	if #failedAssetList > 0 then
+		print(string.format("[ClientGameManager] PreloadAssets failed sample=%s", tostring(failedAssetList[1])))
+	end
+	table.clear(failedAssetList)
+end
+
 
 local function OnNotifyPlayersOtherPlayerInfoInit(playerId: number, otherPlayerSaveInfo: GameConfig.ClientOtherPlayerSyncInfo)
 	if playerId ~= players.LocalPlayer.UserId then
@@ -137,4 +280,9 @@ end)
 -- 监听网络层出的游戏提示
 NetMsg.ConnectNotifyShowGameTip(function(tipContentSource, tweenType, tipContentKey, tipContentArgs, textColor)
 	ClientMsg.FireShowGameTip(tipContentSource, tweenType, tipContentKey, tipContentArgs, textColor)
+end)
+
+-- 客户端启动时立即异步预加载资源，不阻塞初始化流程
+task.spawn(function()
+	PreloadAssets()
 end)

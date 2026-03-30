@@ -24,6 +24,7 @@ local GameTexts = require(sharedScripts:WaitForChild("GameTexts"))
 local NetMsg = require(sharedScripts:WaitForChild("NetMsg"))
 local TranslationTool = require(coreClientScripts:WaitForChild("TranslationTool"))
 local BillboardManager = require(scripts:WaitForChild("Client"):WaitForChild("BillboardManager"))
+local ModelBillboardOffsetTool = require(scripts:WaitForChild("Client"):WaitForChild("ModelBillboardOffsetTool"))
 local NumberExtension = require(coreSharedScripts:WaitForChild("NumberExtension"))
 local LittleElfChestOpenAnimationManager = require(scripts:WaitForChild("Client"):WaitForChild("LittleElfChestOpenAnimationManager"))
 
@@ -83,25 +84,44 @@ local function SetupVisualBrainrot(targetPart: BasePart)
 			part.Massless = true
 			part.CanTouch = false
 			part.CanQuery = false
+		elseif part:IsA("WeldConstraint") then
+			local weldConstraintAny = part :: any
+			local isInvalid = weldConstraintAny.Part0 == nil or weldConstraintAny.Part1 == nil
+			local isAuto = part.Name == "AutoWeldConstraint"
+			if isInvalid or isAuto then
+				part:Destroy()
+			end
+		elseif part:IsA("Weld") then
+			local weldAny = part :: any
+			local isInvalid = weldAny.Part0 == nil or weldAny.Part1 == nil
+			local isAuto = part.Name == "AutoWeld" or part.Name == "AutoWeld_ComponentBridge" or part.Name == "AutoWeld_RootBridge"
+			if isInvalid or isAuto then
+				part:Destroy()
+			end
 		end
 	end
 
-	local rootPart = newVisual.PrimaryPart or newVisual:FindFirstChild("RootPart") or newVisual:FindFirstChildWhichIsA("BasePart")
-	if rootPart and rootPart:IsA("BasePart") then
-		local weld = Instance.new("WeldConstraint")
+	local rootPart = (newVisual.PrimaryPart or newVisual:FindFirstChild("RootPart") or newVisual:FindFirstChildWhichIsA("BasePart")) :: BasePart?
+	local attachPart = (newVisual:FindFirstChild("FakeRootPart") or rootPart) :: BasePart?
+	if rootPart and attachPart then
+		local weld = Instance.new("Weld")
+		weld.Name = "IslandVisualWeld"
 		weld.Part0 = targetPart
-		weld.Part1 = rootPart
-		weld.Parent = newVisual
+		weld.Part1 = attachPart
+		-- 显式固化当前相对位姿，兼容不同骨架中心点（RootPart/FakeRootPart）
+		weld.C0 = targetPart.CFrame:ToObjectSpace(attachPart.CFrame)
+		weld.C1 = CFrame.new()
+		weld.Parent = targetPart
 	end
 
 	newVisual.Parent = targetPart
 
 	local level = (targetPart:GetAttribute("Level") :: number) or 1
-	AttachInfoUIToModel(targetPart, targetPart :: BasePart, configId, level, data.quality or 1, newVisual:GetExtentsSize().Y)
+	AttachInfoUIToModel(targetPart, targetPart :: BasePart, configId, level, data.quality or 1, newVisual)
 end
 
 -- Attach UI
-function AttachInfoUIToModel(targetParent: Instance, adornee: BasePart, configId: number, level: number, quality: number, visualModelHeight: number)
+function AttachInfoUIToModel(targetParent: Instance, adornee: BasePart, configId: number, level: number, quality: number, visualModel: Model?)
 	if targetParent:FindFirstChild("BrainrotInfoUI") or targetParent:FindFirstChild("LittleElfChestInfoUI") then
 		return
 	end
@@ -120,7 +140,6 @@ function AttachInfoUIToModel(targetParent: Instance, adornee: BasePart, configId
 
 	local newBrainrotUI = if itemType == GameConfig.ItemType.LittleElfChest then littleElfChestInfoUIParams:Clone() else brainrotInfoUIParams:Clone()
 	newBrainrotUI.Adornee = adornee
-	--newBrainrotUI.ExtentsOffsetWorldSpace = Vector3.new(0, visualModelHeight + 1.2, 0)
 	newBrainrotUI.Name = if itemType == GameConfig.ItemType.LittleElfChest then "LittleElfChestInfoUI" else "BrainrotInfoUI"
 
 	local controller = newBrainrotUI:FindFirstChild("Controller") or newBrainrotUI:FindFirstChild("ControllerFrame")
@@ -178,7 +197,8 @@ function AttachInfoUIToModel(targetParent: Instance, adornee: BasePart, configId
 		end
 	end
 
-	newBrainrotUI.StudsOffset = Vector3.new(0, visualModelHeight + 1, 0)
+	local offsetY = if visualModel then ModelBillboardOffsetTool.GetVisualOffsetY(visualModel, adornee) else 2
+	newBrainrotUI.StudsOffset = Vector3.new(0, offsetY, 0)
 	newBrainrotUI.Adornee = adornee
 	newBrainrotUI.Parent = targetParent
 	BillboardManager.Track(newBrainrotUI)
@@ -201,7 +221,7 @@ local function ProcessDescendantAdded(descendant: Instance)
 					configId,
 					level,
 					quality,
-					visualModel:GetExtentsSize().Y
+					visualModel
 				)
 			end
 		end
@@ -316,14 +336,6 @@ local function OnNotifyChestOpenResult(uid: string, chestConfigId: number, chest
 end
 
 function BrainrotClientManager.Init()
-	local isWelded = replicatedStorage:FindFirstChild("BrainrotModelsWelded")
-	if not isWelded then
-		isWelded = replicatedStorage:WaitForChild("BrainrotModelsWelded", 10)
-	end
-	if isWelded and not (isWelded :: BoolValue).Value then
-		(isWelded :: BoolValue):GetPropertyChangedSignal("Value"):Wait()
-	end
-
 	-- Listen on islands
 	islandsFolder.DescendantAdded:Connect(ProcessDescendantAdded)
 	for _, desc in ipairs(islandsFolder:GetDescendants()) do

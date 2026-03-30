@@ -22,6 +22,7 @@ local BrainrotCarryingManager = require(serverScripts:FindFirstChild("BrainrotCa
 
 local BrainrotIslandManager = {}
 local rng = Random.new()
+local SpawnFacingRandomOffsetMaxDeg = 360
 
 -- Forward declaration
 local StartCarryingBrainrot
@@ -479,9 +480,11 @@ local function SpawnOneBrainrotInternal(island: Instance, isChest: boolean): Bas
 	randomBrainrot:SetAttribute("HomeIslandName", island.Name)
 
 	local spawnPos = PickSpawnPositionWithSpacing(island, islandId)
+	local randomFacingOffsetDeg = rng:NextNumber(-SpawnFacingRandomOffsetMaxDeg, SpawnFacingRandomOffsetMaxDeg)
+	local spawnFacingCFrame = CFrame.new(spawnPos) * CFrame.Angles(0, math.rad(randomFacingOffsetDeg), 0)
 
 	local sizeY = 0
-	randomBrainrot.CFrame = CFrame.new(spawnPos)
+	randomBrainrot.CFrame = spawnFacingCFrame
 
 	randomBrainrot:SetAttribute("SpawnPos", spawnPos)
 	randomBrainrot:SetAttribute("SpawnSizeY", sizeY)
@@ -661,37 +664,6 @@ local function StartSpawnLoop()
 	end)
 end
 
-local function InitBrainrotModelsWelds()
-	local function WeldFolder(folder: Folder)
-		if not folder then return end
-		for _, model in ipairs(folder:GetChildren()) do
-			if model:IsA("Model") then
-				local root = model.PrimaryPart or model:FindFirstChild("RootPart") or model:FindFirstChildWhichIsA("BasePart")
-				if root and root:IsA("BasePart") then
-					model.PrimaryPart = root :: BasePart
-					for _, part in ipairs(model:GetDescendants()) do
-						if part:IsA("BasePart") and part ~= root then
-							-- Clear old welds just to be safe
-							for _, child in ipairs(part:GetChildren()) do
-								if child:IsA("WeldConstraint") or child:IsA("Weld") then
-									child:Destroy()
-								end
-							end
-							local weld = Instance.new("WeldConstraint")
-							weld.Part0 = root :: BasePart
-							weld.Part1 = part
-							weld.Parent = part
-						end
-					end
-				end
-			end
-		end
-	end
-
-	WeldFolder(actualModels)
-	WeldFolder(actualChests)
-end
-
 local function SetupGroundTrigger()
 	local groundFolder = workspace:FindFirstChild("Ground")
 	if not groundFolder then
@@ -725,17 +697,12 @@ local function SetupGroundTrigger()
 end
 
 function BrainrotIslandManager.Init()
-	InitBrainrotModelsWelds()
 	SetupGroundTrigger()
 
 	if not islandsFolder then
 		return
 	end
 
-	local isWelded = Instance.new("BoolValue")
-	isWelded.Name = "BrainrotModelsWelded"
-	isWelded.Value = true
-	isWelded.Parent = replicatedStorage
 	for _, island in ipairs(islandsFolder:GetChildren()) do
 		if island.Name:match("^Island%d+$") then
 			SetupIslandTeleport(island)

@@ -18,6 +18,7 @@ local GameTexts = require(sharedScripts:WaitForChild("GameTexts"))
 local NumberExtension = require(coreSharedScripts:WaitForChild("NumberExtension"))
 local TranslationTool = require(coreClientScripts:WaitForChild("TranslationTool"))
 local BillboardManager = require(clientScripts:WaitForChild("BillboardManager"))
+local ModelBillboardOffsetTool = require(clientScripts:WaitForChild("ModelBillboardOffsetTool"))
 
 local actualModels = replicatedStorage:WaitForChild("Models"):WaitForChild("Brainrots")
 local actualChests = replicatedStorage:WaitForChild("Models"):WaitForChild("LittleElfChests")
@@ -61,7 +62,7 @@ local function TweenModelScale(model: Model, fromScale: number, toScale: number,
 	end
 end
 
-local function CreateOrUpdateInfoUI(parentInstance: Instance, adornee: BasePart, brainrotId: number, level: number, modelHeight: number)
+local function CreateOrUpdateInfoUI(parentInstance: Instance, adornee: BasePart, brainrotId: number, level: number, model: Model?)
 	local brainrotData = GameConfig.BrainrotIdMap[brainrotId]
 	if not brainrotData then
 		return
@@ -80,7 +81,8 @@ local function CreateOrUpdateInfoUI(parentInstance: Instance, adornee: BasePart,
 		return
 	end
 	ui.Adornee = adornee
-	ui.StudsOffset = Vector3.new(0, modelHeight + 1, 0)
+	local offsetY = if model then ModelBillboardOffsetTool.GetVisualOffsetY(model, adornee, 1) else 2
+	ui.StudsOffset = Vector3.new(0, offsetY, 0)
 
 	local controller = ui:FindFirstChild("Controller")
 	if not controller then
@@ -304,7 +306,7 @@ local function PlayInWorld(uid: string, chestConfigId: number, chestLevel: numbe
 		if not displayModel or not displayRoot then
 			return
 		end
-		CreateOrUpdateInfoUI(container, displayRoot, brainrotId, chestLevel, displayModel:GetExtentsSize().Y)
+		CreateOrUpdateInfoUI(container, displayRoot, brainrotId, chestLevel, displayModel)
 		TweenModelScale(displayModel, TinyScale, 1, 0.14, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
 		if stayAsFinal then
 			TweenModelScale(displayModel, 1, 1.15, 0.22, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
@@ -392,7 +394,7 @@ function LittleElfChestOpenAnimationManager.Play(tool: Tool?, uid: string, chest
 				continue
 			end
 
-			CreateOrUpdateInfoUI(tool, root, randomId, chestLevel, showModel:GetExtentsSize().Y)
+			CreateOrUpdateInfoUI(tool, root, randomId, chestLevel, showModel)
 			TweenModelScale(showModel, TinyScale, 1, 0.14, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
 			task.wait(0.05)
 			TweenModelScale(showModel, 1, TinyScale, 0.1, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
@@ -402,7 +404,7 @@ function LittleElfChestOpenAnimationManager.Play(tool: Tool?, uid: string, chest
 		-- 最终定格模型
 		local finalModel, finalRoot = CreateDisplayModel(tool, finalBrainrotId)
 		if finalModel and finalRoot then
-			CreateOrUpdateInfoUI(tool, finalRoot, finalBrainrotId, chestLevel, finalModel:GetExtentsSize().Y)
+			CreateOrUpdateInfoUI(tool, finalRoot, finalBrainrotId, chestLevel, finalModel)
 			TweenModelScale(finalModel, TinyScale, 1.15, 0.22, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
 			TweenModelScale(finalModel, 1.15, 1, 0.1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 		end

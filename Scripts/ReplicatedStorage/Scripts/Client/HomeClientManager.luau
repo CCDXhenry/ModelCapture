@@ -18,6 +18,7 @@ local TranslationTool = require(coreScripts:WaitForChild("Client"):WaitForChild(
 local GameTexts = require(sharedScripts:FindFirstChild("GameTexts"))
 
 local BillboardManager = require(clientScripts:FindFirstChild("BillboardManager"))
+local ModelBillboardOffsetTool = require(clientScripts:FindFirstChild("ModelBillboardOffsetTool"))
 local NumberExtension = require(coreSharedScripts:FindFirstChild("NumberExtension"))
 
 local actualModels = replicatedStorage:WaitForChild("Models"):FindFirstChild("Brainrots")
@@ -152,6 +153,16 @@ local function RefreshLocalHomeInteractionFocus()
 			charPos = hrp.Position
 		else
 			charPos = char:GetPivot().Position
+		end
+	end
+
+	-- 额外：HomePart 仅作为定位锚点，任何情况下都隐藏（包含 InfoUI）
+	if charPos then
+		local upgradeHomeModel = slotModel:FindFirstChild("UpgradeHome") :: Model?
+		local homePart = upgradeHomeModel and upgradeHomeModel:FindFirstChild("HomePart") :: BasePart?
+		local infoUI = homePart and homePart:FindFirstChild("InfoUI") :: BillboardGui?
+		if infoUI then
+			infoUI.Enabled = false
 		end
 	end
 
@@ -701,10 +712,11 @@ local function UpdatePlot(folder: Instance, placedData: any?, isLocalPlayer: boo
 		local brainrotModelRoot = visualModel and visualModel:FindFirstChild("RootPart") :: BasePart?
 		local brainrotInfoUI = brainrotModelRoot and brainrotModelRoot:FindFirstChild("BrainrotInfoUI") :: BillboardGui?
 		if brainrotInfoUI and placedData then
+			local resolvedAdornee = brainrotModelRoot :: BasePart
 			brainrotInfoUI.Enabled = true
 
-			local visualModelHeight = if visualModel then (visualModel :: Model):GetExtentsSize().Y else 2
-			brainrotInfoUI.StudsOffset = Vector3.new(0, visualModelHeight + 0.5, 0)
+			local offsetY = if visualModel then ModelBillboardOffsetTool.GetVisualOffsetY(visualModel :: Model, resolvedAdornee, 0.5) else 2
+			brainrotInfoUI.StudsOffset = Vector3.new(0, offsetY, 0)
 
 			local controller = brainrotInfoUI:FindFirstChild("ControllerFrame")
 			local brainrotData = GameConfig.BrainrotIdMap[placedData.configId]
@@ -1095,6 +1107,15 @@ function UpdateHomeVisuals(slotName: string, homeInfo: any, isLocalPlayer: boole
 			SetVisuals(desc, isLocalPlayer, false)
 		end
 
+		-- HomePart 仅作为定位锚点，任何情况下都隐藏
+		local homePart = upgradeHomeModel:FindFirstChild("HomePart") :: BasePart?
+		if homePart then
+			homePart.Transparency = 1
+			homePart.CanCollide = false
+			homePart.CanQuery = false
+			homePart.CanTouch = false
+		end
+
 		local upgradePart = upgradeHomeModel:FindFirstChild("UpgradeHome") :: BasePart?
 		if upgradePart then
 			local upgradeUI: SurfaceGui? = upgradePart:FindFirstChild("UpgradeUI") :: SurfaceGui?
@@ -1321,14 +1342,6 @@ local function OnPromptTriggered(prompt: ProximityPrompt, player: Player)
 end
 
 function HomeClientManager.Init()
-	local isWelded = replicatedStorage:FindFirstChild("BrainrotModelsWelded")
-	if not isWelded then
-		isWelded = replicatedStorage:WaitForChild("BrainrotModelsWelded", 10)
-	end
-	if isWelded and not (isWelded :: BoolValue).Value then
-		(isWelded :: BoolValue):GetPropertyChangedSignal("Value"):Wait()
-	end
-
 	local function UpdateLocalHoldingBrainrotStatus()
 		local char = players.LocalPlayer.Character
 		local holding = false
