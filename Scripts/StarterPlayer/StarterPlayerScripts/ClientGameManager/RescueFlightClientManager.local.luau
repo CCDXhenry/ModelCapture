@@ -6,7 +6,6 @@ local replicatedStorage = game:GetService("ReplicatedStorage")
 local scripts = replicatedStorage:WaitForChild("Scripts")
 local sharedScripts = scripts:WaitForChild("Shared")
 local NetMsg = require(sharedScripts:FindFirstChild("NetMsg"))
-local GameConfig = require(sharedScripts:FindFirstChild("GameConfig"))
 
 local localPlayer = players.LocalPlayer
 local lastTouchedIsland: Instance? = nil
@@ -117,19 +116,9 @@ local function OnRescueStart()
 	if targetIsland then
 		islandPos = Vector3.zero
 		if targetIsland:IsA("Model") then
-			islandPos = targetIsland:GetPivot().Position
+			islandPos = targetIsland:GetPivot().Position + Vector3.new(0, 3, 0)
 		elseif targetIsland:IsA("BasePart") then
-			islandPos = targetIsland.Position
-		end
-		
-		local teleportPoint = targetIsland:FindFirstChild("TeleportPoint")
-		if teleportPoint and teleportPoint:IsA("Model") then
-			local ring = teleportPoint:FindFirstChild("Ring")
-			if ring and ring:IsA("BasePart") then
-				islandPos = ring.Position + Vector3.new(0, 3, 0)
-			else
-				islandPos = teleportPoint:GetPivot().Position + Vector3.new(0, 3, 0)
-			end
+			islandPos = targetIsland.Position + Vector3.new(0, 3, 0)
 		end
 		
 		-- Calculate fly time based on distance (Increasing overall speed)

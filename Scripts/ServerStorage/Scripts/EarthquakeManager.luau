@@ -32,12 +32,15 @@ local SEA_LEVEL = 0
 
 local earthquakeId = 0
 local isActive = false
+local earthquakeShakeActive = false
 local earthquakeStartTime = 0
 local earthquakeEndTime = 0
 local nextEarthquakeAt = 0
-local judgeIndex = 0
-local judgeCountMax = 0
-local nextJudgeAt = 0
+local executeDropsActive = false
+local executeQueue: { any } = {}
+local executeQueueIndex = 0
+local nextExecuteAt = 0
+local markedFloatRecoverDelayMap: { [BasePart]: { min: number, max: number } } = {}
 local warningIssued = false
 local warningEarthquakeId = 0
 
@@ -77,21 +80,6 @@ local function GetSeaLevel(): number
 	return 0
 end
 
-local function GetIslandFolderCenter(islandFolder: Folder): Vector3?
-	local sum = Vector3.zero
-	local n = 0
-	for _, desc in islandFolder:GetDescendants() do
-		if desc:IsA("BasePart") then
-			sum += desc.Position
-			n += 1
-		end
-	end
-	if n == 0 then
-		return nil
-	end
-	return sum / n
-end
-
 -- 实时扫描 FloatBlock，避免 Init 缓存遗漏后续生成的岛屿部件
 local function CollectFloatPartsByIsland(): { [string]: { BasePart } }
 	local map: { [string]: { BasePart } } = {}
@@ -114,23 +102,6 @@ local function CollectFloatPartsByIsland(): { [string]: { BasePart } }
 		end
 	end
 	return map
-end
-
-local function CollectPavedBricks(): { BasePart }
-	local result = {} :: { BasePart }
-	local folder = workspace:FindFirstChild("PavedBricks")
-	if not folder then
-		return result
-	end
-	for _, child in ipairs(folder:GetChildren()) do
-		if child:IsA("BasePart") and droppedStateMap[child] == nil then
-			if child:GetAttribute("IsGhost") ~= true then
-				SetPartGuid(child)
-				table.insert(result, child)
-			end
-		end
-	end
-	return result
 end
 
 local function ShuffleList<T>(list: { T })
@@ -167,6 +138,11 @@ local function DropPart(part: BasePart, kind: DropKind, now: number, floatRecove
 	if droppedStateMap[part] ~= nil then
 		return nil
 	end
+
+	-- 清除“标记颜色&抖动”状态：进入真正掉落流程后由客户端下落/断裂效果接管
+	part:SetAttribute("EarthquakeMarkedForDrop", nil)
+	part:SetAttribute("EarthquakeMarkedKind", nil)
+
 	local baseCFrame = part.CFrame
 	local resolveAt: number
 	if kind == "FloatBlock" then
@@ -296,109 +272,6 @@ local function ParseIslandIdFromName(islandFolderName: string): number
 	return if id then id else 1
 end
 
-local function ExecuteJudge(now: number, judgeIndexValue: number)
-	local floatFolder = workspace:FindFirstChild("FloatBlock") :: Folder?
-	local partsByIsland = CollectFloatPartsByIsland()
-
-	-- 预计算岛屿中心，用于 PavedBrick 归属
-	local islandEntries = {} :: { { islandId: number, center: Vector3 } }
-	if floatFolder then
-		for _, islandFolder in ipairs(floatFolder:GetChildren()) do
-			if islandFolder:IsA("Folder") then
-				local center = GetIslandFolderCenter(islandFolder :: Folder)
-				if center then
-					local name = islandFolder.Name
-					table.insert(islandEntries, { islandId = ParseIslandIdFromName(name), center = center })
-				end
-			end
-		end
-	end
-
-	local droppedFloatPayload = {} :: { any }
-	local droppedPavedPayload = {} :: { any }
-
-	-- 1) FloatBlock：每个岛按自己的 judgeCount 触发，掉落数量固定
-	for islandName, floatParts in pairs(partsByIsland) do
-		local islandId = ParseIslandIdFromName(islandName)
-		local islandCfg = GameConfig.IslandEarthquakeConfigMap[islandId]
-		if islandCfg and judgeIndexValue <= math.max(1, islandCfg.judgeCount) then
-			local dropCount = math.clamp(islandCfg.floatBlockDropCountJudge, 0, #floatParts)
-			local targets = PickRandomSubset(floatParts, dropCount)
-
-			for _, part in ipairs(targets) do
-				local payload = DropPart(part, "FloatBlock", now, islandCfg.DropRecoverDelayMin, islandCfg.DropRecoverDelayMax)
-				if payload ~= nil then
-					table.insert(droppedFloatPayload, payload)
-				end
-			end
-		end
-	end
-
-	-- 2) PavedBrick：按最近岛屿中心归属后，再用岛屿配置独立判定
-	local availablePaved = CollectPavedBricks()
-	if #availablePaved > 0 then
-		-- 兜底：无法推导岛屿中心时，退化为按 islandId=1 的配置掉落
-		if #islandEntries == 0 then
-			local islandCfg = GameConfig.IslandEarthquakeConfigMap[1]
-			if islandCfg and judgeIndexValue <= math.max(1, islandCfg.judgeCount) then
-				local dropCount = math.clamp(islandCfg.pavedBrickDropCountJudge, 0, #availablePaved)
-				local targets = PickRandomSubset(availablePaved, dropCount)
-				for _, part in ipairs(targets) do
-					local payload = DropPart(part, "PavedBrick", now)
-					if payload ~= nil then
-						table.insert(droppedPavedPayload, payload)
-					end
-				end
-			end
-		else
-			local pavedByIslandId = {} :: { [number]: { BasePart } }
-			for _, part in ipairs(availablePaved) do
-				local pos = part.Position
-				local bestId: number? = nil
-				local bestD2 = math.huge
-				for _, entry in ipairs(islandEntries) do
-					local d2 = (pos - entry.center).Magnitude ^ 2
-					if d2 < bestD2 then
-						bestD2 = d2
-						bestId = entry.islandId
-					end
-				end
-				if bestId ~= nil then
-					pavedByIslandId[bestId] = pavedByIslandId[bestId] or {}
-					table.insert(pavedByIslandId[bestId], part)
-				end
-			end
-
-			for islandId, list in pairs(pavedByIslandId) do
-				local islandCfg = GameConfig.IslandEarthquakeConfigMap[islandId]
-				if islandCfg and judgeIndexValue <= math.max(1, islandCfg.judgeCount) then
-					local dropCount = math.clamp(islandCfg.pavedBrickDropCountJudge, 0, #list)
-					local targets = PickRandomSubset(list, dropCount)
-					for _, part in ipairs(targets) do
-						local payload = DropPart(part, "PavedBrick", now)
-						if payload ~= nil then
-							table.insert(droppedPavedPayload, payload)
-						end
-					end
-				end
-			end
-		end
-	end
-
-	if #droppedFloatPayload > 0 or #droppedPavedPayload > 0 then
-		BroadcastDrop(earthquakeId, judgeIndexValue, droppedFloatPayload, droppedPavedPayload)
-	end
-
-	DebugLog(
-		"Judge",
-		judgeIndexValue,
-		"dropFloat=",
-		#droppedFloatPayload,
-		"dropPaved=",
-		#droppedPavedPayload
-	)
-end
-
 local function ScheduleNextEarthquake(now: number)
 	local minGap = GameConfig.Earthquake.IntervalMin
 	local maxGap = GameConfig.Earthquake.IntervalMax
@@ -413,47 +286,151 @@ local function StartEarthquake(now: number)
 	warningIssued = false
 	earthquakeId += 1
 	isActive = true
+	earthquakeShakeActive = true
+	executeDropsActive = false
+	table.clear(executeQueue)
+	executeQueueIndex = 0
+	nextExecuteAt = 0
+	for part in pairs(markedFloatRecoverDelayMap) do
+		markedFloatRecoverDelayMap[part] = nil
+	end
 	earthquakeStartTime = now
 	earthquakeEndTime = now + GameConfig.Earthquake.Duration
-	judgeIndex = 0
-
-	judgeCountMax = 1
-	for _, islandCfg in pairs(GameConfig.IslandEarthquakeConfigMap) do
-		judgeCountMax = math.max(judgeCountMax, math.max(1, islandCfg.judgeCount))
-	end
-	local judgeSpan = GameConfig.Earthquake.Duration / math.max(1, judgeCountMax)
-	nextJudgeAt = now + judgeSpan
-
 	workspace:SetAttribute("EarthquakeId", earthquakeId)
 	workspace:SetAttribute("EarthquakeActive", true)
 	workspace:SetAttribute("EarthquakeStartAt", earthquakeStartTime)
 	workspace:SetAttribute("EarthquakeEndAt", earthquakeEndTime)
-	NetMsg.FireNotifyEarthquakeState(earthquakeId, true, GameConfig.Earthquake.Duration, judgeCountMax)
-	DebugLog("Earthquake start id=", earthquakeId, "duration=", GameConfig.Earthquake.Duration, "judgeCount=", judgeCountMax)
-end
 
-local function EndEarthquake(now: number)
-	if not isActive then
-		return
+	-- 允许地震期间新铺的砖也进入“标记->结束后掉落”流程
+	workspace:SetAttribute("EarthquakeDropExecutionActive", false)
+	workspace:SetAttribute("EarthquakeMarkPavingActive", true)
+
+	-- 1) 标记 FloatBlock：地震开始时直接抽取一次
+	local partsByIsland = CollectFloatPartsByIsland()
+	for islandName, floatParts in pairs(partsByIsland) do
+		local islandId = ParseIslandIdFromName(islandName)
+		local islandCfg = GameConfig.IslandEarthquakeConfigMap[islandId]
+		if islandCfg then
+			local dropCount = math.clamp(islandCfg.floatBlockDropCountJudge or 0, 0, #floatParts)
+			local targets = PickRandomSubset(floatParts, dropCount)
+			for _, part in ipairs(targets) do
+				if part.Parent ~= nil then
+					part:SetAttribute("EarthquakeMarkedForDrop", true)
+					part:SetAttribute("EarthquakeMarkedKind", "FloatBlock")
+					markedFloatRecoverDelayMap[part] = {
+						min = islandCfg.DropRecoverDelayMin,
+						max = islandCfg.DropRecoverDelayMax,
+					}
+				end
+			end
+		end
 	end
-	isActive = false
-	workspace:SetAttribute("EarthquakeActive", false)
-	workspace:SetAttribute("EarthquakeRescuePaving", false)
-	NetMsg.FireNotifyEarthquakeState(earthquakeId, false, 0, 0)
-	DebugLog("Earthquake end id=", earthquakeId)
-	ScheduleNextEarthquake(now)
+
+	-- 2) 标记已经铺好的 PavedBrick：地震开始时全标记
+	local pavedFolder = workspace:FindFirstChild("PavedBricks") :: Folder?
+	if pavedFolder and pavedFolder:IsA("Folder") then
+		for _, child in ipairs(pavedFolder:GetChildren()) do
+			if child:IsA("BasePart") then
+				-- 若该砖仍处于上一轮掉落中，则跳过避免重复标记
+				if child:GetAttribute("EarthquakeDropped") ~= true then
+					child:SetAttribute("EarthquakeMarkedForDrop", true)
+					child:SetAttribute("EarthquakeMarkedKind", "PavedBrick")
+				end
+			end
+		end
+	end
+
+	NetMsg.FireNotifyEarthquakeState(earthquakeId, true, GameConfig.Earthquake.Duration, 1)
+	DebugLog("Earthquake start id=", earthquakeId, "duration=", GameConfig.Earthquake.Duration)
 end
 
 local function TickEarthquake(now: number)
 	if isActive then
-		local judgeSpan = GameConfig.Earthquake.Duration / math.max(1, judgeCountMax)
-		while judgeIndex < judgeCountMax and now >= nextJudgeAt do
-			judgeIndex += 1
-			ExecuteJudge(now, judgeIndex)
-			nextJudgeAt += judgeSpan
+		-- 地震抖动结束：开始执行掉落（含随机间隙顺序）
+		if earthquakeShakeActive and now >= earthquakeEndTime then
+			earthquakeShakeActive = false
+			workspace:SetAttribute("EarthquakeActive", false)
+			workspace:SetAttribute("EarthquakeRescuePaving", false)
+			workspace:SetAttribute("EarthquakeMarkPavingActive", false)
+			workspace:SetAttribute("EarthquakeDropExecutionActive", true)
+			NetMsg.FireNotifyEarthquakeState(earthquakeId, false, 0, 0)
+
+			-- 构建执行队列：已标记 FloatBlock + 全服已标记 PavedBrick
+			table.clear(executeQueue)
+			executeQueueIndex = 1
+
+			-- FloatBlock（起始时抽取并存储 recover delay）
+			for part, recoverDelay in pairs(markedFloatRecoverDelayMap) do
+				if part.Parent ~= nil and part:GetAttribute("EarthquakeMarkedForDrop") == true then
+					table.insert(executeQueue, {
+						kind = "FloatBlock" :: DropKind,
+						part = part,
+						recoverDelayMin = recoverDelay.min,
+						recoverDelayMax = recoverDelay.max,
+					})
+				end
+			end
+			-- 防止“标记->掉落队列”重复执行
+			for k in pairs(markedFloatRecoverDelayMap) do
+				markedFloatRecoverDelayMap[k] = nil
+			end
+
+			-- PavedBrick（地震期间新铺的砖也会被 PavingManager 打标）
+			local pavedFolder = workspace:FindFirstChild("PavedBricks") :: Folder?
+			if pavedFolder and pavedFolder:IsA("Folder") then
+				for _, child in ipairs(pavedFolder:GetChildren()) do
+					if child:IsA("BasePart") then
+						if child:GetAttribute("EarthquakeMarkedForDrop") == true and child:GetAttribute("EarthquakeMarkedKind") == "PavedBrick" then
+							table.insert(executeQueue, {
+								kind = "PavedBrick" :: DropKind,
+								part = child,
+							})
+						end
+					end
+				end
+			end
+
+			-- 保留随机顺序，但执行时机改为“固定总时窗内全部完成”
+			ShuffleList(executeQueue)
+			nextExecuteAt = now
+			executeDropsActive = true
 		end
-		if now >= earthquakeEndTime then
-			EndEarthquake(now)
+
+		-- 执行队列（1秒内全部执行完成，不再为每个块引入随机间隙）
+		if executeDropsActive then
+			local totalCount = math.max(1, #executeQueue)
+			local windowSeconds = math.max(0.05, GameConfig.Earthquake.DropExecuteWindowSeconds or 1.0)
+			local perDropInterval = windowSeconds / totalCount
+			while executeQueueIndex <= #executeQueue and now >= nextExecuteAt do
+				local entry = executeQueue[executeQueueIndex]
+				local part = entry.part :: BasePart
+				local kind = entry.kind :: DropKind
+
+				local payload
+				if kind == "FloatBlock" then
+					payload = DropPart(part, "FloatBlock", now, entry.recoverDelayMin, entry.recoverDelayMax)
+					if payload ~= nil then
+						BroadcastDrop(earthquakeId, executeQueueIndex, { payload }, {})
+					end
+				else
+					payload = DropPart(part, "PavedBrick", now)
+					if payload ~= nil then
+						BroadcastDrop(earthquakeId, executeQueueIndex, {}, { payload })
+					end
+				end
+
+				executeQueueIndex += 1
+				if executeQueueIndex <= #executeQueue then
+					nextExecuteAt += perDropInterval
+				end
+			end
+
+			if executeQueueIndex > #executeQueue then
+				executeDropsActive = false
+				isActive = false
+				workspace:SetAttribute("EarthquakeDropExecutionActive", false)
+				ScheduleNextEarthquake(now)
+			end
 		end
 		return
 	end
@@ -477,11 +454,16 @@ end
 local function SyncEarthquakeStateForPlayer(player: Player)
 	local nowClock = os.clock()
 	if isActive then
-		local durationLeft = math.max(0, earthquakeEndTime - nowClock)
-		NetMsg.FireNotifyEarthquakeStateToPlayer(player, earthquakeId, true, durationLeft, math.max(1, judgeCountMax))
+		if earthquakeShakeActive then
+			local durationLeft = math.max(0, earthquakeEndTime - nowClock)
+			NetMsg.FireNotifyEarthquakeStateToPlayer(player, earthquakeId, true, durationLeft, 1)
+		else
+			NetMsg.FireNotifyEarthquakeStateToPlayer(player, earthquakeId, false, 0, 0)
+		end
+
 		local droppedFloat, droppedPaved = BuildDroppedSnapshotPayload()
 		if #droppedFloat > 0 or #droppedPaved > 0 then
-			NetMsg.FireNotifyEarthquakeJudgeDropToPlayer(player, earthquakeId, judgeIndex, droppedFloat, droppedPaved)
+			NetMsg.FireNotifyEarthquakeJudgeDropToPlayer(player, earthquakeId, 0, droppedFloat, droppedPaved)
 		end
 		DebugLog("Synced earthquake state for player", player.Name, "dropFloat=", #droppedFloat, "dropPaved=", #droppedPaved)
 	elseif warningIssued and nowClock < nextEarthquakeAt then
@@ -505,6 +487,8 @@ function EarthquakeManager.Init()
 	ScheduleNextEarthquake(os.clock())
 	workspace:SetAttribute("EarthquakeActive", false)
 	workspace:SetAttribute("EarthquakeRescuePaving", false)
+	workspace:SetAttribute("EarthquakeMarkPavingActive", false)
+	workspace:SetAttribute("EarthquakeDropExecutionActive", false)
 	workspace:SetAttribute("EarthquakeDebug", false)
 	if HEARTBEAT_CONN == nil then
 		HEARTBEAT_CONN = RunService.Heartbeat:Connect(OnHeartbeat)

@@ -1,0 +1,36 @@
+
+@@ -195,32 +195,6 @@
+
+		if sellPriceText then
+			sellPriceText.Visible = false
+		end
+
+		-- Brainrot 独立倒计时显示（每个 brainrot 自己的 UI 都有一份）
+		local timerTextLabel = controller:FindFirstChild("TimerText") :: TextLabel
+		local timerImgLabel = controller:FindFirstChild("TimerImg") :: ImageLabel
+
+		local function updateTimer()
+			local isBrainrot = itemType == GameConfig.ItemType.Brainrot
+			if not isBrainrot then
+				timerTextLabel.Visible = false
+				timerImgLabel.Visible = false
+				return
+			end
+
+			local remaining = tonumber(adornee:GetAttribute("BrainrotTimerRemainingSeconds")) or 0
+			local visible = remaining > 0
+			timerTextLabel.Visible = visible
+			timerImgLabel.Visible = visible
+			if visible then
+				timerTextLabel.Text = tostring(remaining)
+			end
+		end
+
+		updateTimer()
+		adornee:GetAttributeChangedSignal("BrainrotTimerRemainingSeconds"):Connect(function()
+			updateTimer()
+		end)
+	end
+
+	local offsetY = if visualModel then ModelBillboardOffsetTool.GetVisualOffsetY(visualModel, adornee) else 2
+

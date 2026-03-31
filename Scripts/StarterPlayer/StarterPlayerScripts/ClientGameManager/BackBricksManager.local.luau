@@ -12,7 +12,11 @@ local localPlayer = players.LocalPlayer
 local backBricks: { Part } = {}
 local container: Model? = nil
 
-local BRICK_SIZE = GameConfig.Paving.BrickSize or Vector3.new(4, 1, 4)
+local modelsFolder = replicatedStorage:WaitForChild("Models")
+local bricksFolder = modelsFolder:WaitForChild("Bricks")
+local brickTemplate = bricksFolder:WaitForChild("Brick1") :: Part
+
+local BRICK_SIZE = brickTemplate.Size
 local VISUAL_SCALE = 0.25 -- 背部砖块缩放比例
 local MAX_VISUAL = GameConfig.Paving.BackBricksMaxVisual or 10
 local STACK_OFFSET = Vector3.new(0, 0, 1.2) -- 基础偏移 (调远一些)
@@ -122,10 +126,8 @@ local function UpdateBackBricks()
 
 	-- 同步数量
 	while #backBricks < visualCount do
-		local p = Instance.new("Part")
+		local p = brickTemplate:Clone()
 		p.Size = BRICK_SIZE * VISUAL_SCALE
-		p.Material = Enum.Material.SmoothPlastic
-		p.BrickColor = BrickColor.new("White")
 		p.CanCollide = false
 		p.CanQuery = false
 		p.CanTouch = false

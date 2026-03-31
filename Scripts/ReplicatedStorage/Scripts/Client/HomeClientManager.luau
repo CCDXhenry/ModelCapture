@@ -516,9 +516,8 @@ local function UpdatePlot(folder: Instance, placedData: any?, isLocalPlayer: boo
 			local qualityCfg = GameConfig.BrainrotQualityConfig[brainrotData.quality]
 			if nameLabel then
 				nameLabel.Text = brainrotData.name_t or ""
-				if qualityCfg then
-					nameLabel.TextColor3 = qualityCfg.textColor
-				end
+				-- NameLabel 颜色固定为白色，不随品质变化
+				nameLabel.TextColor3 = Color3.new(1, 1, 1)
 			end
 			if qualityLabel then
 				LocalizeQualityLabel(qualityLabel, brainrotData.quality)
@@ -729,9 +728,8 @@ local function UpdatePlot(folder: Instance, placedData: any?, isLocalPlayer: boo
 				local qualityCfg = GameConfig.BrainrotQualityConfig[brainrotData.quality]
 				if nameLabel then
 					nameLabel.Text = brainrotData.name_t or ""
-					if qualityCfg then
-						nameLabel.TextColor3 = qualityCfg.textColor
-					end
+					-- NameLabel 颜色固定为白色，不随品质变化
+					nameLabel.TextColor3 = Color3.new(1, 1, 1)
 				end
 				if qualityLabel then
 					LocalizeQualityLabel(qualityLabel, brainrotData.quality)

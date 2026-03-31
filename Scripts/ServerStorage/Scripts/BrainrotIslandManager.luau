@@ -2,6 +2,7 @@
 local _players = game:GetService("Players")
 local replicatedStorage = game:GetService("ReplicatedStorage")
 local serverStorage = game:GetService("ServerStorage")
+local HttpService = game:GetService("HttpService")
 
 local scripts = replicatedStorage:WaitForChild("Scripts")
 local sharedScripts = scripts:WaitForChild("Shared")
@@ -16,13 +17,96 @@ local BrainrotQueueManager = require(serverScripts:FindFirstChild("BrainrotQueue
 local islandsFolder = workspace:WaitForChild("Islands")
 local homesFolder = workspace:WaitForChild("PlayersHome")
 
-local actualModels = replicatedStorage:WaitForChild("Models"):WaitForChild("Brainrots")
-local actualChests = replicatedStorage:WaitForChild("Models"):WaitForChild("LittleElfChests")
+local _actualModels = replicatedStorage:WaitForChild("Models"):WaitForChild("Brainrots")
+local _actualChests = replicatedStorage:WaitForChild("Models"):WaitForChild("LittleElfChests")
 local BrainrotCarryingManager = require(serverScripts:FindFirstChild("BrainrotCarryingManager"))
 
 local BrainrotIslandManager = {}
 local rng = Random.new()
 local SpawnFacingRandomOffsetMaxDeg = 360
+
+-- =========================================================
+-- Brainrot 独立倒计时（按 BrainrotUID 管理）
+-- 倒计时结束：该 uid 对应的 brainrot 实体销毁，并在其所属岛屿补刷一个新 IslandBrainrot
+-- =========================================================
+local BrainrotRefreshCountdownSeconds = GameConfig.BrainrotRefreshCountdownSeconds or 23
+local BrainrotTimerTickSeconds = 1 -- 每秒递减一次
+local brainrotTimerStates: { [string]: {
+	remainingSeconds: number,
+	paused: boolean,
+	homeIslandName: string,
+	currentInstance: BasePart?,
+} } = {}
+
+local TerminateAndRespawnBrainrot: (uid: string) -> () = function(_uid: string)
+	-- no-op: 会在模块执行到后面被覆盖
+end
+
+function BrainrotIslandManager.PauseBrainrotTimer(uid: string, instance: Instance?)
+	if not uid then
+		return
+	end
+
+	local targetPart: BasePart? = if instance and instance:IsA("BasePart") then instance :: BasePart else nil
+	local state = brainrotTimerStates[uid]
+
+	if not state then
+		local remaining = if targetPart then (tonumber(targetPart:GetAttribute("BrainrotTimerRemainingSeconds")) or BrainrotRefreshCountdownSeconds) else BrainrotRefreshCountdownSeconds
+		local homeIslandName = if targetPart then ((targetPart:GetAttribute("HomeIslandName") :: string?) or "") else ""
+
+		state = {
+			remainingSeconds = remaining,
+			paused = true,
+			homeIslandName = homeIslandName,
+			currentInstance = targetPart,
+		}
+		brainrotTimerStates[uid] = state
+	end
+
+	state.paused = true
+	if targetPart then
+		state.currentInstance = targetPart
+	end
+
+	local target = state.currentInstance
+	if target and target.Parent then
+		target:SetAttribute("BrainrotTimerPaused", true)
+		target:SetAttribute("BrainrotTimerRemainingSeconds", state.remainingSeconds)
+	end
+end
+
+function BrainrotIslandManager.ResumeBrainrotTimer(uid: string, instance: Instance?)
+	if not uid then
+		return
+	end
+
+	local targetPart: BasePart? = if instance and instance:IsA("BasePart") then instance :: BasePart else nil
+	local state = brainrotTimerStates[uid]
+
+	if not state then
+		local remaining = if targetPart then (tonumber(targetPart:GetAttribute("BrainrotTimerRemainingSeconds")) or BrainrotRefreshCountdownSeconds) else BrainrotRefreshCountdownSeconds
+		local homeIslandName = if targetPart then ((targetPart:GetAttribute("HomeIslandName") :: string?) or "") else ""
+
+		state = {
+			remainingSeconds = remaining,
+			paused = false,
+			homeIslandName = homeIslandName,
+			currentInstance = targetPart,
+		}
+		brainrotTimerStates[uid] = state
+	end
+
+	state.paused = false
+	if targetPart then
+		state.currentInstance = targetPart
+	end
+
+	local target = state.currentInstance
+	if target and target.Parent then
+		target:SetAttribute("BrainrotTimerPaused", false)
+		target:SetAttribute("BrainrotTimerRemainingSeconds", state.remainingSeconds)
+	end
+end
 
 -- Forward declaration
 local StartCarryingBrainrot
@@ -88,6 +172,10 @@ function ConvertCarryingToQueue(player: Player)
 	if configId and uid then
 		local success = BrainrotQueueManager.AddItem(player, configId, quality, level, true, itemType)
 		if success then
+			-- 把携带 brainrot 移出岛面（放回队列）时：终止该 uid 倒计时并立即补刷
+			if itemType == GameConfig.ItemType.Brainrot then
+				TerminateAndRespawnBrainrot(uid)
+			end
 			BrainrotCarryingManager.StopCarrying(player)
 		else
 			--warn("[BrainrotIslandManager] Ground conversion failed: Backpack full for", player.Name)
@@ -168,6 +256,16 @@ function SetupBrainrotInteraction(randomBrainrot: Instance, island: Instance, sp
 			)
 			return
 		end
+
+		-- 拾取 brainrot 时暂停该 uid 倒计时
+		local itemType = randomBrainrot:GetAttribute("ItemType") :: number?
+		if itemType == GameConfig.ItemType.Brainrot then
+			local uid = randomBrainrot:GetAttribute("BrainrotUID") :: string?
+			if uid then
+				BrainrotIslandManager.PauseBrainrotTimer(uid, randomBrainrot)
+			end
+		end
+
 		StartCarryingBrainrot(player, randomBrainrot)
 	end)
 end
@@ -479,6 +577,20 @@ local function SpawnOneBrainrotInternal(island: Instance, isChest: boolean): Bas
 	randomBrainrot:SetAttribute("Level", level)
 	randomBrainrot:SetAttribute("HomeIslandName", island.Name)
 
+	-- 为 IslandBrainrot 设置独立倒计时（宝箱不需要倒计时）
+	if itemType == GameConfig.ItemType.Brainrot then
+		local uid = HttpService:GenerateGUID(false)
+		randomBrainrot:SetAttribute("BrainrotUID", uid)
+		randomBrainrot:SetAttribute("BrainrotTimerRemainingSeconds", BrainrotRefreshCountdownSeconds)
+		randomBrainrot:SetAttribute("BrainrotTimerPaused", false)
+		brainrotTimerStates[uid] = {
+			remainingSeconds = BrainrotRefreshCountdownSeconds,
+			paused = false,
+			homeIslandName = island.Name,
+			currentInstance = randomBrainrot,
+		}
+	end
+
 	local spawnPos = PickSpawnPositionWithSpacing(island, islandId)
 	local randomFacingOffsetDeg = rng:NextNumber(-SpawnFacingRandomOffsetMaxDeg, SpawnFacingRandomOffsetMaxDeg)
 	local spawnFacingCFrame = CFrame.new(spawnPos) * CFrame.Angles(0, math.rad(randomFacingOffsetDeg), 0)
@@ -492,6 +604,26 @@ local function SpawnOneBrainrotInternal(island: Instance, isChest: boolean): Bas
 	randomBrainrot.Parent = island
 	SetupBrainrotInteraction(randomBrainrot, island, spawnPos, sizeY)
 	return randomBrainrot
+end
+
+-- 倒计时结束/移出岛面时：终止该 uid 的倒计时并立刻在 home 岛补一个新 brainrot
+TerminateAndRespawnBrainrot = function(uid: string)
+	if not uid then
+		return
+	end
+
+	local state = brainrotTimerStates[uid]
+	if not state then
+		return
+	end
+
+	local homeIslandName = state.homeIslandName
+	brainrotTimerStates[uid] = nil
+
+	local targetIsland = if homeIslandName ~= "" then islandsFolder:FindFirstChild(homeIslandName) else nil
+	if targetIsland then
+		SpawnOneBrainrotInternal(targetIsland, false)
+	end
 end
 
 -- 4. 业务逻辑封装
@@ -553,6 +685,8 @@ local function OnRequestPlaceCarryingBrainrot(player: Player, pointIndex: number
 				return
 			end
 
+			local itemType = carryingBrainrot:GetAttribute("ItemType") :: number?
+
 			if carryingBrainrot:IsA("Tool") then
 				if not BrainrotQueueManager.RemoveItem(player, uid) then
 					return
@@ -561,6 +695,11 @@ local function OnRequestPlaceCarryingBrainrot(player: Player, pointIndex: number
 				if not carryingBrainrot.Parent then
 					return
 				end
+			end
+
+			if itemType == GameConfig.ItemType.Brainrot then
+				-- 把携带 brainrot 移出岛面（放回家园/展台）时：终止倒计时并立即补刷
+				TerminateAndRespawnBrainrot(uid)
 			end
 
 			local qualityCfg = GameConfig.BrainrotQualityConfig[quality :: number]
@@ -594,6 +733,8 @@ local function OnRequestSellCarryingBrainrot(player: Player)
 				return
 			end
 
+			local itemType = carryingBrainrot:GetAttribute("ItemType") :: number?
+
 			if carryingBrainrot:IsA("Tool") then
 				if not BrainrotQueueManager.RemoveItem(player, uid) then
 					return
@@ -602,6 +743,11 @@ local function OnRequestSellCarryingBrainrot(player: Player)
 				if not carryingBrainrot.Parent then
 					return
 				end
+			end
+
+			if itemType == GameConfig.ItemType.Brainrot then
+				-- 出售时把携带 brainrot 移出岛面：终止倒计时并立即补刷
+				TerminateAndRespawnBrainrot(uid)
 			end
 
 			local brainrotConfig = GameConfig.BrainrotIdMap[tonumber(configId) or 0]
@@ -632,23 +778,13 @@ local function StartSpawnLoop()
 					local islandConfig = GameConfig.IslandConfigMap[islandId]
 					if not islandConfig then continue end
 
-					local targetBrainrotCount = islandConfig.brainrotGenerateCount or 3
+					-- brainrot 不再使用 10 秒补刷；由独立倒计时负责销毁与随机补刷
 					local targetChestCount = islandConfig.littleElfChestGenerateCount or 1
 
-					local currentBrainrotCount = 0
 					local currentChestCount = 0
 					for _, child in ipairs(island:GetChildren()) do
-						if child.Name == "IslandBrainrot" then
-							currentBrainrotCount += 1
-						elseif child.Name == "IslandChest" then
+						if child.Name == "IslandChest" then
 							currentChestCount += 1
-						end
-					end
-
-					if currentBrainrotCount < targetBrainrotCount then
-						local toSpawn = targetBrainrotCount - currentBrainrotCount
-						for i = 1, toSpawn do
-							SpawnOneBrainrotInternal(island, false)
 						end
 					end
 
@@ -656,6 +792,38 @@ local function StartSpawnLoop()
 						local toSpawn = targetChestCount - currentChestCount
 						for i = 1, toSpawn do
 							SpawnOneBrainrotInternal(island, true)
+						end
+					end
+				end
+			end
+		end
+	end)
+end
+
+local function StartBrainrotTimerTickLoop()
+	task.spawn(function()
+		while true do
+			task.wait(BrainrotTimerTickSeconds)
+			for uid, state in pairs(brainrotTimerStates) do
+				if state and not state.paused then
+					state.remainingSeconds = math.max(state.remainingSeconds - BrainrotTimerTickSeconds, 0)
+
+					local inst = state.currentInstance
+					if inst and inst.Parent then
+						inst:SetAttribute("BrainrotTimerRemainingSeconds", state.remainingSeconds)
+					end
+
+					if state.remainingSeconds <= 0 then
+						local homeIslandName = state.homeIslandName
+						brainrotTimerStates[uid] = nil
+
+						if inst and inst.Parent then
+							inst:Destroy()
+						end
+
+						local targetIsland = if homeIslandName ~= "" then islandsFolder:FindFirstChild(homeIslandName) else nil
+						if targetIsland then
+							SpawnOneBrainrotInternal(targetIsland, false)
 						end
 					end
 				end
@@ -719,6 +887,7 @@ function BrainrotIslandManager.Init()
 	NetMsg.ConnectRequestPlaceCarryingBrainrot(OnRequestPlaceCarryingBrainrot)
 	NetMsg.ConnectRequestSellCarryingBrainrot(OnRequestSellCarryingBrainrot)
 
+	StartBrainrotTimerTickLoop()
 	StartSpawnLoop()
 end
 
@@ -727,5 +896,11 @@ function BrainrotIslandManager.StartCarryingBrainrot(player: Player, brainrot: I
 end
 
 BrainrotIslandManager.SetupBrainrotInteraction = SetupBrainrotInteraction
+
+-- 注入引用给携带管理器，避免携带管理器在运行时再 require 引发循环依赖
+local carryingManagerAny = BrainrotCarryingManager :: any
+if carryingManagerAny.SetBrainrotIslandManager then
+	carryingManagerAny.SetBrainrotIslandManager(BrainrotIslandManager)
+end
 
 return BrainrotIslandManager

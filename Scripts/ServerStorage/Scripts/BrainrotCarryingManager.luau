@@ -1,8 +1,19 @@
 --!strict
 local BrainrotCarryingManager = {}
 
-local serverStorage = game:GetService("ServerStorage")
 local HttpService = game:GetService("HttpService")
+
+local replicatedStorage = game:GetService("ReplicatedStorage")
+local scripts = replicatedStorage:WaitForChild("Scripts")
+local sharedScripts = scripts:WaitForChild("Shared")
+local GameConfig = require(sharedScripts:WaitForChild("GameConfig"))
+
+local brainrotIslandManagerRef: any? = nil
+
+-- 用注入方式获取岛屿倒计时管理器，避免这里运行时 require 导致循环依赖
+function BrainrotCarryingManager.SetBrainrotIslandManager(manager: any)
+	brainrotIslandManagerRef = manager
+end
 
 function BrainrotCarryingManager.StartCarrying(player: Player, newBrainrot: Instance): Instance?
 	local character = player.Character
@@ -24,8 +35,8 @@ function BrainrotCarryingManager.StartCarrying(player: Player, newBrainrot: Inst
 
 		if swapTargetCFrame then
 			local drop = oldCarrying:Clone()
-			local itemType = drop:GetAttribute("ItemType") or 1
-			drop.Name = if itemType == 3 then "IslandChest" else "IslandBrainrot"
+			local itemType = drop:GetAttribute("ItemType") :: number?
+			drop.Name = if itemType == GameConfig.ItemType.LittleElfChest then "IslandChest" else "IslandBrainrot"
 			-- 移除身上绑定的约束
 			for _, child in ipairs(drop:GetChildren()) do
 				if child:IsA("WeldConstraint") or child:IsA("Motor6D") then
@@ -47,10 +58,15 @@ function BrainrotCarryingManager.StartCarrying(player: Player, newBrainrot: Inst
 				if desc:IsA("BasePart") then desc.Anchored = true end
 			end
 
-			-- 重新挂载 Interaction
-			local islandManager = require(serverStorage:WaitForChild("Scripts"):FindFirstChild("BrainrotIslandManager") :: any)
-			if islandManager.SetupBrainrotInteraction then
-				islandManager.SetupBrainrotInteraction(drop, drop.Parent, swapTargetCFrame.Position, 4)
+			-- 重新挂载 Interaction（使用注入的岛屿管理器引用）
+			if brainrotIslandManagerRef and brainrotIslandManagerRef.SetupBrainrotInteraction then
+				brainrotIslandManagerRef.SetupBrainrotInteraction(drop, drop.Parent, swapTargetCFrame.Position, 4)
+			end
+
+			-- 旧携带 brainrot 放回岛面：恢复该 uid 倒计时
+			local oldUid = drop:GetAttribute("BrainrotUID") :: string?
+			if itemType == GameConfig.ItemType.Brainrot and oldUid and brainrotIslandManagerRef and brainrotIslandManagerRef.ResumeBrainrotTimer then
+				brainrotIslandManagerRef.ResumeBrainrotTimer(oldUid, drop)
 			end
 		end
 		oldCarrying:Destroy()
@@ -62,6 +78,15 @@ function BrainrotCarryingManager.StartCarrying(player: Player, newBrainrot: Inst
 	
 	if not carryClone:GetAttribute("BrainrotUID") then
 		carryClone:SetAttribute("BrainrotUID", HttpService:GenerateGUID(false))
+	end
+
+	-- 新拾取的 brainrot：暂停该 uid 倒计时，并绑定当前携带实例用于 UI 同步
+	local newUid = carryClone:GetAttribute("BrainrotUID") :: string?
+	local newItemType = carryClone:GetAttribute("ItemType") :: number?
+	if newItemType == GameConfig.ItemType.Brainrot and newUid then
+		if brainrotIslandManagerRef and brainrotIslandManagerRef.PauseBrainrotTimer then
+			brainrotIslandManagerRef.PauseBrainrotTimer(newUid, carryClone)
+		end
 	end
 
 	-- 清理多余的可交互组件，并解除锚定、取消碰撞以防止卡住人物

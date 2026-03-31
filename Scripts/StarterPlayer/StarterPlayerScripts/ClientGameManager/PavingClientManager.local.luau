@@ -12,7 +12,6 @@ local ClientMsg = require(clientScripts:FindFirstChild("ClientMsg"))
 
 local localPlayer = players.LocalPlayer
 local lastPavePosition: Vector3? = nil
-local GRID_SIZE = GameConfig.Paving.BrickSize.X or 4
 local SEA_LEVEL = 0
 local isPavingMode = false
 local isAwaitingRescue = false
@@ -20,10 +19,17 @@ local stationaryTime = 0
 local lastStationaryPos: Vector3? = nil
 local lastRefillTime = 0
 
+-- 地震后“是否经过安全区”的门禁状态（用于防止空中铺砖）
+local lastEarthquakeActive = workspace:GetAttribute("EarthquakeActive") == true
+local hasEarthquakeEndedAtLeastOnce = false
+local hasPassedSafeZoneAfterEarthquakeEnd = false
+
 -- Local prediction config
 local LOCAL_PREDICT_TTL = GameConfig.Paving.LocalPredictTTL
 local LOCAL_PREDICT_BATCH_INTERVAL = GameConfig.Paving.BatchInterval
 local MAX_INTERPOLATION_STEPS = GameConfig.Paving.MaxInterpolationSteps
+local LOCAL_PREDICT_SUPPORT_GRACE = 0.6
+local MAX_LOCAL_PREDICT_SUPPORT_TIME = LOCAL_PREDICT_TTL + LOCAL_PREDICT_SUPPORT_GRACE
 local SHOW_LOCAL_PREDICT_ATTR = "PavingShowLocalPredictBricks"
 local LOCAL_PREDICT_VISIBLE_TRANSPARENCY = 0.5
 local LOCAL_PREDICT_HIDDEN_TRANSPARENCY = 1
@@ -31,6 +37,11 @@ local LOCAL_PREDICT_HIDDEN_TRANSPARENCY = 1
 local localBrickFolder = Instance.new("Folder")
 localBrickFolder.Name = "LocalPredictBricks"
 localBrickFolder.Parent = workspace
+
+local modelsFolder = replicatedStorage:WaitForChild("Models")
+local bricksFolder = modelsFolder:WaitForChild("Bricks")
+local brickTemplate = bricksFolder:WaitForChild("Brick1") :: Part
+local GRID_SIZE = brickTemplate.Size.X
 
 type LocalPredictEntry = {
 	part: Part,
@@ -60,30 +71,25 @@ local function ApplyLocalPredictDisplay(part: Part)
 end
 
 -- Object pool management
-local function GetBrickFromPool(): Part?
-	local brick = table.remove(localBrickPool)
-	if brick then
-		ApplyLocalPredictDisplay(brick)
-		brick.Parent = localBrickFolder
-		return brick
+local function GetBrickFromPool(): Part
+	local pooledBrick = table.remove(localBrickPool)
+	if pooledBrick then
+		ApplyLocalPredictDisplay(pooledBrick)
+		pooledBrick.Parent = localBrickFolder
+		return pooledBrick
 	end
 
-	brick = Instance.new("Part")
-	if not brick then
-		return nil
-	end
-	brick.Name = "LocalPredictBrick"
-	brick.Size = Vector3.new(GRID_SIZE, 1, GRID_SIZE)
-	brick.Anchored = true
-	brick.CanCollide = true
-	brick.CanQuery = false
-	ApplyLocalPredictDisplay(brick)
-	brick.Color = Color3.fromRGB(255, 255, 0)
-	brick.Material = Enum.Material.Neon
-	brick.CastShadow = false
-	brick:SetAttribute("IsLocal", true)
-	brick.Parent = localBrickFolder
-	return brick
+	local newBrick = brickTemplate:Clone()
+	newBrick.Name = "LocalPredictBrick"
+	newBrick.Size = brickTemplate.Size
+	newBrick.Anchored = true
+	newBrick.CanCollide = true
+	newBrick.CanQuery = false
+	ApplyLocalPredictDisplay(newBrick)
+	newBrick.CastShadow = false
+	newBrick:SetAttribute("IsLocal", true)
+	newBrick.Parent = localBrickFolder
+	return newBrick
 end
 
 workspace:GetAttributeChangedSignal(SHOW_LOCAL_PREDICT_ATTR):Connect(function()
@@ -135,6 +141,30 @@ local function GetCurrentWalkSpeed(): number
 	return 16
 end
 
+local function GetEquippedToolName(character: Model?): string?
+	if not character then
+		return nil
+	end
+	for _, child in character:GetChildren() do
+		if child:IsA("Tool") then
+			return child.Name
+		end
+	end
+	return nil
+end
+
+local function IsHoldingExtraJumpCoil(character: Model?): boolean
+	local toolName = GetEquippedToolName(character)
+	if not toolName then
+		return false
+	end
+	local coilData = GameConfig.CoilNameMap[toolName]
+	if not coilData then
+		return false
+	end
+	return (coilData.extraJumps or 0) > 0
+end
+
 -- Efficient removal
 local function RemoveLocalBrickEntry(key: string)
 	local entry = localBrickMap[key]
@@ -160,54 +190,8 @@ local function ClearLocalBricks()
 	print("[PavingClient] Cleared all local prediction bricks and queue")
 end
 
-local function RequestPlaceBrick(targetPos: Vector3)
-	local now = os.clock()
-	local key = GetPosKey(targetPos)
-	if localBrickMap[key] then
-		return
-	end
-
-	-- 2. Create local prediction
-	local brick: Part? = GetBrickFromPool()
-	if not brick then
-		return
-	end
-	brick.Position = targetPos
-
-	localBrickMap[key] = {
-		part = brick,
-		createdAt = now,
-		requested = false,
-	}
-
-	local character = localPlayer.Character
-	local function triggerPave()
-		local entry = localBrickMap[key]
-		if entry and not entry.requested then
-			entry.requested = true
-			table.insert(pendingPaveQueue, targetPos)
-		end
-	end
-
-	touchConns[brick] = brick.Touched:Connect(function(otherPart)
-		if character and otherPart:IsDescendantOf(character) then
-			triggerPave()
-		end
-	end)
-
-	if character then
-		local overlapParts = workspace:GetPartBoundsInBox(brick.CFrame, brick.Size)
-		for _, part in overlapParts do
-			if part:IsDescendantOf(character) then
-				triggerPave()
-				break
-			end
-		end
-	end
-end
-
 -- Check if brick exists (excluding local predictions)
-local function CheckBrickExists(targetPos: Vector3, character: Model): boolean
+local function CheckBrickExists(targetPos: Vector3): boolean
 	local checkOrigin = targetPos + Vector3.new(0, 5, 0)
 	local checkDir = Vector3.new(0, -10, 0)
 	local checkParams = RaycastParams.new()
@@ -228,25 +212,37 @@ local function CheckBrickExists(targetPos: Vector3, character: Model): boolean
 	return false
 end
 
--- FloatBlock：单点竖直射线；四角全命中才视为整块在禁区（与服务端一致）
-local function IsPointOverFloatBlock(pos: Vector3): boolean
+local FLOATBLOCK_RAY_ORIGIN_Y = 50
+local FLOATBLOCK_RAY_LENGTH = 60
+
+local function RaycastFloatBlockAtPoint(pos: Vector3): RaycastResult?
 	local floatBlockFolder = workspace:FindFirstChild("FloatBlock")
 	if not floatBlockFolder then
-		return false
+		return nil
 	end
-
-	local rayOrigin = pos + Vector3.new(0, 50, 0)
-	local rayDirection = Vector3.new(0, -60, 0)
+	local rayOrigin = pos + Vector3.new(0, FLOATBLOCK_RAY_ORIGIN_Y, 0)
+	local rayDirection = Vector3.new(0, -FLOATBLOCK_RAY_LENGTH, 0)
 	local raycastParams = RaycastParams.new()
 	raycastParams.FilterType = Enum.RaycastFilterType.Include
 	raycastParams.FilterDescendantsInstances = { floatBlockFolder }
+	return workspace:Raycast(rayOrigin, rayDirection, raycastParams)
+end
 
-	local result = workspace:Raycast(rayOrigin, rayDirection, raycastParams)
-	return result ~= nil
+-- FloatBlock：单点竖直射线；四角全命中才视为整块在禁区（与服务端一致）
+local function IsPointOverFloatBlock(pos: Vector3): boolean
+	return RaycastFloatBlockAtPoint(pos) ~= nil
+end
+
+local function GetFloatBlockAtPoint(pos: Vector3): BasePart?
+	local result = RaycastFloatBlockAtPoint(pos)
+	if result and result.Instance and result.Instance:IsA("BasePart") then
+		return result.Instance
+	end
+	return nil
 end
 
 local function IsEntireBrickFootprintOverFloatBlock(center: Vector3): boolean
-	local size = GameConfig.Paving.BrickSize
+	local size = brickTemplate.Size
 	local hx = size.X * 0.5
 	local hz = size.Z * 0.5
 	local y = center.Y
@@ -262,14 +258,6 @@ local function IsEntireBrickFootprintOverFloatBlock(center: Vector3): boolean
 		end
 	end
 	return true
-end
-
--- 与服务端一致：预警～地震结束期间允许在 FloatBlock 上铺砖
-local function IsFloatBlockBlockingPaving(center: Vector3): boolean
-	if workspace:GetAttribute("EarthquakeRescuePaving") == true then
-		return false
-	end
-	return IsEntireBrickFootprintOverFloatBlock(center)
 end
 
 local function GetSafeZoneFilterInstances(): { Instance }
@@ -291,15 +279,36 @@ end
 
 local function IsPointOverSafeZone(pos: Vector3): boolean
 	local filterInstances = GetSafeZoneFilterInstances()
-	if #filterInstances <= 0 then
+	local rayOrigin = pos + Vector3.new(0, FLOATBLOCK_RAY_ORIGIN_Y, 0)
+	local rayDirection = Vector3.new(0, -FLOATBLOCK_RAY_LENGTH, 0)
+	if #filterInstances > 0 then
+		local raycastParams = RaycastParams.new()
+		raycastParams.FilterType = Enum.RaycastFilterType.Include
+		raycastParams.FilterDescendantsInstances = filterInstances
+		if workspace:Raycast(rayOrigin, rayDirection, raycastParams) ~= nil then
+			return true
+		end
+	end
+
+	local floatHit = RaycastFloatBlockAtPoint(pos)
+	if
+		floatHit
+		and floatHit.Instance
+		and floatHit.Instance:GetAttribute("EarthquakeMarkedForDrop") ~= true
+		and floatHit.Instance:GetAttribute("EarthquakeDropped") ~= true
+	then
+		return true
+	end
+
+	return false
+end
+
+-- 与服务端一致：预警～地震结束期间允许在 FloatBlock 上铺砖
+local function IsFloatBlockBlockingPaving(center: Vector3): boolean
+	if workspace:GetAttribute("EarthquakeRescuePaving") == true then
 		return false
 	end
-	local rayOrigin = pos + Vector3.new(0, 50, 0)
-	local rayDirection = Vector3.new(0, -60, 0)
-	local raycastParams = RaycastParams.new()
-	raycastParams.FilterType = Enum.RaycastFilterType.Include
-	raycastParams.FilterDescendantsInstances = filterInstances
-	return workspace:Raycast(rayOrigin, rayDirection, raycastParams) ~= nil
+	return IsEntireBrickFootprintOverFloatBlock(center)
 end
 
 local function HasSolidGroundAt(samplePos: Vector3): boolean
@@ -342,7 +351,7 @@ local function HasSolidGroundAt(samplePos: Vector3): boolean
 	return false
 end
 
-local function FlushPendingPaveQueue()
+local function SendAllPendingPaveBatches()
 	if #pendingPaveQueue <= 0 then
 		return
 	end
@@ -352,11 +361,31 @@ local function FlushPendingPaveQueue()
 		NetMsg.FireRequestPlaceBrickBatch(batchChunk)
 	end
 	table.clear(pendingPaveQueue)
+end
+
+local function FlushPendingPaveQueue()
+	if #pendingPaveQueue <= 0 then
+		return
+	end
+	SendAllPendingPaveBatches()
 	lastBatchTime = os.clock()
 end
 
+local function IsCharacterStandingOnLocalBrick(brick: Part, character: Model?): boolean
+	if not character then
+		return false
+	end
+
+	local overlapParams = OverlapParams.new()
+	overlapParams.FilterType = Enum.RaycastFilterType.Include
+	overlapParams.FilterDescendantsInstances = { character }
+	local expandedSize = brick.Size + Vector3.new(0, 3, 0)
+	local overlapParts = workspace:GetPartBoundsInBox(brick.CFrame, expandedSize, overlapParams)
+	return #overlapParts > 0
+end
+
 local function IsEntireBrickFootprintOverSafeZone(center: Vector3): boolean
-	local size = GameConfig.Paving.BrickSize
+	local size = brickTemplate.Size
 	local hx = size.X * 0.5
 	local hz = size.Z * 0.5
 	local y = center.Y
@@ -374,6 +403,69 @@ local function IsEntireBrickFootprintOverSafeZone(center: Vector3): boolean
 	return true
 end
 
+-- requireTouchTrigger：多段跳弹簧，仅触碰/重叠预测砖入队。
+-- 非多段跳：水平逻辑产生的预测砖仅在玩家整 footprint 不在安全区时自动入队；触碰预测砖始终可入队（防掉落）。
+local function RequestPlaceBrick(targetPos: Vector3, requireTouchTrigger: boolean)
+	local now = os.clock()
+	local key = GetPosKey(targetPos)
+	if localBrickMap[key] then
+		return
+	end
+
+	local brick = GetBrickFromPool()
+	brick.Position = targetPos
+
+	localBrickMap[key] = {
+		part = brick,
+		createdAt = now,
+		requested = false,
+	}
+
+	local character = localPlayer.Character
+	local rootPart = character and character:FindFirstChild("HumanoidRootPart") :: BasePart
+	
+	local inSafeZone = false
+	if rootPart then
+		inSafeZone = IsPointOverSafeZone(rootPart.Position)
+	end
+
+	local function triggerPave()
+		local entry = localBrickMap[key]
+		if entry and not entry.requested then
+			entry.requested = true
+			table.insert(pendingPaveQueue, targetPos)
+		end
+	end
+
+	local function hookTouchAndOverlapAlways()
+		touchConns[brick] = brick.Touched:Connect(function(otherPart)
+			if character and otherPart:IsDescendantOf(character) then
+				triggerPave()
+			end
+		end)
+
+		if character and not inSafeZone then
+			local overlapParts = workspace:GetPartBoundsInBox(brick.CFrame, brick.Size)
+			for _, part in overlapParts do
+				if part:IsDescendantOf(character) then
+					triggerPave()
+					break
+				end
+			end
+		end
+	end
+
+	if requireTouchTrigger then
+		hookTouchAndOverlapAlways()
+		return
+	end
+
+	hookTouchAndOverlapAlways()
+	if not inSafeZone then
+		triggerPave()
+	end
+end
+
 local function OnHeartbeat(dt: number)
 	local character = localPlayer.Character
 	local rootPart = character and character:FindFirstChild("HumanoidRootPart") :: BasePart
@@ -382,6 +474,22 @@ local function OnHeartbeat(dt: number)
 	-- 1. Hard cleanup conditions (Death/Falling/Invalid state)
 	local now = os.clock()
 	local pos = if rootPart then rootPart.Position else nil
+	local requireTouchTrigger = IsHoldingExtraJumpCoil(character)
+	local earthquakeActiveNow = workspace:GetAttribute("EarthquakeActive") == true
+	if lastEarthquakeActive and not earthquakeActiveNow then
+		hasEarthquakeEndedAtLeastOnce = true
+		hasPassedSafeZoneAfterEarthquakeEnd = false
+		if pos and rootPart then
+			if not IsEntireBrickFootprintOverSafeZone(GetSnappedPosition(pos)) then
+				if isPavingMode then
+					isPavingMode = false
+					lastPavePosition = nil
+					ClearLocalBricks()
+				end
+			end
+		end
+	end
+	lastEarthquakeActive = earthquakeActiveNow
 	-- 调整死亡判定阈值：使用统一配置
 	local isFallingIntoSea = pos and pos.Y < SEA_LEVEL + GameConfig.Paving.DeathThreshold
 	local isDeadOrFalling = not rootPart or not humanoid or isFallingIntoSea or (humanoid and humanoid.Health <= 0)
@@ -390,7 +498,7 @@ local function OnHeartbeat(dt: number)
 		if pos and pos.Y >= SEA_LEVEL + GameConfig.Paving.DeathThreshold then
 			isAwaitingRescue = false
 		end
-		return 
+		return
 	end
 
 	if isDeadOrFalling then
@@ -412,67 +520,89 @@ local function OnHeartbeat(dt: number)
 		return
 	end
 
-	-- 2. Mode Activation Check (Start Trigger)
-	-- This must be checked regardless of isPavingMode to allow activation
-	if startTrigger and pos then
-		local distX = math.abs(pos.X - startTrigger.Position.X)
-		if distX < GameConfig.Paving.StartActivationRange then
+	local needSafeZoneToActivatePaving = hasEarthquakeEndedAtLeastOnce
+		and not earthquakeActiveNow
+		and workspace:GetAttribute("EarthquakeRescuePaving") ~= true
+	local allowPavingActivationByEarthquakeGate = not needSafeZoneToActivatePaving
+		or IsEntireBrickFootprintOverSafeZone(GetSnappedPosition(pos))
+
+	-- 2. Mode Activation Check (Start Trigger or Safe Zone)
+	-- 地震结束后须先处于真实安全区，才允许重新激活铺砖与补砖
+	if pos and allowPavingActivationByEarthquakeGate then
+		local inStartRange = startTrigger and (math.abs(pos.X - startTrigger.Position.X) < GameConfig.Paving.StartActivationRange)
+		local inSafeZone = false
+		if not inStartRange then
+			inSafeZone = IsEntireBrickFootprintOverSafeZone(GetSnappedPosition(pos))
+		end
+
+		if inStartRange or inSafeZone then
 			if not isPavingMode then
 				isPavingMode = true
-				print("[PavingClient] Mode activated")
-
-				-- -- 【新增】：激活瞬间，强制在玩家当前脚底“打桩”，防止初始掉落
-				-- local currentSnapped = GetSnappedPosition(pos)
-				-- RequestPlaceBrick(currentSnapped)
-				-- lastPavePosition = currentSnapped
+				--print("[PavingClient] Mode activated")
 
 				-- 【新增】：如果有惯性方向，额外在前方一格预铺一块
 				local velocity = rootPart.AssemblyLinearVelocity
 				if velocity.Magnitude > 1 then
 					local horizUnit = Vector3.new(velocity.X, 0, velocity.Z).Unit
 					local forwardSnapped = GetSnappedPosition(pos + horizUnit * GRID_SIZE)
-					RequestPlaceBrick(forwardSnapped)
+					RequestPlaceBrick(forwardSnapped, requireTouchTrigger)
 				end
 
-				-- 【新增】：强制重置发送计时器，让接下来的 batch 逻辑在当前帧立刻发送给服务端
 				lastBatchTime = 0
 			end
 
-			if now - lastRefillTime > 2 then
-				NetMsg.FireRequestStartPaving()
-				lastRefillTime = now
+			if inStartRange then
+				if now - lastRefillTime > 2 then
+					NetMsg.FireRequestStartPaving()
+					lastRefillTime = now
+				end
 			end
 		end
 	end
 
-	-- 3. Soft Deactivation (ONLY for hard failures or running out of bricks)
-	-- Removed Safe Zone auto-exit to allow paving from islands into the sea.
 	local playerInfo = ClientGameInfo.GetLocalPlayerInfo()
-	local isOutOfBricks = playerInfo ~= nil and playerInfo.carriedInfo.bricks <= 0
-
-	if isPavingMode and isOutOfBricks then
-		isPavingMode = false
-		lastPavePosition = nil
-		ClearLocalBricks()
-		--print("[PavingClient] Mode exited (Out of bricks)")
-		return
-	end
 
 	-- 4. Execution Guard (If still not in paving mode, stop here)
 	if not isPavingMode or not pos or not rootPart or not humanoid then
 		return
 	end
 
-	-- 3. Inventory check (Double check for execution)
-	if playerInfo == nil or playerInfo.carriedInfo.bricks <= 0 then
+	if rootPart.Anchored then
 		return
 	end
 
+	-- 地震结束后：若玩家尚未“经过安全区”，则禁止铺砖触发（避免空中重建）
+	if hasEarthquakeEndedAtLeastOnce and (not earthquakeActiveNow) and (workspace:GetAttribute("EarthquakeRescuePaving") ~= true) then
+		local gateFeetPos = GetSnappedPosition(pos)
+		if IsEntireBrickFootprintOverSafeZone(gateFeetPos) then
+			hasPassedSafeZoneAfterEarthquakeEnd = true
+		end
+		if not hasPassedSafeZoneAfterEarthquakeEnd then
+			lastPavePosition = nil
+			ClearLocalBricks()
+			table.clear(pendingPaveQueue)
+			return
+		end
+	end
+
+	local isOutOfBricks = playerInfo == nil or playerInfo.carriedInfo.bricks <= 0
+	
+	if not isOutOfBricks then
 	-- 4a. Feet Guard: 检测脚下是否有有效地面，无地面时立即铺砖
 	local feetPos = GetSnappedPosition(pos)
+	local feetFloatBlock = GetFloatBlockAtPoint(feetPos)
+	-- 已标记/已掉落的浮块上方禁止触发铺砖（避免地震后在危险浮块上跳跃仍可补砖）
+	if feetFloatBlock ~= nil then
+		if feetFloatBlock:GetAttribute("EarthquakeMarkedForDrop") == true or feetFloatBlock:GetAttribute("EarthquakeDropped") == true then
+			lastPavePosition = nil
+			ClearLocalBricks()
+			table.clear(pendingPaveQueue)
+			return
+		end
+	end
 	if not HasSolidGroundAt(pos) then
 		if not IsEntireBrickFootprintOverSafeZone(feetPos) then
-			RequestPlaceBrick(feetPos)
+			RequestPlaceBrick(feetPos, requireTouchTrigger)
 			FlushPendingPaveQueue()
 		end
 	end
@@ -497,9 +627,7 @@ local function OnHeartbeat(dt: number)
 	local isStationary = speed < 0.1
 	local playerWalkSpeed = GetCurrentWalkSpeed()
 	local lookaheadFactor = math.clamp(speed / playerWalkSpeed, 1.0, 1.5)
-	local targetPos = if isStationary
-		then GetSnappedPosition(pos)
-		else GetSnappedPosition(pos + moveDir * (GRID_SIZE * lookaheadFactor))
+	local targetPos = if isStationary then GetSnappedPosition(pos) else GetSnappedPosition(pos + moveDir * (GRID_SIZE * lookaheadFactor))
 
 	-- [优化] Stationary renewal (防止原地发呆无限扣砖)
 	local RENEWAL_INTERVAL = GameConfig.Paving.StationaryRenewalInterval or 0.2
@@ -509,16 +637,24 @@ local function OnHeartbeat(dt: number)
 			if stationaryTime >= RENEWAL_INTERVAL then
 				stationaryTime = 0
 				-- 加上射线检测与安全区检测
-				if not IsEntireBrickFootprintOverSafeZone(targetPos) and not IsFloatBlockBlockingPaving(targetPos) and not CheckBrickExists(targetPos, character) then
-					RequestPlaceBrick(targetPos)
+				if
+					not IsEntireBrickFootprintOverSafeZone(targetPos)
+					and not IsFloatBlockBlockingPaving(targetPos)
+					and not CheckBrickExists(targetPos)
+				then
+					RequestPlaceBrick(targetPos, requireTouchTrigger)
 				end
 			end
 		else
 			lastStationaryPos = targetPos
 			stationaryTime = 0
 			-- [顺发] 当检测到刚停下时，立即尝试续期一次，不再等待计时器
-			if not IsEntireBrickFootprintOverSafeZone(targetPos) and not IsFloatBlockBlockingPaving(targetPos) and not CheckBrickExists(targetPos, character) then
-				RequestPlaceBrick(targetPos)
+			if
+				not IsEntireBrickFootprintOverSafeZone(targetPos)
+				and not IsFloatBlockBlockingPaving(targetPos)
+				and not CheckBrickExists(targetPos)
+			then
+				RequestPlaceBrick(targetPos, requireTouchTrigger)
 			end
 		end
 	else
@@ -539,42 +675,60 @@ local function OnHeartbeat(dt: number)
 			local startPos = lastPavePosition
 			for i = 1, stepCount do
 				local interimPos = GetSnappedPosition(startPos + unitDir * (i * GRID_SIZE))
-				if not IsEntireBrickFootprintOverSafeZone(interimPos) and not IsFloatBlockBlockingPaving(interimPos) and not CheckBrickExists(interimPos, character) then
-					RequestPlaceBrick(interimPos)
+				if
+					not IsEntireBrickFootprintOverSafeZone(interimPos)
+					and not IsFloatBlockBlockingPaving(interimPos)
+					and not CheckBrickExists(interimPos)
+				then
+					RequestPlaceBrick(interimPos, requireTouchTrigger)
 				end
 				lastPavePosition = interimPos
 			end
 		else
-			if not IsEntireBrickFootprintOverSafeZone(targetPos) and not IsFloatBlockBlockingPaving(targetPos) and not CheckBrickExists(targetPos, character) then
+			if
+				not IsEntireBrickFootprintOverSafeZone(targetPos)
+				and not IsFloatBlockBlockingPaving(targetPos)
+				and not CheckBrickExists(targetPos)
+			then
 				lastPavePosition = targetPos
-				RequestPlaceBrick(targetPos)
+				RequestPlaceBrick(targetPos, requireTouchTrigger)
 			else
 				lastPavePosition = targetPos
 			end
 		end
 	else
-		if not IsEntireBrickFootprintOverSafeZone(targetPos) and not IsFloatBlockBlockingPaving(targetPos) and not CheckBrickExists(targetPos, character) then
+		if
+			not IsEntireBrickFootprintOverSafeZone(targetPos)
+			and not IsFloatBlockBlockingPaving(targetPos)
+				and not CheckBrickExists(targetPos)
+		then
 			lastPavePosition = targetPos
-			RequestPlaceBrick(targetPos)
+			RequestPlaceBrick(targetPos, requireTouchTrigger)
+		end
+	end
+	else
+		-- 获取不到足够的砖块时停止主动铺砖预测，等待本地现有预测同步完成再关闭模式
+		if next(localBrickMap) == nil then
+			isPavingMode = false
+			lastPavePosition = nil
 		end
 	end
 
 	-- [优化] Batch transmission (防止卡顿导致包过大被服务器拒收)
 	if #pendingPaveQueue > 0 and (now - lastBatchTime >= LOCAL_PREDICT_BATCH_INTERVAL) then
-		local maxBatchSize = GameConfig.Paving.MaxBatchSize
-		-- 把积压的请求拆分成多个安全的包
-		for i = 1, #pendingPaveQueue, maxBatchSize do
-			local batchChunk = table.move(pendingPaveQueue, i, math.min(i + maxBatchSize - 1, #pendingPaveQueue), 1, {})
-			NetMsg.FireRequestPlaceBrickBatch(batchChunk)
-		end
-
-		table.clear(pendingPaveQueue)
+		SendAllPendingPaveBatches()
 		lastBatchTime = now
 	end
 
 	-- 6. Efficient TTL Cleanup (Safe pairs iteration)
 	for key, entry in pairs(localBrickMap) do
-		if (now - entry.createdAt) >= LOCAL_PREDICT_TTL then
+		local aliveTime = now - entry.createdAt
+		if aliveTime >= LOCAL_PREDICT_TTL then
+			local shouldKeepForSupport = aliveTime < MAX_LOCAL_PREDICT_SUPPORT_TIME
+				and IsCharacterStandingOnLocalBrick(entry.part, character)
+			if shouldKeepForSupport then
+				continue
+			end
 			RemoveLocalBrickEntry(key)
 		end
 	end
@@ -604,9 +758,11 @@ ClientMsg.ConnectResumeFalling(function()
 		if character then
 			local root = character:FindFirstChild("HumanoidRootPart") :: BasePart
 			local hum = character:FindFirstChild("Humanoid") :: Humanoid
-			if root then root.Anchored = false end
-			if hum then 
-				hum.PlatformStand = false 
+			if root then
+				root.Anchored = false
+			end
+			if hum then
+				hum.PlatformStand = false
 				hum.Health = 0 -- Kill immediately to prevent re-trigger on the next frame
 			end
 			-- Let the next heartbeat clean up

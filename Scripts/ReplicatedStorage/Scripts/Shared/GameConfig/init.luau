@@ -232,9 +232,7 @@ export type IslandData = {
 	littleElfChestGenerateCount: number,
 
 	-- 岛屿地震配置（从 GameConfig.Earthquake 拆分）
-	judgeCount: number?,
 	floatBlockDropCountJudge: number?,
-	pavedBrickDropCountJudge: number?,
 	dropRecoverDelayMin: number?,
 	dropRecoverDelayMax: number?,
 }
@@ -249,16 +247,12 @@ end
 -- 岛屿地震配置（从 GameConfig.Earthquake 拆分）
 --=========================================
 export type IslandEarthquakeData = {
-	judgeCount: number,
 	floatBlockDropCountJudge: number,
-	pavedBrickDropCountJudge: number,
 	DropRecoverDelayMin: number,
 	DropRecoverDelayMax: number,
 }
 
-local DEFAULT_ISLAND_JUDGE_COUNT = 4
 local DEFAULT_FLOAT_BLOCK_DROP_COUNT_JUDGE = 1
-local DEFAULT_PAVED_BRICK_DROP_COUNT_JUDGE = 5
 local DEFAULT_DROP_RECOVER_DELAY_MIN = 2.5
 local DEFAULT_DROP_RECOVER_DELAY_MAX = 4.5
 
@@ -267,9 +261,7 @@ for islandId, islandData in pairs(GameConfig.IslandConfigMap) do
 	local anyIslandData = islandData :: any
 
 	GameConfig.IslandEarthquakeConfigMap[islandId] = {
-		judgeCount = anyIslandData.judgeCount or DEFAULT_ISLAND_JUDGE_COUNT,
 		floatBlockDropCountJudge = anyIslandData.floatBlockDropCountJudge or DEFAULT_FLOAT_BLOCK_DROP_COUNT_JUDGE,
-		pavedBrickDropCountJudge = anyIslandData.pavedBrickDropCountJudge or DEFAULT_PAVED_BRICK_DROP_COUNT_JUDGE,
 		DropRecoverDelayMin = anyIslandData.dropRecoverDelayMin or DEFAULT_DROP_RECOVER_DELAY_MIN,
 		DropRecoverDelayMax = anyIslandData.dropRecoverDelayMax or DEFAULT_DROP_RECOVER_DELAY_MAX,
 	}
@@ -338,12 +330,12 @@ GameConfig.BrainrotQualityConfig = {
 	[2] = {
 		rarity = "Uncommon",
 		image = "rbxassetid://16865599320",
-		textColor = Color3.fromRGB(168, 230, 163),
+		textColor = Color3.fromRGB(73, 230, 0),
 	},
 	[3] = {
 		rarity = "Rare",
 		image = "rbxassetid://16865599122",
-		textColor = Color3.fromRGB(0, 255, 0),
+		textColor = Color3.fromRGB(0, 255, 217),
 	},
 	[4] = {
 		rarity = "Epic",
@@ -353,27 +345,27 @@ GameConfig.BrainrotQualityConfig = {
 	[5] = {
 		rarity = "Legendary",
 		image = "rbxassetid://16865598826",
-		textColor = Color3.fromRGB(128, 0, 128),
+		textColor = Color3.fromRGB(255, 0, 255),
 	},
 	[6] = {
 		rarity = "Mythical",
 		image = "rbxassetid://16865598729",
-		textColor = Color3.fromRGB(75, 0, 130),
+		textColor = Color3.fromRGB(136, 0, 255),
 	},
 	[7] = {
 		rarity = "Cosmic",
 		image = "rbxassetid://16865598729",
-		textColor = Color3.fromRGB(255, 165, 0),
+		textColor = Color3.fromRGB(255, 0, 68),
 	},
 	[8] = {
 		rarity = "Secret",
 		image = "rbxassetid://16865598729",
-		textColor = Color3.fromRGB(255, 215, 0),
+		textColor = Color3.fromRGB(255, 136, 0),
 	},
 	[9] = {
 		rarity = "Celestial",
 		image = "rbxassetid://16865598729",
-		textColor = Color3.fromRGB(240, 230, 140),
+		textColor = Color3.fromRGB(255, 234, 1),
 	},
 }
 
@@ -414,25 +406,44 @@ GameConfig.Paving = {
 
 -- 地震系统配置
 GameConfig.Earthquake = {
-	IntervalMin = 10, -- 两次地震最短间隔
-	IntervalMax = 12, -- 两次地震最长间隔
-	Duration = 12, -- 单次地震总时长
+	IntervalMin = 30, -- 两次地震最短间隔
+	IntervalMax = 40, -- 两次地震最长间隔
+	Duration = 5, -- 单次地震总时长
 	CooldownAfterEnd = 2, -- 地震结束后冷却
 	MinPlayersToTrigger = 1, -- 最少在线人数
 
 	-- 客户端表现参数
 	IntenseShakeAmplitude = 0.45, -- 强烈抖动振幅
-	IntenseShakeFrequency = 24, -- 强烈抖动频率
-	PreFallIntenseDuration = 0.4, -- 掉落前强抖时长
-	FallDuration = 0.45, -- 下落时长
+	IntenseShakeFrequency = 48, -- 强烈抖动频率
+	PreFallIntenseDuration = 0.2, -- 掉落前强抖时长
+	FallDuration = 0.25, -- 下落时长
 	RiseDuration = 1.15, -- 回浮时长
-	FallOffsetY = 26, -- 下沉高度（海平面以下）
-	WarningSeconds = 5, -- 地震来临前预警时长（秒）
+	FallOffsetY = 30, -- 下沉高度（海平面以下）
+	WarningSeconds = 0, -- 地震来临前预警时长（秒）
 	-- 玩家砖震落后销毁延迟（应与客户端强抖+下落总时长接近）
 	PavedBrickDestroyDelayAfterDrop = 1.15,
+	
+	-- 标记表现（地震开始时将要掉落的块染色&抖动）
+	MarkedBrickColor = Color3.fromRGB(255, 0, 25),
+	-- 标记阶段透明度（0～1，客户端）；浮块与铺砖可分别配置
+	MarkedFloatBlockTransparency = 0.5,
+	MarkedPavedBrickTransparency = 0.5,
+	MarkedShakeAmplitude = 0.6, -- FloatBlock 标记抖动振幅（客户端）
+	MarkedShakeFrequency = 48, -- FloatBlock 标记抖动频率（客户端）
+	MarkedPavedShakeAmplitude = 0.22, -- 砖块标记抖动振幅（客户端，单独更缓）
+	MarkedPavedShakeFrequency = 13, -- 砖块标记抖动频率（客户端，单独更缓）
+	
+	-- 地震结束后执行掉落总时窗（全部块在该时长内执行完）
+	DropExecuteWindowSeconds = 1.0,
+	
+	-- 纯表现断裂（客户端碎片颗粒/假碎片）
+	FractureShardLifeTime = 0.5, -- 假碎片持续时间（秒）
+	FractureShardPerBlock = 5, -- 每个块生成假碎片数量（小型视觉开销）
+	
 	-- 地震时本地镜头抖动（CameraOffset，避免移动锚固平台导致与服务器物理不同步穿模）
-	ScreenShakeAmplitude = 0.42,
-	ScreenShakeFrequency = 15,
+	ScreenShakeAmplitude = 0,
+	ScreenShakeFrequency = 0,
+
 }
 
 -- 2. 模型与收益逻辑 (已废弃 GameConfig.Models，现在由 BrainrotData.json 驱动)
@@ -448,6 +459,10 @@ GameConfig.Inventory = {
 GameConfig.BrainrotQueue = {
 	MaxCapacity = 9, -- 背包最多容纳 9 个 Brainrot
 }
+
+-- Island spawned Brainrot 的独立倒计时（秒）
+-- 倒计时结束时该 brainrot 消失并触发岛上随机补刷。
+GameConfig.BrainrotRefreshCountdownSeconds = 23
 
 -- 商店配置
 export type UpgradeShopData = {

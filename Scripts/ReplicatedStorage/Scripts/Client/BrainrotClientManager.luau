@@ -149,14 +149,15 @@ function AttachInfoUIToModel(targetParent: Instance, adornee: BasePart, configId
 		local levelText = controller:FindFirstChild("LvLabel") :: TextLabel?
 		local abilityText = controller:FindFirstChild("AbilityText") :: TextLabel?
 		local sellPriceText = controller:FindFirstChild("SellPriceText") :: TextLabel?
+			local timerTextLabel = controller:FindFirstChild("TimerText") :: TextLabel?
+			local timerImgLabel = controller:FindFirstChild("TimerImg") :: ImageLabel?
 
 		local qualityCfg = GameConfig.BrainrotQualityConfig[quality]
 
 		if nameLabel then
 			nameLabel.Text = data.name_t or ""
-			if qualityCfg then
-				nameLabel.TextColor3 = qualityCfg.textColor
-			end
+			-- NameLabel 颜色固定为白色，不随品质变化
+			nameLabel.TextColor3 = Color3.new(1, 1, 1)
 		end
 		if qualityLabel then
 			local qualityTextName = GameConfig.BrainrotQualityTextMap[quality]
@@ -195,6 +196,31 @@ function AttachInfoUIToModel(targetParent: Instance, adornee: BasePart, configId
 		if sellPriceText then
 			sellPriceText.Visible = false
 		end
+
+			-- Brainrot 独立倒计时显示（每个 brainrot 自己的 UI 都有一份）
+			if timerTextLabel and timerImgLabel then
+				local function updateTimer()
+					local isBrainrot = itemType == GameConfig.ItemType.Brainrot
+					if not isBrainrot then
+						timerTextLabel.Visible = false
+						timerImgLabel.Visible = false
+						return
+					end
+
+					local remaining = tonumber(adornee:GetAttribute("BrainrotTimerRemainingSeconds")) or 0
+					local visible = remaining > 0
+					timerTextLabel.Visible = visible
+					timerImgLabel.Visible = visible
+					if visible then
+						timerTextLabel.Text = tostring(remaining)
+					end
+				end
+
+				updateTimer()
+				adornee:GetAttributeChangedSignal("BrainrotTimerRemainingSeconds"):Connect(function()
+					updateTimer()
+				end)
+			end
 	end
 
 	local offsetY = if visualModel then ModelBillboardOffsetTool.GetVisualOffsetY(visualModel, adornee) else 2

@@ -27,12 +27,31 @@ type DropAnimState = {
 
 local localPlayer = Players.LocalPlayer
 local earthquakeActive = false
-local currentEarthquakeId = 0
 local warningUiToken = 0
 local earthquakeActiveUiToken = 0
 
 local trackedPartMap: { [BasePart]: CFrame } = {}
 local droppedAnimMap: { [BasePart]: DropAnimState } = {}
+local markedBrickColorValue = BrickColor.new(GameConfig.Earthquake.MarkedBrickColor :: any)
+
+type MarkedVisualState = {
+	baseCFrame: CFrame,
+	originalBrickColor: BrickColor,
+	originalMaterial: Enum.Material,
+	originalTransparency: number,
+}
+
+local markedPartMap: { [BasePart]: MarkedVisualState } = {}
+
+local function GetMarkedTransparencyForKind(kind: unknown): number
+	local raw: number
+	if kind == "PavedBrick" then
+		raw = GameConfig.Earthquake.MarkedPavedBrickTransparency or 0
+	else
+		raw = GameConfig.Earthquake.MarkedFloatBlockTransparency or 0
+	end
+	return math.clamp(raw, 0, 1)
+end
 
 local floatFolder: Folder? = nil
 local islandsFolder: Folder? = nil
@@ -79,6 +98,101 @@ local function TrackPart(part: BasePart)
 	trackedPartMap[part] = part.CFrame
 end
 
+local function ApplyMarkedVisual(part: BasePart)
+	-- 只做“外观标记”：不影响物理碰撞（全部是纯表现/断裂在客户端完成）
+	local state = markedPartMap[part]
+	if state == nil then
+		markedPartMap[part] = {
+			baseCFrame = part.CFrame,
+			originalBrickColor = part.BrickColor,
+			originalMaterial = part.Material,
+			originalTransparency = part.Transparency,
+		}
+	end
+
+	part.BrickColor = markedBrickColorValue
+	part.Transparency = GetMarkedTransparencyForKind(part:GetAttribute("EarthquakeMarkedKind"))
+end
+
+local function TryMarkPart(part: Instance)
+	if not part or not part:IsA("BasePart") then
+		return
+	end
+	local basePart = part :: BasePart
+	if basePart:GetAttribute("EarthquakeMarkedForDrop") ~= true then
+		return
+	end
+	ApplyMarkedVisual(basePart)
+end
+
+local function RefreshMarkedParts()
+	if floatFolder then
+		for _, desc in ipairs(floatFolder:GetDescendants()) do
+			if desc:IsA("BasePart") then
+				TryMarkPart(desc)
+			end
+		end
+	end
+	if _pavedBricksFolder then
+		for _, child in ipairs(_pavedBricksFolder:GetChildren()) do
+			TryMarkPart(child)
+		end
+	end
+end
+
+local function UpdateMarkedJitter(now: number)
+	if not earthquakeActive then
+		return
+	end
+	local floatAmp = GameConfig.Earthquake.MarkedShakeAmplitude or 0.6
+	local floatFreq = GameConfig.Earthquake.MarkedShakeFrequency or 10
+	local pavedAmp = GameConfig.Earthquake.MarkedPavedShakeAmplitude or 0.22
+	local pavedFreq = GameConfig.Earthquake.MarkedPavedShakeFrequency or 6.5
+
+	for part, state in pairs(markedPartMap) do
+		if part.Parent == nil then
+			markedPartMap[part] = nil
+			continue
+		end
+
+		-- 若已经开始掉落动画，则不再对“已掉落物”做额外抖动，避免干扰 CFrame
+		if droppedAnimMap[part] ~= nil then
+			continue
+		end
+
+		-- 标记属性仍存在才抖动；服务器在真正掉落前会清除标记属性
+		if part:GetAttribute("EarthquakeMarkedForDrop") ~= true then
+			continue
+		end
+
+		local kind = part:GetAttribute("EarthquakeMarkedKind")
+		local amp = if kind == "PavedBrick" then pavedAmp else floatAmp
+		local freq = if kind == "PavedBrick" then pavedFreq else floatFreq
+
+		-- 服务器可能会把砖转成幽灵态并改材质，所以这里持续保持标记的深褐色外观
+		part.BrickColor = markedBrickColorValue
+		part.Transparency = GetMarkedTransparencyForKind(kind)
+
+		-- 计算抖动 seed：优先使用 EarthquakeGuid，兜底用位置，避免 forward 引用导致静态分析报错
+		local guid = part:GetAttribute("EarthquakeGuid")
+		local seed: number
+		if type(guid) == "string" then
+			local hash = 0
+			for i = 1, math.min(8, #guid) do
+				hash += string.byte(guid, i)
+			end
+			seed = hash * 0.1
+		else
+			local p = part.Position
+			local q = math.floor(p.X * 10) + math.floor(p.Y * 10) * 3 + math.floor(p.Z * 10) * 7
+			seed = q * 0.01
+		end
+		local dx = math.sin((now + seed) * freq) * amp
+		local dz = math.cos((now + seed * 0.73) * freq) * amp
+		part.CFrame = state.baseCFrame * CFrame.new(dx, 0, dz)
+	end
+end
+
 local function UntrackPart(part: BasePart)
 	trackedPartMap[part] = nil
 	droppedAnimMap[part] = nil
@@ -95,6 +209,7 @@ end
 local function OnPavedBrickAdded(child: Instance)
 	if child:IsA("BasePart") then
 		TrackPart(child)
+		TryMarkPart(child)
 	end
 end
 
@@ -152,7 +267,10 @@ end
 local function HashNumberFromPart(part: BasePart): number
 	local guid = part:GetAttribute("EarthquakeGuid")
 	if type(guid) ~= "string" then
-		return 0
+		-- 若没有 guid（例如仅在“标记阶段”被通知），用位置做一个可重复的 seed
+		local p = part.Position
+		local seed = math.floor(p.X * 10) + math.floor(p.Y * 10) * 3 + math.floor(p.Z * 10) * 7
+		return seed * 0.01
 	end
 	local hash = 0
 	for i = 1, math.min(8, #guid) do
@@ -216,6 +334,8 @@ local function OnRenderStep()
 	local now = os.clock()
 	if earthquakeActive then
 		ApplyEarthquakeCameraShake(now)
+		-- 持续补扫：解决“新铺砖 ChildAdded 先到、标记属性后到”导致抖动不一致
+		RefreshMarkedParts()
 	else
 		local humanoid = GetHumanoid()
 		if humanoid then
@@ -230,6 +350,7 @@ local function OnRenderStep()
 		end
 	end
 	UpdateDropAnimations(now)
+	UpdateMarkedJitter(now)
 end
 
 local function HandleDropEntry(entry: any)
@@ -249,6 +370,26 @@ local function HandleDropEntry(entry: any)
 	if type(fallToY) ~= "number" then
 		fallToY = baseCFrame.Position.Y - 4
 	end
+
+	-- 掉落开始：触发纯表现断裂，并确保可视上是标记色
+	if dropKind == "FloatBlock" and markedPartMap[part] == nil then
+		-- 若玩家在掉落阶段才加入，之前的“标记阶段外观”可能没来得及记录原始外观
+		markedPartMap[part] = {
+			baseCFrame = part.CFrame,
+			originalBrickColor = part.BrickColor,
+			originalMaterial = part.Material,
+			originalTransparency = part.Transparency,
+		}
+	end
+	part.BrickColor = BrickColor.new(GameConfig.Earthquake.MarkedBrickColor :: any)
+	part.Transparency = GetMarkedTransparencyForKind(dropKind)
+	--part.Material = Enum.Material.SmoothPlastic
+
+	-- PavedBrick 掉落后会被服务器回收/移除；不需要等待“回浮”
+	if dropKind == "PavedBrick" then
+		markedPartMap[part] = nil
+	end
+
 	trackedPartMap[part] = baseCFrame
 	StartDropAnim(part, baseCFrame, fallToY, dropKind)
 end
@@ -268,6 +409,16 @@ local function HandleRecoverEntry(entry: any)
 	if typeof(baseCFrame) ~= "CFrame" then
 		baseCFrame = trackedPartMap[part] or part.CFrame
 	end
+
+	-- 回浮结束：恢复掉落前的原始外观
+	local markedState = markedPartMap[part]
+	if markedState ~= nil then
+		part.BrickColor = markedState.originalBrickColor
+		part.Material = markedState.originalMaterial
+		part.Transparency = markedState.originalTransparency
+		markedPartMap[part] = nil
+	end
+
 	StartRecoverAnim(part, baseCFrame)
 end
 
@@ -288,6 +439,7 @@ function EarthquakeClientManager.Init()
 		floatFolder.DescendantAdded:Connect(function(desc)
 			if desc:IsA("BasePart") then
 				TrackPart(desc)
+				TryMarkPart(desc)
 			end
 		end)
 	end
@@ -303,7 +455,6 @@ function EarthquakeClientManager.Init()
 	end)
 
 	NetMsg.ConnectNotifyEarthquakeWarning(function(earthquakeId: number, secondsUntilStart: number)
-		currentEarthquakeId = earthquakeId
 		warningUiToken += 1
 		local token = warningUiToken
 		task.spawn(function()
@@ -320,8 +471,9 @@ function EarthquakeClientManager.Init()
 	end)
 
 	NetMsg.ConnectNotifyEarthquakeState(function(earthquakeId: number, isStart: boolean, duration: number, _judgeCount: number)
-		currentEarthquakeId = earthquakeId
 		earthquakeActive = isStart
+		-- 标记阶段外观需要在每次状态变化时同步一次（包含：地震结束后随机间隙掉落前）
+		RefreshMarkedParts()
 		if isStart then
 			warningUiToken += 1
 			earthquakeActiveUiToken += 1
@@ -347,9 +499,6 @@ function EarthquakeClientManager.Init()
 	end)
 
 	NetMsg.ConnectNotifyEarthquakeJudgeDrop(function(earthquakeId: number, _judgeIndex: number, droppedFloatBlocks: { any }, droppedPavedBricks: { any })
-		if currentEarthquakeId ~= 0 and earthquakeId ~= currentEarthquakeId then
-			return
-		end
 		for _, entry in ipairs(droppedFloatBlocks) do
 			HandleDropEntry(entry)
 		end
@@ -359,9 +508,6 @@ function EarthquakeClientManager.Init()
 	end)
 
 	NetMsg.ConnectNotifyEarthquakeRecover(function(earthquakeId: number, recoverFloatBlocks: { any }, recoverPavedBricks: { any })
-		if currentEarthquakeId ~= 0 and earthquakeId ~= currentEarthquakeId then
-			return
-		end
 		for _, entry in ipairs(recoverFloatBlocks) do
 			HandleRecoverEntry(entry)
 		end

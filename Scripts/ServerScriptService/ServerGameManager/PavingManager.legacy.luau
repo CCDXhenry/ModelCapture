@@ -21,16 +21,20 @@ local activeBricksGrid: { [string]: Part } = {} -- O(1) 空间网格字典
 
 local GHOST_DURATION = 1.5 -- 幽灵状态持续时间
 
+local modelsFolder = replicatedStorage:WaitForChild("Models")
+local bricksFolder = modelsFolder:WaitForChild("Bricks")
+local brickTemplate = bricksFolder:WaitForChild("Brick1") :: Part
+
 local function UpdateBrickVisual(part: Part, isGhost: boolean)
 	if isGhost then
 		part.BrickColor = BrickColor.new("Neon orange") -- 使用橙色区分
-		part.Material = Enum.Material.Neon
+		--part.Material = Enum.Material.Neon
 		part.Transparency = 0.5
 		part:SetAttribute("IsGhost", true)
 	else
-		part.BrickColor = BrickColor.new("White")
-		part.Material = Enum.Material.SmoothPlastic
-		part.Transparency = 0
+		part.Color = brickTemplate.Color
+		--part.Material = brickTemplate.Material
+		part.Transparency = brickTemplate.Transparency
 		part:SetAttribute("IsGhost", false)
 	end
 end
@@ -39,9 +43,10 @@ local function GetPosKey(pos: Vector3)
 	return string.format("%.1f,%.1f,%.1f", pos.X, pos.Y, pos.Z)
 end
 
-local playerLastPaveTime: { [number]: number } = {}
 local brickPool: { Part } = {}
 local SEA_LEVEL = 0
+local lastEarthquakeActive = workspace:GetAttribute("EarthquakeActive") == true
+local hasEarthquakeEndedAtLeastOnce = false
 
 -- 动态获取海平面高度 (与客户端逻辑对齐)
 local startPointFolder = workspace:FindFirstChild("StartPoint")
@@ -100,12 +105,11 @@ end
 local function GetBrickFromPool(): Part
 	local brick = table.remove(brickPool)
 	if not brick then
-		local newPart = Instance.new("Part")
+		local newPart = brickTemplate:Clone()
 		newPart:SetAttribute("IsLocal", false)
 		newPart.Anchored = true
 		newPart.CanCollide = true
-		newPart.Material = Enum.Material.SmoothPlastic
-		newPart.Size = GameConfig.Paving.BrickSize
+		newPart.Size = brickTemplate.Size
 
 		newPart.Touched:Connect(function(hit: BasePart)
 			local character = hit.Parent
@@ -156,6 +160,8 @@ local function ReturnBrickToPool(brick: Part)
 	brick.Parent = nil
 	brick:SetAttribute("IsGhost", nil)
 	brick:SetAttribute("EarthquakeDropped", nil)
+	brick:SetAttribute("EarthquakeMarkedForDrop", nil)
+	brick:SetAttribute("EarthquakeMarkedKind", nil)
 	table.insert(brickPool, brick)
 end
 
@@ -209,8 +215,47 @@ local function IsPointOverSafeZone(samplePos: Vector3): boolean
 	return workspace:Raycast(rayOrigin, rayDirection, raycastParams) ~= nil
 end
 
+local function GetSnappedPositionForPaving(pos: Vector3): Vector3
+	local grid = brickTemplate.Size.X
+	local x = math.floor(pos.X / grid + 0.5) * grid
+	local z = math.floor(pos.Z / grid + 0.5) * grid
+	return Vector3.new(x, SEA_LEVEL, z)
+end
+
+-- 与客户端门禁对齐：Ground/Islands/Home，或「未标记且未掉落」的 Float
+local function IsPointOverPavingSafeZone(samplePos: Vector3): boolean
+	local filterInstances = GetSafeZoneFilterInstances()
+	local rayOrigin = samplePos + Vector3.new(0, FLOATBLOCK_RAY_ORIGIN_Y, 0)
+	local rayDirection = Vector3.new(0, -FLOATBLOCK_RAY_LENGTH, 0)
+
+	if #filterInstances > 0 then
+		local raycastParams = RaycastParams.new()
+		raycastParams.FilterType = Enum.RaycastFilterType.Include
+		raycastParams.FilterDescendantsInstances = filterInstances
+		if workspace:Raycast(rayOrigin, rayDirection, raycastParams) ~= nil then
+			return true
+		end
+	end
+
+	local floatBlockFolder = workspace:FindFirstChild("FloatBlock")
+	if floatBlockFolder then
+		local fp = RaycastParams.new()
+		fp.FilterType = Enum.RaycastFilterType.Include
+		fp.FilterDescendantsInstances = { floatBlockFolder }
+		local r = workspace:Raycast(rayOrigin, rayDirection, fp)
+		if r and r.Instance and r.Instance:IsA("BasePart") then
+			local inst = r.Instance
+			if inst:GetAttribute("EarthquakeMarkedForDrop") ~= true and inst:GetAttribute("EarthquakeDropped") ~= true then
+				return true
+			end
+		end
+	end
+
+	return false
+end
+
 local function GetBrickFootprintCornerPositions(center: Vector3): { Vector3 }
-	local size = GameConfig.Paving.BrickSize
+	local size = brickTemplate.Size
 	local hx = size.X * 0.5
 	local hz = size.Z * 0.5
 	local y = center.Y
@@ -220,6 +265,15 @@ local function GetBrickFootprintCornerPositions(center: Vector3): { Vector3 }
 		Vector3.new(center.X - hx, y, center.Z + hz),
 		Vector3.new(center.X + hx, y, center.Z + hz),
 	}
+end
+
+local function IsEntireBrickFootprintOverPavingSafeZone(center: Vector3): boolean
+	for _, p in GetBrickFootprintCornerPositions(center) do
+		if not IsPointOverPavingSafeZone(p) then
+			return false
+		end
+	end
+	return true
 end
 
 local function IsEntireBrickFootprintOverFloatBlock(center: Vector3): boolean
@@ -348,6 +402,10 @@ local function OnRequestPlaceBrickBatch(player: Player, positions: any)
 		local brick = GetBrickFromPool()
 		brick.Position = position
 		UpdateBrickVisual(brick, false)
+		if workspace:GetAttribute("EarthquakeMarkPavingActive") == true then
+			brick:SetAttribute("EarthquakeMarkedForDrop", true)
+			brick:SetAttribute("EarthquakeMarkedKind", "PavedBrick")
+		end
 		brick.Parent = pavedBricksFolder
 
 		-- 存入空间哈希字典
@@ -371,25 +429,42 @@ local function OnHeartbeat(deltaTime: number)
 				data.ExpireTime = now + GHOST_DURATION
 				UpdateBrickVisual(brick, true)
 			else
-				-- 幽灵状态也到期，彻底移除
+				-- 幽灵状态也到期，彻底移除（寿命到期的砖在地震期间也按原逻辑正常结束）
 				ReturnBrickToPool(brick)
 			end
 		end
 	end
 end
 
-local function OnPlayerRemoving(player: Player)
-	playerLastPaveTime[player.UserId] = nil
-end
-
 local function OnRequestStartPaving(player: Player)
+	local needSafeZoneGate = hasEarthquakeEndedAtLeastOnce
+		and workspace:GetAttribute("EarthquakeActive") ~= true
+		and workspace:GetAttribute("EarthquakeRescuePaving") ~= true
+	if needSafeZoneGate then
+		local character = player.Character
+		local rootPart = character and character:FindFirstChild("HumanoidRootPart") :: BasePart
+		if not rootPart then
+			return
+		end
+		local feetCenter = GetSnappedPositionForPaving(rootPart.Position)
+		if not IsEntireBrickFootprintOverPavingSafeZone(feetCenter) then
+			return
+		end
+	end
 	ServerGameInfo.SetPlayerBricksToMax(player)
 end
+
+workspace:GetAttributeChangedSignal("EarthquakeActive"):Connect(function()
+	local earthquakeActiveNow = workspace:GetAttribute("EarthquakeActive") == true
+	if lastEarthquakeActive and not earthquakeActiveNow then
+		hasEarthquakeEndedAtLeastOnce = true
+	end
+	lastEarthquakeActive = earthquakeActiveNow
+end)
 
 NetMsg.ConnectRequestStartPaving(OnRequestStartPaving)
 NetMsg.ConnectRequestPlaceBrickBatch(OnRequestPlaceBrickBatch)
 runService.Heartbeat:Connect(OnHeartbeat)
-players.PlayerRemoving:Connect(OnPlayerRemoving)
 
 local function OnEarthquakeDropBrick(brick: Part)
 	local key = GetPosKey(brick.Position)
