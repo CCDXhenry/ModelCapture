@@ -102,6 +102,7 @@ function ServerGameInfo.InitPlayerInfo(
 	player.CharacterAdded:Connect(function(character)
 		task.wait(0.2)
 		ServerMsg.FireLoadBackpackTools(player)
+		ServerGameInfo.SetPlayerBricksToMax(player)
 	end)
 
 	print("[ServerGameInfo] InitPlayerInfo complete for", player.Name)
@@ -408,8 +409,10 @@ function ServerGameInfo.ApplyWalkSpeed(player: Player)
 	end
 
 	local walkSpeedLevel = playerInfo.shopInfo.walkSpeedLevel
+	local isDecelerationOn = playerInfo.settingInfo.decelerationOn == true
 	local config = GameConfig.Shop.WalkSpeed
-	local targetSpeed = config.abilityList[walkSpeedLevel] or config.abilityList[1]
+	local targetLevel = if isDecelerationOn then 1 else walkSpeedLevel
+	local targetSpeed = config.abilityList[targetLevel] or config.abilityList[1]
 
 	local character = player.Character
 	if character then
@@ -418,6 +421,18 @@ function ServerGameInfo.ApplyWalkSpeed(player: Player)
 			humanoid.WalkSpeed = targetSpeed
 		end
 	end
+end
+
+--设置减速状态
+function ServerGameInfo.UpdateDecelerationOn(player: Player, decelerationOn: boolean)
+	local playerInfo: GameConfig.PlayerInfo = playerInfoMap[player.UserId]
+	if playerInfo == nil then
+		warn("[ServerGameInfo] UpdateDecelerationOn failed: playerInfo not found for", player.Name)
+		return
+	end
+	playerInfo.settingInfo.decelerationOn = decelerationOn
+	playerInfo.playerInfoChanged = true
+	print("[ServerGameInfo] UpdateDecelerationOn for", player.Name, "to", decelerationOn)
 end
 
 --更新行走速度等级

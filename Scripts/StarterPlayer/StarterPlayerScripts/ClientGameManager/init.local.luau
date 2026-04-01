@@ -194,6 +194,8 @@ PreloadAssets = function()
 	local otherImageList: { string } = {}
 	table.insert(otherImageList, GameConfig.CoinIconImage)
 	table.insert(otherImageList, GameConfig.RbImage)
+	table.insert(otherImageList, GameConfig.DecelerationOnImage)
+	table.insert(otherImageList, GameConfig.DecelerationOffImage)
 
 	for _, otherImage: string in otherImageList do
 		AddImage(otherImage)

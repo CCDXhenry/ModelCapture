@@ -10,6 +10,7 @@ local UIAdapter = require(coreClientScripts:FindFirstChild("UIAdapter"))
 local scripts = replicatedStorage:WaitForChild("Scripts")
 local sharedScripts_game = scripts:WaitForChild("Shared")
 local GameConfig = require(sharedScripts_game:FindFirstChild("GameConfig"))
+local NetMsg = require(sharedScripts_game:FindFirstChild("NetMsg"))
 local clientScripts = scripts:WaitForChild("Client")
 local ClientGameInfo = require(clientScripts:FindFirstChild("ClientGameInfo"))
 local uiManagerScript = clientScripts:WaitForChild("UIManager")
@@ -17,6 +18,7 @@ local UIManager = require(uiManagerScript)
 local ClientMsg = require(clientScripts:FindFirstChild("ClientMsg"))
 local TranslationTool = require(core:WaitForChild("Scripts"):WaitForChild("Client"):FindFirstChild("TranslationTool"))
 local GameTexts = require(sharedScripts_game:FindFirstChild("GameTexts"))
+local userInputService = game:GetService("UserInputService")
 
 local lobbyFrame: Frame = script.Parent
 local coinFrame: Frame = lobbyFrame:FindFirstChild("CoinFrame") :: Frame
@@ -31,6 +33,8 @@ local maxBricksFrame: Frame = lobbyFrame:FindFirstChild("MaxBricksFrame") :: Fra
 local maxBricksText: TextLabel = maxBricksFrame:FindFirstChild("NumberText") :: TextLabel
 local walkSpeedFrame: Frame = lobbyFrame:FindFirstChild("WalkSpeedFrame") :: Frame
 local walkSpeedText: TextLabel = walkSpeedFrame:FindFirstChild("NumberText") :: TextLabel
+local decelerationButton: ImageButton? = lobbyFrame:FindFirstChild("DecelerationButton") :: ImageButton?
+local decelerationButtonTextLabel: TextLabel? = if decelerationButton then (decelerationButton:FindFirstChild("TextLabel") :: TextLabel?) else nil
 local bottomButtonsFrame = lobbyFrame:FindFirstChild("BottomButtonsFrame")
 local rebirthFrame: Frame? = (lobbyFrame:FindFirstChild("RebirthFrame") or (if bottomButtonsFrame then bottomButtonsFrame:FindFirstChild("RebirthFrame") else nil)) :: Frame?
 local rebirthButton: GuiButton? = if rebirthFrame then (rebirthFrame:FindFirstChild("Button") :: any) else nil
@@ -44,6 +48,47 @@ local walkSpeedAddButton: GuiButton? = walkSpeedFrame:FindFirstChild("AddButton"
 local defaultWalkSpeedColor = walkSpeedText.TextColor3
 local localPlayer = game:GetService("Players").LocalPlayer
 local humSpeedConnection: RBXScriptConnection? = nil
+local DecelerationOnImage = GameConfig.DecelerationOnImage
+local DecelerationOffImage = GameConfig.DecelerationOffImage
+
+local function GetIsDecelerationOn(): boolean
+	local localPlayerInfo = ClientGameInfo.GetLocalPlayerInfo()
+	if localPlayerInfo == nil then
+		return false
+	end
+	return localPlayerInfo.settingInfo.decelerationOn == true
+end
+
+local function RefreshDecelerationButtonImage()
+	if decelerationButton == nil then
+		return
+	end
+	decelerationButton.Image = if GetIsDecelerationOn() then DecelerationOnImage else DecelerationOffImage
+end
+
+local function RefreshDecelerationButtonText()
+	if decelerationButtonTextLabel == nil then
+		return
+	end
+	local textData = if GetIsDecelerationOn() then GameTexts.DecelerationOn else GameTexts.DecelerationOff
+	TranslationTool.CustomAutoLocalizeTextLabel(decelerationButtonTextLabel, textData.source, textData.key)
+end
+
+local function RefreshDecelerationButtonView()
+	RefreshDecelerationButtonImage()
+	RefreshDecelerationButtonText()
+end
+
+local function ToggleDecelerationOn()
+	local localPlayerInfo = ClientGameInfo.GetLocalPlayerInfo()
+	if localPlayerInfo == nil then
+		return
+	end
+	local newDecelerationOn = not (localPlayerInfo.settingInfo.decelerationOn == true)
+	localPlayerInfo.settingInfo.decelerationOn = newDecelerationOn
+	RefreshDecelerationButtonView()
+	NetMsg.FireRequestSetDecelerationOn(newDecelerationOn)
+end
 
 if maxBricksAddButton then
 	maxBricksAddButton.Activated:Connect(function()
@@ -68,6 +113,22 @@ if storeBundleButton then
 		UIManager.OpenWindow(UIManager.WindowId.StoreBundle)
 	end)
 end
+
+if decelerationButton then
+	decelerationButton.Activated:Connect(function()
+		ToggleDecelerationOn()
+	end)
+end
+
+userInputService.InputBegan:Connect(function(inputObject: InputObject, gameProcessedEvent: boolean)
+	if gameProcessedEvent then
+		return
+	end
+	if inputObject.KeyCode ~= Enum.KeyCode.T then
+		return
+	end
+	ToggleDecelerationOn()
+end)
 
 --刷新金币数量
 local function RefreshCoinCountText()
@@ -113,10 +174,12 @@ local function RefreshUpgradeValues()
 
 	-- WalkSpeed
 	local walkSpeedLevel = localPlayerInfo.shopInfo.walkSpeedLevel or 1
+	local isDecelerationOn = localPlayerInfo.settingInfo.decelerationOn == true
+	local targetWalkSpeedLevel = if isDecelerationOn then 1 else walkSpeedLevel
 	local walkSpeedConfig = GameConfig.Shop.WalkSpeed
 	local baseSpeed = 16
 	if walkSpeedConfig then
-		baseSpeed = walkSpeedConfig.abilityList[walkSpeedLevel] or walkSpeedConfig.abilityList[1]
+		baseSpeed = walkSpeedConfig.abilityList[targetWalkSpeedLevel] or walkSpeedConfig.abilityList[1]
 	end
 
 	local char = localPlayer.Character
@@ -167,6 +230,7 @@ end
 local function OnLocalPlayerInfoInit()
 	RefreshView()
 	RefreshRebirthDisplay()
+	RefreshDecelerationButtonView()
 end
 
 local function ConnectHumanoid(char: Model)
@@ -202,6 +266,7 @@ UIAdapter.AddAdaptiveFrame(lobbyFrame, UIAdapter.AdaptiveType.FullScreen)
 
 RefreshView()
 RefreshRebirthDisplay()
+RefreshDecelerationButtonView()
 
 ClientMsg.ConnectLocalPlayerCurrencyUpdate(OnLocalPlayerCoinCountChanged)
 ClientMsg.ConnectLocalPlayerInfoInit(OnLocalPlayerInfoInit)

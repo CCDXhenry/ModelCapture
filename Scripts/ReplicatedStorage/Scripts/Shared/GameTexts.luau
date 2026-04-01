@@ -49,5 +49,7 @@ local GameTexts = {
 	QualityCelestial = { key = "", source = "Celestial" },
 	EarthquakeImminent = { key = "", source = "Earthquake imminent" },
 	EarthquakeActive = { key = "", source = "Earthquake in progress" },
+	DecelerationOn = { key = "", source = "[T] Deceleration: ON" },
+	DecelerationOff = { key = "", source = "[T] Deceleration: OFF" },
 }
 return GameTexts

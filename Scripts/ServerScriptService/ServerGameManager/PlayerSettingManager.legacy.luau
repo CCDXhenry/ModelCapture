@@ -2,6 +2,7 @@
 local serverStorage: ServerStorage = game:GetService("ServerStorage")
 local serverScripts = serverStorage:WaitForChild("Scripts")
 local ServerGameInfo = require(serverScripts:FindFirstChild("ServerGameInfo"))
+local CoilManager = require(serverScripts:FindFirstChild("CoilManager"))
 local replicatedStorage: ReplicatedStorage = game:GetService("ReplicatedStorage")
 local scripts = replicatedStorage:WaitForChild("Scripts")
 local sharedScripts = scripts:WaitForChild("Shared")
@@ -32,6 +33,19 @@ local function OnPlayerRequestSetVibrationsOnOffState(player: Player, vibrations
 	ServerGameInfo.UpdateVibrationOn(player, vibrationsOn)
 end
 
+local function OnPlayerRequestSetDecelerationOn(player: Player, decelerationOn: boolean)
+	local playerInfo: GameConfig.PlayerInfo? = ServerGameInfo.GetPlayerInfo(player)
+	if playerInfo == nil or playerInfo.settingInfo.decelerationOn == decelerationOn then
+		return
+	end
+	ServerGameInfo.UpdateDecelerationOn(player, decelerationOn)
+	ServerGameInfo.ApplyWalkSpeed(player)
+	if decelerationOn == false then
+		CoilManager.ReapplyEquippedSpeedCoilBuff(player)
+	end
+end
+
 NetMsg.ConnectRequestSetBGMVolume(OnPlayerRequestSetBGMVolume)
 NetMsg.ConnectRequestSetSoundEffectVolume(OnPlayerRequestSetSoundEffectVolume)
 NetMsg.ConnectRequestSetVibrationsOnOffState(OnPlayerRequestSetVibrationsOnOffState)
+NetMsg.ConnectRequestSetDecelerationOn(OnPlayerRequestSetDecelerationOn)

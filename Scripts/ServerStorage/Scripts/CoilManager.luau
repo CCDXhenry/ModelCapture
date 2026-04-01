@@ -15,12 +15,17 @@ local defaultWalkSpeed: number = 16
 local defaultJumpPower: number = 50
 local defaultJumpHeight: number = 7.2
 
-local function ApplyCoilBuff(character: Model, coilData: GameConfig.CoilInfo)
+local function ApplyCoilBuff(character: Model, coilData: GameConfig.CoilData)
 	local humanoid = character:FindFirstChildOfClass("Humanoid")
 	if humanoid then
+		local player = players:GetPlayerFromCharacter(character)
+		local playerInfo = if player then ServerGameInfo.GetPlayerInfo(player) else nil
+		local isDecelerationOn = if playerInfo then playerInfo.settingInfo.decelerationOn == true else false
 		if coilData.speedValue and coilData.speedValue > 0 then
-			local speedBoost = coilData.speedValue
-			humanoid.WalkSpeed = humanoid.WalkSpeed + speedBoost
+			if not isDecelerationOn then
+				local speedBoost = coilData.speedValue
+				humanoid.WalkSpeed = humanoid.WalkSpeed + speedBoost
+			end
 		end
 		if coilData.gravitationalValue and coilData.gravitationalValue ~= 1 then
 			if humanoid.UseJumpPower then
@@ -32,7 +37,7 @@ local function ApplyCoilBuff(character: Model, coilData: GameConfig.CoilInfo)
 	end
 end
 
-local function RevertCoilBuff(character: Model, coilData: GameConfig.CoilInfo)
+local function RevertCoilBuff(character: Model, coilData: GameConfig.CoilData)
 	local humanoid = character:FindFirstChildOfClass("Humanoid")
 	if humanoid then
 		if coilData.speedValue and coilData.speedValue > 0 then
@@ -87,6 +92,24 @@ local function OnCharacterAdded(character: Model)
 			OnToolUnequipped(child, character)
 		end
 	end)
+end
+
+function CoilManager.ReapplyEquippedSpeedCoilBuff(player: Player)
+	local character = player.Character
+	if character == nil then
+		return
+	end
+	local equippedTool = character:FindFirstChildOfClass("Tool")
+	if equippedTool == nil then
+		return
+	end
+	local coilData = GameConfig.CoilNameMap[equippedTool.Name]
+	if coilData == nil then
+		return
+	end
+	if coilData.speedValue and coilData.speedValue > 0 then
+		ApplyCoilBuff(character, coilData)
+	end
 end
 
 function CoilManager.Init()

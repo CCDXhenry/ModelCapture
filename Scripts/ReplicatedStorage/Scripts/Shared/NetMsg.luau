@@ -9,6 +9,7 @@ local remoteEventsFolder: Folder = replicatedStorage:FindFirstChild("RemoteEvent
 local requestSetBGMVolumeEvent: RemoteEvent = remoteEventsFolder:FindFirstChild("RequestSetBGMVolume") :: RemoteEvent
 local requestSetSoundEffectVolumeEvent: RemoteEvent = remoteEventsFolder:FindFirstChild("RequestSetSoundEffectVolume") :: RemoteEvent
 local requestSetVibrationsOnOffStateEvent: RemoteEvent = remoteEventsFolder:FindFirstChild("RequestSetVibrationsOnOffState") :: RemoteEvent
+local requestSetDecelerationOnEvent: RemoteEvent = remoteEventsFolder:FindFirstChild("RequestSetDecelerationOn") :: RemoteEvent
 local notifyPlayerInfoInitEvent = remoteEventsFolder:FindFirstChild("NotifyPlayerInfoInit") :: RemoteEvent
 local notifyPlayersOtherPlayerInfoInitEvent: RemoteEvent = remoteEventsFolder:FindFirstChild("NotifyPlayersOtherPlayerInfoInit") :: RemoteEvent
 local notifyPlayerAcquiredGamePassEvent: RemoteEvent = remoteEventsFolder:FindFirstChild("NotifyPlayerAcquiredGamePass") :: RemoteEvent
@@ -81,6 +82,15 @@ end
 
 function NetMsg.ConnectRequestSetVibrationsOnOffState(callback: (player: Player, vibrationsOn: boolean) -> ())
 	requestSetVibrationsOnOffStateEvent.OnServerEvent:Connect(callback)
+end
+
+--客户端请求设置减速开关状态
+function NetMsg.FireRequestSetDecelerationOn(decelerationOn: boolean)
+	requestSetDecelerationOnEvent:FireServer(decelerationOn)
+end
+
+function NetMsg.ConnectRequestSetDecelerationOn(callback: (player: Player, decelerationOn: boolean) -> ())
+	requestSetDecelerationOnEvent.OnServerEvent:Connect(callback)
 end
 
 --通知客户端玩家信息初始化完成

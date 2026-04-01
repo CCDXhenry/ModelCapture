@@ -21,12 +21,13 @@ GameConfig.ABTestVersion = "1.0.0"
 --玩家存档数据版本
 GameConfig.PlayerSaveInfoDataVersion = 0
 --正式版游戏id
-GameConfig.GameId = 6376748064
+GameConfig.GameId = 9971505831
+
 if game.GameId == GameConfig.GameId then
 	--游戏场景
-	GameConfig.GamePlaceId = 17432470623
+	GameConfig.GamePlaceId = 106064553761864
 	--清除玩家数据场景
-	GameConfig.ClearDataStorePlaceId = 18733054561
+	GameConfig.ClearDataStorePlaceId = 73637948383969
 else
 	--游戏场景
 	GameConfig.GamePlaceId = 17432470623
@@ -42,6 +43,8 @@ GameConfig.GamePassPrice = {}
 
 GameConfig.CoinIconImage = "rbxassetid://138756794615498"
 GameConfig.RbImage = "rbxassetid://116949418469040"
+GameConfig.DecelerationOnImage = "rbxassetid://114216336762183"
+GameConfig.DecelerationOffImage = "rbxassetid://113696020530948"
 
 --六次方群组id
 GameConfig.SixcubeGroupId = 33977495
@@ -601,6 +604,8 @@ export type SettingInfo = {
 	soundEffectVolume: number,
 	--是否开启震动
 	vibrationOn: boolean,
+	--是否开启减速（锁定为1级速度）
+	decelerationOn: boolean,
 }
 --玩家配置信息
 export type PlayerConfigInfo = {}
@@ -705,6 +710,7 @@ function GameConfig.CreateDefaultPlayerSaveInfo(): PlayerSaveInfo
 			bgmVolume = 1,
 			soundEffectVolume = 1,
 			vibrationOn = true,
+			decelerationOn = false,
 		},
 		ownedGamePassList = {},
 		currencies = {
