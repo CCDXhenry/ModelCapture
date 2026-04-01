@@ -404,6 +404,9 @@ GameConfig.Paving = {
 	RebirthProductId = 3562550008, -- 付费重生产品ID
 }
 
+-- 升级家园 HomePart.InfoUI 显示距离（水平距离；<=隐藏，>显示）
+GameConfig.UpgradeHomeInfoUIDistanceLimit = 40
+
 -- 地震系统配置
 GameConfig.Earthquake = {
 	IntervalMin = 30, -- 两次地震最短间隔

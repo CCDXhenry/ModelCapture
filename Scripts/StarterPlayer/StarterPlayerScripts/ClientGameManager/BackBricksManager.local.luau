@@ -21,7 +21,7 @@ local VISUAL_SCALE = 0.25 -- 背部砖块缩放比例
 local MAX_VISUAL = GameConfig.Paving.BackBricksMaxVisual or 10
 local STACK_OFFSET = Vector3.new(0, 0, 1.2) -- 基础偏移 (调远一些)
 
-local function GetContainer()
+local function GetContainer(): Model?
 	local character = localPlayer.Character
 	if not character then
 		return nil
@@ -38,6 +38,9 @@ local function GetContainer()
 	end
 
 	container = Instance.new("Model")
+	if not container then
+		return nil
+	end
 	container.Name = "BackBricks"
 	container.Parent = character
 
@@ -79,6 +82,7 @@ local function UpdateBackBricks()
 
 	-- 检测是否在安全区 (地面 / 岛屿 / 玩家房屋)
 	local isInSafeZone = false
+	local hitUnderIslands = false
 	local groundFolder = workspace:FindFirstChild("Ground") or workspace:FindFirstChild("ground")
 	local islandsFolder = workspace:FindFirstChild("Islands")
 	local homesFolder = workspace:FindFirstChild("PlayersHome")
@@ -104,6 +108,9 @@ local function UpdateBackBricks()
 		local result = workspace:Raycast(rayOrigin, rayDirection, raycastParams)
 		if result then
 			isInSafeZone = true
+			if islandsFolder then
+				hitUnderIslands = result.Instance:IsDescendantOf(islandsFolder)
+			end
 		end
 	end
 
@@ -114,8 +121,8 @@ local function UpdateBackBricks()
 	-- 之前用户手动改成了 / 1，遵循此设定
 	local visualCount = math.min(MAX_VISUAL, math.ceil(currentBricks / 1))
 
-	-- 判定显示: 在 StartPoint 必显，否则在安全区隐藏
-	if isInSafeZone and not isOnStartPoint then
+	-- 判定显示: 在 StartPoint 必显；岛屿上显示；其余安全区 (地面/房屋) 隐藏
+	if isInSafeZone and not isOnStartPoint and not hitUnderIslands then
 		visualCount = 0
 	end
 

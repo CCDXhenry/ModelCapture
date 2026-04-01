@@ -22,6 +22,7 @@ local toolOriginsFolder = replicatedStorage:FindFirstChild("Tools")
 local soundFolder = replicatedStorage:WaitForChild("Sounds")
 local soundService: SoundService = game:FindFirstChild("SoundService")
 local UserInputService = game:GetService("UserInputService")
+local marketplaceService: MarketplaceService = game:GetService("MarketplaceService")
 local NetMsg = require(sharedScripts:FindFirstChild("NetMsg"))
 local players = game:GetService("Players")
 local localPlayerInfo: GameConfig.ClientLocalPlayerInfo? = ClientGameInfo.GetLocalPlayerInfo()
@@ -66,6 +67,8 @@ local GIFT_REQUEST_TITLE_COLOR = Color3.fromRGB(0, 0, 255)  -- 蓝色
 local TOP_TIP_DEFAULT_COLOR = Color3.fromRGB(255, 255, 255) -- 白色
 local TOP_TIP_SUCCESS_COLOR = Color3.fromRGB(0, 255, 0)     -- 绿色
 local _TOP_TIP_FAILURE_COLOR = Color3.fromRGB(255, 0, 0)     -- 红色
+
+local rescueDeathRescuePromptActive = false
 
 local GIFT_POPUP_COUNTDOWN_TIME = 10
 local GIFT_TOP_TIP_DURATION = 5
@@ -396,7 +399,7 @@ local function OnShowRescuePopup()
 	TranslationTool.CustomAutoLocalizeTextLabel(rescueFlightTipInfoLabel, GameTexts.RescueFlightBody.source, GameTexts.RescueFlightBody.key)
 	
 	activePopUpConnectionYes = rescueFlightYesButton.MouseButton1Click:Connect(function()
-		local marketplaceService = game:GetService("MarketplaceService")
+		rescueDeathRescuePromptActive = true
 		marketplaceService:PromptProductPurchase(players.LocalPlayer, GameConfig.Paving.DeathRescueProductId)
 		HidePopUpTipFrame()
 	end)
@@ -485,6 +488,22 @@ local function OnShowTopTipText(textSource: string, color: Color3, duration: num
 end
 
 UIAdapter.AddAdaptiveFrame(gameTipFrame, UIAdapter.AdaptiveType.FullScreen)
+
+marketplaceService.PromptProductPurchaseFinished:Connect(function(player, productId, isPurchased)
+	if player ~= players.LocalPlayer then
+		return
+	end
+	if productId ~= GameConfig.Paving.DeathRescueProductId then
+		return
+	end
+	if not rescueDeathRescuePromptActive then
+		return
+	end
+	rescueDeathRescuePromptActive = false
+	if not isPurchased then
+		ClientMsg.FireResumeFalling()
+	end
+end)
 
 runService:BindToRenderStep("GameTipFrame.RenderStepped", Enum.RenderPriority.Camera.Value + 2, OnRenderStepped)
 

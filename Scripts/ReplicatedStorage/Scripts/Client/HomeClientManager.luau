@@ -156,12 +156,18 @@ local function RefreshLocalHomeInteractionFocus()
 		end
 	end
 
-	-- 额外：HomePart 仅作为定位锚点，任何情况下都隐藏（包含 InfoUI）
-	if charPos then
-		local upgradeHomeModel = slotModel:FindFirstChild("UpgradeHome") :: Model?
-		local homePart = upgradeHomeModel and upgradeHomeModel:FindFirstChild("HomePart") :: BasePart?
-		local infoUI = homePart and homePart:FindFirstChild("InfoUI") :: BillboardGui?
-		if infoUI then
+	-- UpgradeHome HomePart.InfoUI：仅本地玩家显示；水平距离<=阈值隐藏，超过才显示
+	local upgradeHomeModel = slotModel:FindFirstChild("UpgradeHome") :: Model?
+	local homePart = upgradeHomeModel and upgradeHomeModel:FindFirstChild("HomePart") :: BasePart?
+	local infoUI = homePart and homePart:FindFirstChild("InfoUI") :: BillboardGui?
+	if infoUI then
+		if charPos and homePart then
+			local homePos = homePart.Position
+			local delta = Vector3.new(homePos.X, 0, homePos.Z) - Vector3.new(charPos.X, 0, charPos.Z)
+			local horizontalDistance = delta.Magnitude
+			infoUI.Enabled = horizontalDistance > GameConfig.UpgradeHomeInfoUIDistanceLimit
+		else
+			-- 没有角色坐标时，保证不显示
 			infoUI.Enabled = false
 		end
 	end
@@ -390,7 +396,9 @@ local function UpdatePlot(folder: Instance, placedData: any?, isLocalPlayer: boo
 	local placeAttachment = rootPart and rootPart:FindFirstChild("PlaceAttachment") :: Attachment?
 	local sellAttachment = rootPart and rootPart:FindFirstChild("SellAttachment") :: Attachment?
 	local lightAttachment = rootPart and rootPart:FindFirstChild("LightAttachment") :: Attachment?
+	local lightEffectAttachment = rootPart and rootPart:FindFirstChild("LightEffectAttachment") :: Attachment?
 	local lightEmitter = lightAttachment and lightAttachment:FindFirstChildOfClass("ParticleEmitter")
+	local lightEffectEmitter = lightEffectAttachment and lightEffectAttachment:FindFirstChildOfClass("ParticleEmitter")
 
 	local upgradePart = pedestal and pedestal:FindFirstChild("UpgradePart") :: BasePart?
 	if upgradePart then
@@ -429,6 +437,30 @@ local function UpdatePlot(folder: Instance, placedData: any?, isLocalPlayer: boo
 
 	-- 4. Set prompt/UI visibility based on occupancy
 	local isOccupied = placedData ~= nil
+
+	-- Empty booth: hide specific mesh (Workspace.*.Booth.BoothModel.group2_polySurface6.xian)
+	if pedestal and pedestal.Parent then
+		local boothModel = pedestal:FindFirstChild("BoothModel")
+		local group2 = boothModel and boothModel:FindFirstChild("group2_polySurface6")
+		local xian = group2 and group2:FindFirstChild("xian")
+		if xian then
+			if xian:IsA("Model") then
+				for _, desc in ipairs(xian:GetDescendants()) do
+					SetVisuals(desc, isOccupied, false)
+				end
+			else
+				SetVisuals(xian, isOccupied, false)
+			end
+		else
+			-- Fallback: if hierarchy differs, search by name within Booth.
+			for _, desc in ipairs(pedestal:GetDescendants()) do
+				if desc.Name == "xian" then
+					SetVisuals(desc, isOccupied, false)
+				end
+			end
+		end
+	end
+
 	local showPlacePrompt = (not isOccupied and isLocalPlayer and isLocalHoldingBrainrot) or (isOccupied and isLocalPlayer)
 	local deferPromptEnabled = isLocalPlayer
 	if pointIndex then
@@ -438,6 +470,9 @@ local function UpdatePlot(folder: Instance, placedData: any?, isLocalPlayer: boo
 
 	if lightEmitter then
 		lightEmitter.Enabled = false
+	end
+	if lightEffectEmitter then
+		lightEffectEmitter.Enabled = false
 	end
 
 	if isOccupied and placedData then
@@ -449,6 +484,9 @@ local function UpdatePlot(folder: Instance, placedData: any?, isLocalPlayer: boo
 			if lightEmitter and qualityCfg then
 				lightEmitter.Color = ColorSequence.new(qualityCfg.textColor)
 				lightEmitter.Enabled = true
+				if lightEffectEmitter then
+					lightEffectEmitter.Enabled = true
+				end
 			end
 
 			local sellPrompt = sellAttachment and sellAttachment:FindFirstChildOfClass("ProximityPrompt")
@@ -1112,6 +1150,12 @@ function UpdateHomeVisuals(slotName: string, homeInfo: any, isLocalPlayer: boole
 			homePart.CanCollide = false
 			homePart.CanQuery = false
 			homePart.CanTouch = false
+
+			-- HomePart.InfoUI 使用固定屏幕大小（通过 BillboardManager 自适应）
+			local infoUI = homePart:FindFirstChild("InfoUI") :: BillboardGui?
+			if infoUI then
+				SetupBillboardAdaptation(infoUI)
+			end
 		end
 
 		local upgradePart = upgradeHomeModel:FindFirstChild("UpgradeHome") :: BasePart?
