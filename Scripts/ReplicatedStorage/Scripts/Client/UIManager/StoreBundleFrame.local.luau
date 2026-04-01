@@ -14,8 +14,9 @@ local ClientMsg = require(clientScripts:WaitForChild("ClientMsg"))
 local NumberExtension = require(coreSharedScripts:WaitForChild("NumberExtension"))
 local TranslationTool = require(coreClientScripts:WaitForChild("TranslationTool"))
 local GameConfig = require(sharedScripts:WaitForChild("GameConfig"))
-local GameTexts = require(sharedScripts:WaitForChild("GameTexts"))
 local UIManager = require(clientScripts:WaitForChild("UIManager"))
+
+local DEFAULT_TEXT_COLOR = Color3.fromRGB(255, 255, 255)
 
 local thisFrame = script.Parent :: Frame
 local windowId = thisFrame:GetAttribute("WindowId") :: string
@@ -44,7 +45,17 @@ local function updateCanvas()
 	scrollingFrame.CanvasSize = UDim2.new(0, 0, 0, contentHeight + 16)
 end
 
+local function getQualityColor(quality: number): Color3
+	local qualityCfg = GameConfig.BrainrotQualityConfig[quality]
+	if qualityCfg then
+		return qualityCfg.textColor
+	end
+	return DEFAULT_TEXT_COLOR
+end
+
 local function setRewardText(textLabel: TextLabel, reward: GameConfig.RewardInfo)
+	textLabel.TextColor3 = DEFAULT_TEXT_COLOR
+
 	if reward.rewardType == GameConfig.RewardType.Currency then
 		TranslationTool.CustomAutoLocalizeTextLabel(textLabel, NumberExtension.FormatBigNumberAA(reward.rewardCount))
 		return
@@ -60,9 +71,8 @@ local function setRewardText(textLabel: TextLabel, reward: GameConfig.RewardInfo
 	if reward.rewardType == GameConfig.RewardType.Brainrot then
 		local brainrotData = GameConfig.BrainrotIdMap[reward.rewardId]
 		if brainrotData then
-			local rewardLv = reward.rewardLv or 1
-			local yieldPerSecond = NumberExtension.FormatBigNumberAA(GameConfig.GetBrainrotAbility(brainrotData.baseAbility, rewardLv))
-			TranslationTool.CustomAutoLocalizeTextLabel(textLabel, GameTexts.YieldPerSecond.source, GameTexts.YieldPerSecond.key, { yieldPerSecond })
+			TranslationTool.CustomAutoLocalizeTextLabel(textLabel, brainrotData.name_t, "")
+			textLabel.TextColor3 = getQualityColor(brainrotData.quality)
 			return
 		end
 	end
@@ -70,8 +80,8 @@ local function setRewardText(textLabel: TextLabel, reward: GameConfig.RewardInfo
 	if reward.rewardType == GameConfig.RewardType.LittleElfChest then
 		local chestData = GameConfig.LittleElfChestIdMap[reward.rewardId]
 		if chestData then
-			local ability = NumberExtension.FormatBigNumberAA(reward.rewardLv or reward.rewardCount)
-			TranslationTool.CustomAutoLocalizeTextLabel(textLabel, GameTexts.YieldPerSecond.source, GameTexts.YieldPerSecond.key, { ability })
+			TranslationTool.CustomAutoLocalizeTextLabel(textLabel, chestData.name_t, "")
+			textLabel.TextColor3 = getQualityColor(chestData.quality)
 			return
 		end
 	end

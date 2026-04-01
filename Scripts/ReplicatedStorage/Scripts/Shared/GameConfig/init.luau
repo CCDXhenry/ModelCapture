@@ -89,9 +89,9 @@ GameConfig.ItemType = {
 
 -- 线圈类型
 GameConfig.CoilType = {
-	Speed = 1,
-	DoubleJump = 2,
-	Gravity = 3,
+	Speed = 1, --速度
+	DoubleJump = 2, --多段跳
+	Gravity = 3, --重力
 }
 
 --游戏提示缓动方式
@@ -408,12 +408,12 @@ GameConfig.Paving = {
 	OutOfBricksSupportRenewThreshold = 0.35, -- 无砖保底续命触发阈值（相对 BaseCollapseTime）
 	OutOfBricksSupportRequestInterval = 0.12, -- 客户端无砖保底续命请求间隔
 	DeathThreshold = -10, -- 死亡触发高度阈值 (相对于 SEA_LEVEL)
-	DeathRescueProductId = 3561975643, -- 翅膀援助购买产品ID (TODO: 修改实际ID)
+	DeathRescueProductId = 3567697241, -- 翅膀援助购买产品ID
 	StartActivationRange = 5, -- 修改：从 1 增加到 5，确保护跑时有足够的重合区域。
 	PavingDistanceLimit = 30, -- 距离玩家超过此距离则不让铺
 	StationaryRenewalThreshold = 0.7, -- 剩余寿命低于 70% 时才允许原地续期
 	StationaryRenewalInterval = 0.2, -- 原地续期检测间隔 (加快响应)
-	RebirthProductId = 3562550008, -- 付费重生产品ID
+	RebirthProductId = 3567723594, -- 付费重生产品ID
 }
 
 GameConfig.PavingRejectReason = {
@@ -579,8 +579,8 @@ export type ShopPaidConfig = {
 }
 
 GameConfig.ShopPaid = {
-	WalkSpeed10ProductId = 3563778722,
-	MaxBricks10ProductId = 3563778785,
+	WalkSpeed10ProductId = 3567697343,
+	MaxBricks10ProductId = 3567697394,
 } :: ShopPaidConfig
 
 -- 实体模型信息
