@@ -64,8 +64,14 @@ local function SetupVisualBrainrot(targetPart: BasePart)
 		return
 	end
 
-	local sourceModel = sourceFolder:FindFirstChild(data.resourceName)
+	local sourceModel = GameConfig.FindModelByResourceName(sourceFolder, data.resourceName)
 	if not sourceModel or not sourceModel:IsA("Model") then
+		warn(
+			"[BrainrotClientManager] Visual source model not found:",
+			data.resourceName,
+			"candidates:",
+			table.concat(GameConfig.GetResourceNameCandidates(data.resourceName), ", ")
+		)
 		return
 	end
 

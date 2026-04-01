@@ -185,6 +185,43 @@ for _, config in pairs(BrainrotDataModule) do
 	GameConfig.BrainrotIdMap[config.id] = config
 end
 
+local function BuildResourceNameCandidates(resourceName: string): { string }
+	local candidateMap: { [string]: boolean } = {}
+	local candidates: { string } = {}
+
+	local function addCandidate(name: string)
+		if name == "" or candidateMap[name] then
+			return
+		end
+		candidateMap[name] = true
+		table.insert(candidates, name)
+	end
+
+	addCandidate(resourceName)
+	addCandidate((string.gsub(resourceName, "_", " ")))
+	addCandidate((string.gsub(resourceName, " ", "_")))
+	return candidates
+end
+
+function GameConfig.GetResourceNameCandidates(resourceName: string): { string }
+	return BuildResourceNameCandidates(resourceName)
+end
+
+function GameConfig.FindModelByResourceName(folder: Instance?, resourceName: string): Model?
+	if not folder or resourceName == "" then
+		return nil
+	end
+
+	for _, candidateName in ipairs(BuildResourceNameCandidates(resourceName)) do
+		local found = folder:FindFirstChild(candidateName)
+		if found and found:IsA("Model") then
+			return found
+		end
+	end
+
+	return nil
+end
+
 export type CoilData = {
 	id: number,
 	coilType: number,

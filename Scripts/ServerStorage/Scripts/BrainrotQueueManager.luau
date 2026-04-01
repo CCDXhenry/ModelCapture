@@ -63,7 +63,7 @@ local function CreateToolForItem(player: Player, item: GameConfig.BrainrotQueueI
 		handle.Parent = tool
 
 		-- Clone 视觉模型到 Tool
-		local sourceModel = actualModels:FindFirstChild(config.resourceName)
+		local sourceModel = GameConfig.FindModelByResourceName(actualModels, config.resourceName)
 		if sourceModel and sourceModel:IsA("Model") then
 			local visualModel = sourceModel:Clone()
 			visualModel.Name = "VisualModel"
@@ -92,6 +92,13 @@ local function CreateToolForItem(player: Player, item: GameConfig.BrainrotQueueI
 			else
 				visualModel.Parent = tool
 			end
+		else
+			warn(
+				"[BrainrotQueueManager] Brainrot model not found in Brainrots:",
+				config.resourceName,
+				"candidates:",
+				table.concat(GameConfig.GetResourceNameCandidates(config.resourceName), ", ")
+			)
 		end
 	elseif itemType == GameConfig.ItemType.Coil then
 		local sourceModel = actualCoils:FindFirstChild(config.modelRes)
@@ -108,7 +115,7 @@ local function CreateToolForItem(player: Player, item: GameConfig.BrainrotQueueI
 			return nil
 		end
 	elseif itemType == GameConfig.ItemType.LittleElfChest then
-		local sourceModel = actualChests:FindFirstChild(config.resourceName)
+		local sourceModel = GameConfig.FindModelByResourceName(actualChests, config.resourceName)
 		if sourceModel and sourceModel:IsA("Model") then
 			tool = Instance.new("Tool")
 			tool.Name = config.name_t or ("Chest_" .. item.configId)
@@ -154,7 +161,12 @@ local function CreateToolForItem(player: Player, item: GameConfig.BrainrotQueueI
 				visualModel.Parent = tool
 			end
 		else
-			warn("[BrainrotQueueManager] Chest Model not found in LittleElfChests:", config.resourceName)
+			warn(
+				"[BrainrotQueueManager] Chest model not found in LittleElfChests:",
+				config.resourceName,
+				"candidates:",
+				table.concat(GameConfig.GetResourceNameCandidates(config.resourceName), ", ")
+			)
 			return nil
 		end
 	end

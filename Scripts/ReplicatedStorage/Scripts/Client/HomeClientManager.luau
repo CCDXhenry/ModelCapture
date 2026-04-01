@@ -707,7 +707,9 @@ local function UpdatePlot(folder: Instance, placedData: any?, isLocalPlayer: boo
 			end
 
 			local brainrotData = GameConfig.BrainrotIdMap[placedData.configId]
-			local sourceModel = if brainrotData and actualModels then actualModels:FindFirstChild(brainrotData.resourceName) else nil
+			local sourceModel = if brainrotData and actualModels
+				then GameConfig.FindModelByResourceName(actualModels, brainrotData.resourceName)
+				else nil
 
 			if sourceModel and sourceModel:IsA("Model") and modelContainer then
 				local newVisual = sourceModel:Clone()
@@ -745,6 +747,13 @@ local function UpdatePlot(folder: Instance, placedData: any?, isLocalPlayer: boo
 				end
 
 				newVisual.Parent = folder
+			elseif brainrotData and actualModels then
+				warn(
+					"[HomeClientManager] Placed brainrot source model not found:",
+					brainrotData.resourceName,
+					"candidates:",
+					table.concat(GameConfig.GetResourceNameCandidates(brainrotData.resourceName), ", ")
+				)
 			end
 		end
 

@@ -127,8 +127,14 @@ local function CreateDisplayModel(tool: Tool, brainrotId: number): (Model?, Base
 	if not config then
 		return nil, nil
 	end
-	local sourceModel = actualModels:FindFirstChild(config.resourceName)
+	local sourceModel = GameConfig.FindModelByResourceName(actualModels, config.resourceName)
 	if not sourceModel or not sourceModel:IsA("Model") then
+		warn(
+			"[LittleElfChestOpenAnimationManager] Reward brainrot model not found:",
+			config.resourceName,
+			"candidates:",
+			table.concat(GameConfig.GetResourceNameCandidates(config.resourceName), ", ")
+		)
 		return nil, nil
 	end
 
@@ -182,8 +188,14 @@ local function PickRandomEntry(pool: { any }, lastId: number?): any?
 end
 
 local function CreateAnchoredModelFromConfig(folder: Folder, resourceName: string, parentInst: Instance, modelName: string, targetCFrame: CFrame): (Model?, BasePart?)
-	local sourceModel = folder:FindFirstChild(resourceName)
+	local sourceModel = GameConfig.FindModelByResourceName(folder, resourceName)
 	if not sourceModel or not sourceModel:IsA("Model") then
+		warn(
+			"[LittleElfChestOpenAnimationManager] Anchored model source not found:",
+			resourceName,
+			"candidates:",
+			table.concat(GameConfig.GetResourceNameCandidates(resourceName), ", ")
+		)
 		return nil, nil
 	end
 	local model = sourceModel:Clone()
