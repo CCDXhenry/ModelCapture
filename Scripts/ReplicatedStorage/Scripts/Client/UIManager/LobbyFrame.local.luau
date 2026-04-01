@@ -50,6 +50,7 @@ local localPlayer = game:GetService("Players").LocalPlayer
 local humSpeedConnection: RBXScriptConnection? = nil
 local DecelerationOnImage = GameConfig.DecelerationOnImage
 local DecelerationOffImage = GameConfig.DecelerationOffImage
+local DecelerationButtonShowSpeed = GameConfig.DecelerationButtonShowSpeed
 
 local function GetIsDecelerationOn(): boolean
 	local localPlayerInfo = ClientGameInfo.GetLocalPlayerInfo()
@@ -77,6 +78,13 @@ end
 local function RefreshDecelerationButtonView()
 	RefreshDecelerationButtonImage()
 	RefreshDecelerationButtonText()
+end
+
+local function RefreshDecelerationButtonVisible(levelSpeed: number)
+	if decelerationButton == nil then
+		return
+	end
+	decelerationButton.Visible = levelSpeed > DecelerationButtonShowSpeed
 end
 
 local function ToggleDecelerationOn()
@@ -177,8 +185,10 @@ local function RefreshUpgradeValues()
 	local isDecelerationOn = localPlayerInfo.settingInfo.decelerationOn == true
 	local targetWalkSpeedLevel = if isDecelerationOn then 1 else walkSpeedLevel
 	local walkSpeedConfig = GameConfig.Shop.WalkSpeed
+	local levelSpeed = 16
 	local baseSpeed = 16
 	if walkSpeedConfig then
+		levelSpeed = walkSpeedConfig.abilityList[walkSpeedLevel] or walkSpeedConfig.abilityList[1]
 		baseSpeed = walkSpeedConfig.abilityList[targetWalkSpeedLevel] or walkSpeedConfig.abilityList[1]
 	end
 
@@ -202,6 +212,7 @@ local function RefreshUpgradeValues()
 		walkSpeedText.Text = NumberExtension.FormatBigNumberAA(baseSpeed)
 		walkSpeedText.TextColor3 = defaultWalkSpeedColor
 	end
+	RefreshDecelerationButtonVisible(levelSpeed)
 end
 
 local function RefreshView()

@@ -195,8 +195,8 @@ function ServerGameInfo.ExecuteRebirth(player: Player, isPaid: boolean): boolean
 		-- 同步重置后的等级
 		NetMsg.FireNotifyPlayerSkillLevelUpdate(player, GameConfig.SkillType.WalkSpeed, 1)
 		NetMsg.FireNotifyPlayerSkillLevelUpdate(player, GameConfig.SkillType.MaxBricks, 1)
-		-- 还要同步搬运信息（可能因为容量变了需要同步）
-		ServerGameInfo.UpdateInventoryBricks(player, 0)
+		-- 按重置后的砖块等级刷新当前砖块数量
+		ServerGameInfo.SetPlayerBricksToMax(player)
 	end
 
 	-- 增加重生等级

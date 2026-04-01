@@ -45,6 +45,7 @@ GameConfig.CoinIconImage = "rbxassetid://138756794615498"
 GameConfig.RbImage = "rbxassetid://116949418469040"
 GameConfig.DecelerationOnImage = "rbxassetid://114216336762183"
 GameConfig.DecelerationOffImage = "rbxassetid://113696020530948"
+GameConfig.DecelerationButtonShowSpeed = 80
 
 --六次方群组id
 GameConfig.SixcubeGroupId = 33977495
