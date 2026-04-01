@@ -9,6 +9,7 @@ local coreScripts = core:WaitForChild("Scripts")
 local sharedScripts = scripts:WaitForChild("Shared")
 local clientScripts = scripts:WaitForChild("Client")
 local coreSharedScripts = coreScripts:WaitForChild("Shared")
+local GameSoundManager = require(clientScripts:FindFirstChild("GameSoundManager"))
 local GameConfig = require(sharedScripts:FindFirstChild("GameConfig"))
 local NetMsg = require(sharedScripts:FindFirstChild("NetMsg"))
 local ClientGameInfo = require(clientScripts:FindFirstChild("ClientGameInfo"))
@@ -648,6 +649,7 @@ local function UpdatePlot(folder: Instance, placedData: any?, isLocalPlayer: boo
 
 					if clickBtn and not clickBtn:GetAttribute("ClickBound") then
 						clickBtn:SetAttribute("ClickBound", true)
+						clickBtn:SetAttribute("SkipButtonClickSound", true)
 
 						UIManager.ApplySurfaceButtonEffects(clickBtn)
 
@@ -682,6 +684,7 @@ local function UpdatePlot(folder: Instance, placedData: any?, isLocalPlayer: boo
 													)
 													return
 												end
+												GameSoundManager.PlayUpgradeAbilitySound()
 												NetMsg.FireRequestUpgradeModel(pIdx)
 											end
 										end
@@ -1220,6 +1223,7 @@ function UpdateHomeVisuals(slotName: string, homeInfo: any, isLocalPlayer: boole
 
 							if not clickBtn:GetAttribute("ClickBound") then
 								clickBtn:SetAttribute("ClickBound", true)
+								clickBtn:SetAttribute("SkipButtonClickSound", true)
 								UIManager.ApplySurfaceButtonEffects(clickBtn)
 
 								clickBtn.Activated:Connect(function()
@@ -1240,6 +1244,7 @@ function UpdateHomeVisuals(slotName: string, homeInfo: any, isLocalPlayer: boole
 													)
 													return
 												end
+												GameSoundManager.PlayUpgradeHomeSound()
 												NetMsg.SendRequestUpgradeSkill(GameConfig.SkillType.HomeLevel)
 											end
 										end
@@ -1317,6 +1322,15 @@ local function OnPromptTriggered(prompt: ProximityPrompt, player: Player)
 		return
 	end
 
+	-- 岛屿拾取：BrainrotIslandManager 会在岛上生成 InteractionAttachment.ProximityPrompt
+	-- 这里统一监听 ProximityPromptService.PromptTriggered，确保岛屿拾取也有拾取/放下音效
+	if parent.Name == "InteractionAttachment" then
+		local holder = parent.Parent
+		if holder and holder:IsA("BasePart") and (holder.Name == "IslandBrainrot" or holder.Name == "IslandChest") then
+			GameSoundManager.PlayPickUpOrPutDownSound()
+		end
+	end
+
 	if parent.Name == "PlaceAttachment" then
 		local data = promptToPlotMap[prompt]
 		if not data then
@@ -1336,9 +1350,11 @@ local function OnPromptTriggered(prompt: ProximityPrompt, player: Player)
 
 		if isOccupied then
 			--print("[HomeClientManager] Firing pickup home model request for plot", pointIndex)
+			GameSoundManager.PlayPickUpOrPutDownSound()
 			NetMsg.FireRequestPickupHomeModel(pointIndex)
 		else
 			--print("[HomeClientManager] Firing place carrying brainrot request for plot", pointIndex)
+			GameSoundManager.PlayPickUpOrPutDownSound()
 			NetMsg.FireRequestPlaceCarryingBrainrot(pointIndex)
 		end
 	elseif parent.Name == "UpgradeAttachment" or parent.Name == "SellAttachment" then
@@ -1375,9 +1391,11 @@ local function OnPromptTriggered(prompt: ProximityPrompt, player: Player)
 				return
 			end
 
+			GameSoundManager.PlayUpgradeAbilitySound()
 			NetMsg.FireRequestUpgradeModel(pointIndex)
 		else
 			-- 3. 出售请求
+			GameSoundManager.PlaySellSound()
 			NetMsg.FireRequestSellModel(pointIndex)
 		end
 	end

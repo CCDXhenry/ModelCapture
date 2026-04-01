@@ -9,6 +9,7 @@ local NetMsg = require(sharedScripts:WaitForChild("NetMsg"))
 local ClientMsg = require(clientScripts:WaitForChild("ClientMsg"))
 local UIManager = require(clientScripts:WaitForChild("UIManager"))
 local ClientGameInfo = require(clientScripts:WaitForChild("ClientGameInfo"))
+local GameSoundManager = require(clientScripts:WaitForChild("GameSoundManager"))
 local players: Players = game:GetService("Players")
 local marketplaceService: MarketplaceService = game:GetService("MarketplaceService")
 local core = ReplicatedStorage:WaitForChild("Core")
@@ -125,6 +126,7 @@ updateCanvas()
 
 local function bindButton(frame: Frame, skillType: number, levelAdd: number)
 	local imageButton = frame:WaitForChild("ImageButton") :: ImageButton
+	imageButton:SetAttribute("SkipButtonClickSound", true)
 	imageButton.Activated:Connect(function()
 		local playerInfo = ClientGameInfo.GetLocalPlayerInfo()
 		if not playerInfo then
@@ -138,6 +140,7 @@ local function bindButton(frame: Frame, skillType: number, levelAdd: number)
 		if canUpgrade then
 			local currentCoin = playerInfo.currencies[tostring(GameConfig.CurrencyType.Coin)] or 0
 			if currentCoin >= totalCost then
+				GameSoundManager.PlayUpgradeAbilitySound()
 				NetMsg.SendRequestUpgradeSkill(skillType, levelAdd)
 			else
 				ClientMsg.FireShowGameTip(GameTexts.InsufficientCoin.source, GameConfig.GameTipTweenType.FlyUp, GameTexts.InsufficientCoin.key)

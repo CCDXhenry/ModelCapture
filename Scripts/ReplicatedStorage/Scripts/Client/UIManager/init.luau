@@ -9,6 +9,7 @@ local UserInutExtension = require(coreClientScripts:FindFirstChild("UserInutExte
 local uiOriginsFolder: Folder = replicatedStorage:FindFirstChild("UI") :: Folder
 local scripts = replicatedStorage:WaitForChild("Scripts")
 local clientScripts = scripts:WaitForChild("Client")
+local GameSoundManager = require(clientScripts:FindFirstChild("GameSoundManager"))
 local ClientMsg = require(clientScripts:FindFirstChild("ClientMsg"))
 local tweenService: TweenService = game:GetService("TweenService")
 
@@ -124,6 +125,19 @@ local function ApplyButtonEffects(button: GuiButton)
 		clickTween1:Play()
 	end)
 end
+
+local function ApplyButtonClickSound(button: GuiButton)
+	if button:GetAttribute("ButtonClickSoundBound") then
+		return
+	end
+	button:SetAttribute("ButtonClickSoundBound", true)
+	button.Activated:Connect(function()
+		if button:GetAttribute("SkipButtonClickSound") then
+			return
+		end
+		GameSoundManager.PlayButtonClickSound()
+	end)
+end
 --专门给SurfaceGui或其他需要平滑状态过渡加背景变暗的按钮使用的特效
 function UIManager.ApplySurfaceButtonEffects(button: GuiButton)
 	local uiScale: UIScale = (button:FindFirstChildOfClass("UIScale") or Instance.new("UIScale")) :: UIScale
@@ -224,11 +238,13 @@ function UIManager.Init(gameScreenGuiNew: ScreenGui)
 		uiParent.DescendantAdded:Connect(function(descendant: Instance)
 			if descendant:IsA("GuiButton") then
 				ApplyButtonEffects(descendant)
+				ApplyButtonClickSound(descendant)
 			end
 		end)
 		for descendantIndex: number, descendant: Instance in uiParent:GetDescendants() do
 			if descendant:IsA("GuiButton") then
 				ApplyButtonEffects(descendant)
+				ApplyButtonClickSound(descendant)
 			end
 		end
 	end

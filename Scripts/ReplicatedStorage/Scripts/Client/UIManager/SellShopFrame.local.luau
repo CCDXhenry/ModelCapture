@@ -9,6 +9,7 @@ local sharedScripts = scripts:WaitForChild("Shared")
 
 local NetMsg = require(sharedScripts:WaitForChild("NetMsg"))
 local ClientMsg = require(clientScripts:WaitForChild("ClientMsg"))
+local GameSoundManager = require(clientScripts:WaitForChild("GameSoundManager"))
 local UIManager = require(clientScripts:WaitForChild("UIManager"))
 local BillboardManager = require(clientScripts:WaitForChild("BillboardManager"))
 local GameTexts = require(sharedScripts:WaitForChild("GameTexts"))
@@ -29,6 +30,7 @@ end
 
 local rowFrame1 = controllerFrame:WaitForChild("RowFrame1") :: Frame
 local sellButton = rowFrame1:WaitForChild("ImageButton") :: ImageButton
+sellButton:SetAttribute("SkipButtonClickSound", true)
 
 local rowFrame2 = controllerFrame:WaitForChild("RowFrame2") :: Frame
 local closeButton = rowFrame2:WaitForChild("ImageButton") :: ImageButton
@@ -72,20 +74,25 @@ ApplyHoverEffect(closeButton)
 
 -- Open/Close buttons logic
 closeButton.Activated:Connect(function()
+	GameSoundManager.PlayButtonClickSound()
 	UIManager.CloseWindow(windowId)
 end)
 
 sellButton.Activated:Connect(function()
+	GameSoundManager.PlayButtonClickSound()
 	local character = player.Character
 	if not character then return end
 	local carryingBrainrot = character:FindFirstChild("CarryingBrainrot")
 	local equippedTool = character:FindFirstChildOfClass("Tool")
 	
-	if not carryingBrainrot and not (equippedTool and equippedTool:GetAttribute("BrainrotUID")) then
+	if not carryingBrainrot 
+	and not (equippedTool and equippedTool:GetAttribute("BrainrotUID") 
+	and equippedTool:GetAttribute("ItemType") == GameConfig.ItemType.Brainrot) then
 		ClientMsg.FireShowGameTip(GameTexts.InsufficientBrainrot.source, GameConfig.GameTipTweenType.FlyUp, GameTexts.InsufficientBrainrot.key)
 		return
 	end
 
+	GameSoundManager.PlaySellSound()
 	NetMsg.FireRequestSellCarryingBrainrot()
 	UIManager.CloseWindow(windowId)
 end)
