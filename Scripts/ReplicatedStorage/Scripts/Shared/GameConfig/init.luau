@@ -395,6 +395,14 @@ GameConfig.Paving = {
 	LocalPredictTTL = 1.5, -- 本地预测砖块存在时间
 	BatchInterval = 0.1, -- 客户端打包发送间隔（10Hz）
 	MaxInterpolationSteps = 5, -- 最大插值步数，防止长距离瞬移导致卡顿
+	MaxInterpolationStepsAtHighSpeed = 10, -- 高速下提高插值步数上限
+	HighSpeedLookaheadMaxFactor = 2.2, -- 高速下前瞻倍率上限
+	FirstBrickForceQueueCooldown = 0.12, -- 首块兜底强制入队最短间隔
+	BatchAckTimeout = 0.9, -- 批回执超时判定（秒）
+	MaxPendingBatches = 4, -- 客户端最多允许在途批次数（背压）
+	OutOfBricksSupportTime = 1.2, -- 无砖时对脚下已拥有砖的保底续命时间
+	OutOfBricksSupportRenewThreshold = 0.35, -- 无砖保底续命触发阈值（相对 BaseCollapseTime）
+	OutOfBricksSupportRequestInterval = 0.12, -- 客户端无砖保底续命请求间隔
 	DeathThreshold = -10, -- 死亡触发高度阈值 (相对于 SEA_LEVEL)
 	DeathRescueProductId = 3561975643, -- 翅膀援助购买产品ID (TODO: 修改实际ID)
 	StartActivationRange = 5, -- 修改：从 1 增加到 5，确保护跑时有足够的重合区域。
@@ -404,13 +412,26 @@ GameConfig.Paving = {
 	RebirthProductId = 3562550008, -- 付费重生产品ID
 }
 
+GameConfig.PavingRejectReason = {
+	InvalidPayload = "InvalidPayload",
+	BatchTooLarge = "BatchTooLarge",
+	NotVector3 = "NotVector3",
+	SafeZoneBlocked = "SafeZoneBlocked",
+	FloatBlockBlocked = "FloatBlockBlocked",
+	HeightMismatch = "HeightMismatch",
+	DistanceLimit = "DistanceLimit",
+	OutOfBricks = "OutOfBricks",
+	OccupiedByOther = "OccupiedByOther",
+	ServerBackpressure = "ServerBackpressure",
+}
+
 -- 升级家园 HomePart.InfoUI 显示距离（水平距离；<=隐藏，>显示）
 GameConfig.UpgradeHomeInfoUIDistanceLimit = 40
 
 -- 地震系统配置
 GameConfig.Earthquake = {
-	IntervalMin = 30, -- 两次地震最短间隔
-	IntervalMax = 40, -- 两次地震最长间隔
+	IntervalMin = 10, -- 两次地震最短间隔
+	IntervalMax = 12, -- 两次地震最长间隔
 	Duration = 5, -- 单次地震总时长
 	CooldownAfterEnd = 2, -- 地震结束后冷却
 	MinPlayersToTrigger = 1, -- 最少在线人数

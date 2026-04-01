@@ -603,7 +603,7 @@ function ServerGameInfo.UpdateHomeLevel(player: Player, levelAdd: number)
 end
 
 --更新搬运中的砖头数量 (瞬态)
-function ServerGameInfo.UpdateInventoryBricks(player: Player, amount: number, isSet: boolean?)
+function ServerGameInfo.UpdateInventoryBricks(player: Player, amount: number, isSet: boolean?, suppressNotify: boolean?)
 	local playerInfo: GameConfig.PlayerInfo = playerInfoMap[player.UserId]
 	if playerInfo == nil then
 		warn("[ServerGameInfo] UpdateInventoryBricks failed: playerInfo not found for", player.Name)
@@ -617,7 +617,17 @@ function ServerGameInfo.UpdateInventoryBricks(player: Player, amount: number, is
 	end
 
 	-- 同步瞬态信息到客户端
-	NetMsg.FireNotifyPlayerCarriedUpdate(player, playerInfo.carriedInfo)
+	if suppressNotify ~= true then
+		NetMsg.FireNotifyPlayerCarriedUpdate(player, playerInfo.carriedInfo)
+	end
+end
+
+function ServerGameInfo.GetPlayerCarriedBricks(player: Player): number
+	local playerInfo: GameConfig.PlayerInfo? = playerInfoMap[player.UserId]
+	if playerInfo == nil then
+		return 0
+	end
+	return playerInfo.carriedInfo.bricks
 end
 
 --获取玩家最大砖头数量

@@ -15,9 +15,25 @@ type BrickData = {
 	ExpireTime: number,
 	IsGhost: boolean,
 }
+type PavingBatchRejectInfo = {
+	index: number,
+	reason: string,
+}
 
 local activeBricks: { [Part]: BrickData } = {}
 local activeBricksGrid: { [string]: Part } = {} -- O(1) 空间网格字典
+local playerLastBatchTimeMap: { [number]: number } = {}
+local playerInFlightBatchMap: { [number]: number } = {}
+local metrics = {
+	totalBatches = 0,
+	totalAccepted = 0,
+	totalRejected = 0,
+	totalBackpressureRejected = 0,
+	totalContentionRejected = 0,
+	totalAckLatencyMs = 0,
+	totalAckCount = 0,
+}
+local METRIC_PREFIX = "PavingMetric_"
 
 local GHOST_DURATION = 1.5 -- 幽灵状态持续时间
 
@@ -41,6 +57,16 @@ end
 
 local function GetPosKey(pos: Vector3)
 	return string.format("%.1f,%.1f,%.1f", pos.X, pos.Y, pos.Z)
+end
+
+local function UpdateMetricAttributes()
+	workspace:SetAttribute(METRIC_PREFIX .. "TotalBatches", metrics.totalBatches)
+	workspace:SetAttribute(METRIC_PREFIX .. "TotalAccepted", metrics.totalAccepted)
+	workspace:SetAttribute(METRIC_PREFIX .. "TotalRejected", metrics.totalRejected)
+	workspace:SetAttribute(METRIC_PREFIX .. "TotalBackpressureRejected", metrics.totalBackpressureRejected)
+	workspace:SetAttribute(METRIC_PREFIX .. "TotalContentionRejected", metrics.totalContentionRejected)
+	local avgLatencyMs = if metrics.totalAckCount > 0 then metrics.totalAckLatencyMs / metrics.totalAckCount else 0
+	workspace:SetAttribute(METRIC_PREFIX .. "AvgAckLatencyMs", avgLatencyMs)
 end
 
 local brickPool: { Part } = {}
@@ -311,31 +337,91 @@ local function VisualizeFloatBlockRaysForBrickCenter(center: Vector3)
 	end
 end
 
-local function OnRequestPlaceBrickBatch(player: Player, positions: any)
+local function OnRequestPlaceBrickBatch(player: Player, positions: any, batchId: number?, clientSentAt: number?)
+	local rejectReason = GameConfig.PavingRejectReason
+	local acceptedIndexes: { number } = {}
+	local rejectedList: { PavingBatchRejectInfo } = {}
+	local function AddRejected(index: number, reason: string)
+		table.insert(rejectedList, {
+			index = index,
+			reason = reason,
+		})
+	end
+
+	local playerId = player.UserId
+	local requestBatchId = if typeof(batchId) == "number" then batchId else 0
+	local now = os.clock()
+	local maxPending = math.max(1, GameConfig.Paving.MaxPendingBatches or 4)
+	local inFlightCount = playerInFlightBatchMap[playerId] or 0
+	if inFlightCount >= maxPending then
+		metrics.totalBatches += 1
+		metrics.totalRejected += 1
+		metrics.totalBackpressureRejected += 1
+		UpdateMetricAttributes()
+		NetMsg.FireNotifyPlaceBrickBatchResult(
+			player,
+			requestBatchId,
+			acceptedIndexes,
+			{ { index = 1, reason = rejectReason.ServerBackpressure } },
+			ServerGameInfo.GetPlayerCarriedBricks(player),
+			now
+		)
+		return
+	end
+
+	playerLastBatchTimeMap[playerId] = now
+	playerInFlightBatchMap[playerId] = inFlightCount + 1
+	metrics.totalBatches += 1
+
 	if type(positions) ~= "table" then
+		AddRejected(1, rejectReason.InvalidPayload)
+		metrics.totalRejected += 1
+		NetMsg.FireNotifyPlaceBrickBatchResult(player, requestBatchId, acceptedIndexes, rejectedList, ServerGameInfo.GetPlayerCarriedBricks(player), now)
+		playerInFlightBatchMap[playerId] = math.max((playerInFlightBatchMap[playerId] or 1) - 1, 0)
+		UpdateMetricAttributes()
 		return
 	end
 	if #positions > GameConfig.Paving.MaxBatchSize then
 		warn("[PavingManager] Player", player.Name, "sent too many bricks in one batch:", #positions)
+		AddRejected(1, rejectReason.BatchTooLarge)
+		metrics.totalRejected += 1
+		NetMsg.FireNotifyPlaceBrickBatchResult(player, requestBatchId, acceptedIndexes, rejectedList, ServerGameInfo.GetPlayerCarriedBricks(player), now)
+		playerInFlightBatchMap[playerId] = math.max((playerInFlightBatchMap[playerId] or 1) - 1, 0)
+		UpdateMetricAttributes()
 		return
 	end
 
 	local playerInfo: GameConfig.PlayerInfo? = ServerGameInfo.GetPlayerInfo(player)
 	if playerInfo == nil then
+		AddRejected(1, rejectReason.InvalidPayload)
+		metrics.totalRejected += 1
+		NetMsg.FireNotifyPlaceBrickBatchResult(player, requestBatchId, acceptedIndexes, rejectedList, ServerGameInfo.GetPlayerCarriedBricks(player), now)
+		playerInFlightBatchMap[playerId] = math.max((playerInFlightBatchMap[playerId] or 1) - 1, 0)
+		UpdateMetricAttributes()
 		return
 	end
 
-	local now = os.clock()
 	local character = player.Character
 	local rootPart = character and character:FindFirstChild("HumanoidRootPart") :: BasePart
 	if not rootPart then
+		AddRejected(1, rejectReason.InvalidPayload)
+		metrics.totalRejected += 1
+		NetMsg.FireNotifyPlaceBrickBatchResult(player, requestBatchId, acceptedIndexes, rejectedList, ServerGameInfo.GetPlayerCarriedBricks(player), now)
+		playerInFlightBatchMap[playerId] = math.max((playerInFlightBatchMap[playerId] or 1) - 1, 0)
+		UpdateMetricAttributes()
 		return
 	end
 
 	local showFloatBlockRays = workspace:GetAttribute(DEBUG_FLOATBLOCK_RAYS_ATTR) == true
+	local consumedBricks = 0
+	local remainingBricks = playerInfo.carriedInfo.bricks
+	local outOfBricksSupportTime = GameConfig.Paving.OutOfBricksSupportTime or 1.2
+	local outOfBricksSupportRenewThreshold = GameConfig.Paving.OutOfBricksSupportRenewThreshold or 0.35
 
-	for _, position in ipairs(positions) do
+	for index, position in ipairs(positions) do
 		if typeof(position) ~= "Vector3" then
+			AddRejected(index, rejectReason.NotVector3)
+			metrics.totalRejected += 1
 			continue
 		end
 
@@ -345,27 +431,30 @@ local function OnRequestPlaceBrickBatch(player: Player, positions: any)
 
 		-- 若整块砖 footprint 完全位于安全区（Ground/Islands/PlayersHome），则禁铺
 		if IsEntireBrickFootprintOverSafeZone(position) then
+			AddRejected(index, rejectReason.SafeZoneBlocked)
+			metrics.totalRejected += 1
 			continue
 		end
 
 		-- 仅当砖块底面四角均落在 FloatBlock 上方时才禁铺（预警～地震结束期间允许在 FloatBlock 上铺砖自救）
 		if workspace:GetAttribute("EarthquakeRescuePaving") ~= true and IsEntireBrickFootprintOverFloatBlock(position) then
+			AddRejected(index, rejectReason.FloatBlockBlocked)
+			metrics.totalRejected += 1
 			continue
 		end
 
 		-- 1. Anti-cheat: Height check (使用动态 SEA_LEVEL)
 		if math.abs(position.Y - SEA_LEVEL) > 2 then
+			AddRejected(index, rejectReason.HeightMismatch)
+			metrics.totalRejected += 1
 			continue
 		end
 
 		-- 2. Anti-cheat: Distance check
 		if (position - rootPart.Position).Magnitude > GameConfig.Paving.PavingDistanceLimit then
+			AddRejected(index, rejectReason.DistanceLimit)
+			metrics.totalRejected += 1
 			continue
-		end
-
-		-- 3. Inventory check
-		if playerInfo.carriedInfo.bricks <= 0 then
-			break
 		end
 
 		-- [优化] 瞬间查找取代遍历 (O(1) 复杂度)
@@ -375,29 +464,58 @@ local function OnRequestPlaceBrickBatch(player: Player, positions: any)
 		if existingBrick then
 			local data = activeBricks[existingBrick]
 			if data and data.Owner == player then
+				local remainingTime = data.ExpireTime - now
+				if remainingBricks <= 0 then
+					if data.IsGhost or remainingTime < GameConfig.Paving.BaseCollapseTime * outOfBricksSupportRenewThreshold then
+						data.IsGhost = false
+						data.ExpireTime = now + outOfBricksSupportTime
+						UpdateBrickVisual(existingBrick, false)
+					end
+					table.insert(acceptedIndexes, index)
+					continue
+				end
 				-- 如果是幽灵砖，无视续期阈值直接填实
 				-- 如果是非幽灵砖，则走常规续期逻辑
 				if data.IsGhost then
 					data.IsGhost = false
 					data.ExpireTime = now + GameConfig.Paving.BaseCollapseTime
 					UpdateBrickVisual(existingBrick, false)
-					ServerGameInfo.UpdateInventoryBricks(player, -1)
+					consumedBricks += 1
+					remainingBricks -= 1
+					table.insert(acceptedIndexes, index)
 				else
 					-- 防止网络延迟导致的短时间内重复续期扣砖
-					local remainingTime = data.ExpireTime - now
 					if remainingTime < GameConfig.Paving.BaseCollapseTime * GameConfig.Paving.StationaryRenewalThreshold then
 						data.ExpireTime = now + GameConfig.Paving.BaseCollapseTime
 						UpdateBrickVisual(existingBrick, false)
-						ServerGameInfo.UpdateInventoryBricks(player, -1)
+						consumedBricks += 1
+						remainingBricks -= 1
+						table.insert(acceptedIndexes, index)
+					else
+						table.insert(acceptedIndexes, index)
 					end
 				end
+			elseif data and data.Owner ~= player then
+				AddRejected(index, rejectReason.OccupiedByOther)
+				metrics.totalRejected += 1
+				metrics.totalContentionRejected += 1
+			else
+				table.insert(acceptedIndexes, index)
 			end
 			-- 如果已经有砖了，跳过生成步骤
 			continue
 		end
 
+		-- 3. Inventory check（仅在“无现存砖可续命”时限制）
+		if remainingBricks <= 0 then
+			AddRejected(index, rejectReason.OutOfBricks)
+			metrics.totalRejected += 1
+			continue
+		end
+
 		-- 5. Deduct and Place
-		ServerGameInfo.UpdateInventoryBricks(player, -1)
+		consumedBricks += 1
+		remainingBricks -= 1
 
 		local brick = GetBrickFromPool()
 		brick.Position = position
@@ -416,7 +534,30 @@ local function OnRequestPlaceBrickBatch(player: Player, positions: any)
 			ExpireTime = now + GameConfig.Paving.BaseCollapseTime,
 			IsGhost = false,
 		}
+		table.insert(acceptedIndexes, index)
 	end
+
+	if consumedBricks > 0 then
+		ServerGameInfo.UpdateInventoryBricks(player, -consumedBricks, nil, true)
+	end
+	NetMsg.FireNotifyPlayerCarriedUpdate(player, playerInfo.carriedInfo)
+	NetMsg.FireNotifyPlaceBrickBatchResult(
+		player,
+		requestBatchId,
+		acceptedIndexes,
+		rejectedList,
+		playerInfo.carriedInfo.bricks,
+		now
+	)
+
+	if typeof(clientSentAt) == "number" then
+		local latencyMs = math.max(0, (now - clientSentAt) * 1000)
+		metrics.totalAckLatencyMs += latencyMs
+		metrics.totalAckCount += 1
+	end
+	metrics.totalAccepted += #acceptedIndexes
+	playerInFlightBatchMap[playerId] = math.max((playerInFlightBatchMap[playerId] or 1) - 1, 0)
+	UpdateMetricAttributes()
 end
 
 local function OnHeartbeat(deltaTime: number)
@@ -481,3 +622,8 @@ end
 local PavingEarthquakeBridge = require(serverScripts:WaitForChild("PavingEarthquakeBridge"))
 PavingEarthquakeBridge.RegisterReleasePavedBrickAfterEarthquake(ReleaseBrickAfterEarthquake)
 PavingEarthquakeBridge.RegisterOnEarthquakeDropBrick(OnEarthquakeDropBrick)
+
+players.PlayerRemoving:Connect(function(player)
+	playerLastBatchTimeMap[player.UserId] = nil
+	playerInFlightBatchMap[player.UserId] = nil
+end)

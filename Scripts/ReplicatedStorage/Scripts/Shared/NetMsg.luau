@@ -26,6 +26,7 @@ local requestUpgradeSkillEvent: RemoteEvent = remoteEventsFolder:FindFirstChild(
 local requestClaimYieldEvent: RemoteEvent = remoteEventsFolder:FindFirstChild("RequestClaimYield") :: RemoteEvent
 local requestPickupHomeModelEvent: RemoteEvent = remoteEventsFolder:FindFirstChild("RequestPickupHomeModel") :: RemoteEvent
 local requestStartPavingEvent: RemoteEvent = remoteEventsFolder:FindFirstChild("RequestStartPaving") :: RemoteEvent
+local notifyPlaceBrickBatchResultEvent: RemoteEvent = remoteEventsFolder:FindFirstChild("NotifyPlaceBrickBatchResult") :: RemoteEvent
 local requestPlaceCarryingBrainrotEvent: RemoteEvent = remoteEventsFolder:FindFirstChild("RequestPlaceCarryingBrainrot") :: RemoteEvent
 local requestSellCarryingBrainrotEvent: RemoteEvent = remoteEventsFolder:FindFirstChild("RequestSellCarryingBrainrot") :: RemoteEvent
 local notifyPlayerInventoryUpdateEvent: RemoteEvent = remoteEventsFolder:FindFirstChild("NotifyPlayerInventoryUpdate") :: RemoteEvent
@@ -139,12 +140,29 @@ function NetMsg.ConnectNotifyAllPlayersModelYields(callback: (allYields: { [stri
 end
 
 -- 客户端请求批量放置砖块 (跑酷)
-function NetMsg.FireRequestPlaceBrickBatch(positions: { Vector3 })
+function NetMsg.FireRequestPlaceBrickBatch(positions: { Vector3 }, batchId: number?, clientSentAt: number?)
 	--print("[NetMsg] FireRequestPlaceBrickBatch with", #positions, "points")
-	requestPlaceBrickBatchEvent:FireServer(positions)
+	requestPlaceBrickBatchEvent:FireServer(positions, batchId, clientSentAt)
 end
-function NetMsg.ConnectRequestPlaceBrickBatch(callback: (player: Player, positions: { Vector3 }) -> ())
+function NetMsg.ConnectRequestPlaceBrickBatch(callback: (player: Player, positions: { Vector3 }, batchId: number?, clientSentAt: number?) -> ())
 	requestPlaceBrickBatchEvent.OnServerEvent:Connect(callback)
+end
+
+function NetMsg.FireNotifyPlaceBrickBatchResult(
+	player: Player,
+	batchId: number,
+	acceptedIndexes: { number },
+	rejectedList: { { index: number, reason: string } },
+	serverBricks: number,
+	serverNow: number?
+)
+	notifyPlaceBrickBatchResultEvent:FireClient(player, batchId, acceptedIndexes, rejectedList, serverBricks, serverNow or os.clock())
+end
+
+function NetMsg.ConnectNotifyPlaceBrickBatchResult(
+	callback: (batchId: number, acceptedIndexes: { number }, rejectedList: { { index: number, reason: string } }, serverBricks: number, serverNow: number) -> ()
+)
+	notifyPlaceBrickBatchResultEvent.OnClientEvent:Connect(callback)
 end
 
 -- 客户端请求拾取模型

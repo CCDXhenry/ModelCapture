@@ -47,12 +47,30 @@ type LocalPredictEntry = {
 	part: Part,
 	createdAt: number,
 	requested: boolean,
+	resolved: boolean,
+	lastRequestAt: number?,
+	lastBatchId: number?,
+}
+type PendingBatchInfo = {
+	sentAt: number,
+	positions: { Vector3 },
+	keys: { [string]: boolean },
 }
 local localBrickMap: { [string]: LocalPredictEntry } = {}
 local touchConns: { [Part]: RBXScriptConnection } = {}
 local localBrickPool: { Part } = {}
 local pendingPaveQueue: { Vector3 } = {}
 local lastBatchTime = 0
+local pendingBatchMap: { [number]: PendingBatchInfo } = {}
+local nextBatchId = 1
+local unresolvedRequestedCount = 0
+local firstBrickFallbackAt = 0
+local previousFrameInSafeZone = true
+local MAX_PENDING_BATCHES = GameConfig.Paving.MaxPendingBatches or 4
+local BATCH_ACK_TIMEOUT = GameConfig.Paving.BatchAckTimeout or 0.9
+local FIRST_BRICK_FORCE_QUEUE_COOLDOWN = GameConfig.Paving.FirstBrickForceQueueCooldown or 0.12
+local OUT_OF_BRICKS_SUPPORT_REQUEST_INTERVAL = GameConfig.Paving.OutOfBricksSupportRequestInterval or 0.12
+local lastOutOfBricksSupportRequestTime = 0
 
 local function IsLocalPredictVisible(): boolean
 	local attr = workspace:GetAttribute(SHOW_LOCAL_PREDICT_ATTR)
@@ -169,6 +187,9 @@ end
 local function RemoveLocalBrickEntry(key: string)
 	local entry = localBrickMap[key]
 	if entry then
+		if entry.requested and not entry.resolved then
+			unresolvedRequestedCount = math.max(unresolvedRequestedCount - 1, 0)
+		end
 		if entry.part then
 			ReturnBrickToPool(entry.part)
 		end
@@ -187,6 +208,8 @@ local function ClearLocalBricks()
 	end
 	table.clear(localBrickMap)
 	table.clear(pendingPaveQueue)
+	table.clear(pendingBatchMap)
+	unresolvedRequestedCount = 0
 	print("[PavingClient] Cleared all local prediction bricks and queue")
 end
 
@@ -355,12 +378,48 @@ local function SendAllPendingPaveBatches()
 	if #pendingPaveQueue <= 0 then
 		return
 	end
-	local maxBatchSize = GameConfig.Paving.MaxBatchSize
-	for i = 1, #pendingPaveQueue, maxBatchSize do
-		local batchChunk = table.move(pendingPaveQueue, i, math.min(i + maxBatchSize - 1, #pendingPaveQueue), 1, {})
-		NetMsg.FireRequestPlaceBrickBatch(batchChunk)
+	local pendingCount = 0
+	for _ in pairs(pendingBatchMap) do
+		pendingCount += 1
 	end
-	table.clear(pendingPaveQueue)
+	if pendingCount >= MAX_PENDING_BATCHES then
+		return
+	end
+	local maxBatchSize = GameConfig.Paving.MaxBatchSize
+	local queueIndex = 1
+	local originalCount = #pendingPaveQueue
+	while queueIndex <= originalCount and pendingCount < MAX_PENDING_BATCHES do
+		local endIndex = math.min(queueIndex + maxBatchSize - 1, originalCount)
+		local batchChunk = table.move(pendingPaveQueue, queueIndex, endIndex, 1, {})
+		local batchId = nextBatchId
+		nextBatchId += 1
+		local keys: { [string]: boolean } = {}
+		local sentAt = os.clock()
+		for _, pos in ipairs(batchChunk) do
+			local key = GetPosKey(pos)
+			keys[key] = true
+			local entry = localBrickMap[key]
+			if entry then
+				entry.lastRequestAt = sentAt
+				entry.lastBatchId = batchId
+			end
+		end
+		pendingBatchMap[batchId] = {
+			sentAt = sentAt,
+			positions = batchChunk,
+			keys = keys,
+		}
+		NetMsg.FireRequestPlaceBrickBatch(batchChunk, batchId, sentAt)
+		pendingCount += 1
+		queueIndex = endIndex + 1
+	end
+	if queueIndex > 1 then
+		local remain = if queueIndex <= originalCount then table.move(pendingPaveQueue, queueIndex, originalCount, 1, {}) else {}
+		table.clear(pendingPaveQueue)
+		for _, pos in ipairs(remain) do
+			table.insert(pendingPaveQueue, pos)
+		end
+	end
 end
 
 local function FlushPendingPaveQueue()
@@ -405,10 +464,18 @@ end
 
 -- requireTouchTrigger：多段跳弹簧，仅触碰/重叠预测砖入队。
 -- 非多段跳：水平逻辑产生的预测砖仅在玩家整 footprint 不在安全区时自动入队；触碰预测砖始终可入队（防掉落）。
-local function RequestPlaceBrick(targetPos: Vector3, requireTouchTrigger: boolean)
+local function RequestPlaceBrick(targetPos: Vector3, requireTouchTrigger: boolean, forceQueue: boolean?)
 	local now = os.clock()
 	local key = GetPosKey(targetPos)
-	if localBrickMap[key] then
+	local existed = localBrickMap[key]
+	if existed then
+		if forceQueue == true and ((not existed.requested) or existed.resolved) then
+			existed.requested = true
+			existed.resolved = false
+			existed.lastRequestAt = now
+			unresolvedRequestedCount += 1
+			table.insert(pendingPaveQueue, targetPos)
+		end
 		return
 	end
 
@@ -419,6 +486,7 @@ local function RequestPlaceBrick(targetPos: Vector3, requireTouchTrigger: boolea
 		part = brick,
 		createdAt = now,
 		requested = false,
+		resolved = false,
 	}
 
 	local character = localPlayer.Character
@@ -433,6 +501,8 @@ local function RequestPlaceBrick(targetPos: Vector3, requireTouchTrigger: boolea
 		local entry = localBrickMap[key]
 		if entry and not entry.requested then
 			entry.requested = true
+			entry.resolved = false
+			unresolvedRequestedCount += 1
 			table.insert(pendingPaveQueue, targetPos)
 		end
 	end
@@ -457,11 +527,14 @@ local function RequestPlaceBrick(targetPos: Vector3, requireTouchTrigger: boolea
 
 	if requireTouchTrigger then
 		hookTouchAndOverlapAlways()
+		if forceQueue == true then
+			triggerPave()
+		end
 		return
 	end
 
 	hookTouchAndOverlapAlways()
-	if not inSafeZone then
+	if forceQueue == true or not inSafeZone then
 		triggerPave()
 	end
 end
@@ -585,11 +658,14 @@ local function OnHeartbeat(dt: number)
 		end
 	end
 
-	local isOutOfBricks = playerInfo == nil or playerInfo.carriedInfo.bricks <= 0
+	local serverBricks = if playerInfo then playerInfo.carriedInfo.bricks else 0
+	local isOutOfBricks = serverBricks <= 0
+	local feetPosForState = GetSnappedPosition(pos)
+	local currentFrameInSafeZone = IsEntireBrickFootprintOverSafeZone(feetPosForState)
 	
 	if not isOutOfBricks then
 	-- 4a. Feet Guard: 检测脚下是否有有效地面，无地面时立即铺砖
-	local feetPos = GetSnappedPosition(pos)
+	local feetPos = feetPosForState
 	local feetFloatBlock = GetFloatBlockAtPoint(feetPos)
 	-- 已标记/已掉落的浮块上方禁止触发铺砖（避免地震后在危险浮块上跳跃仍可补砖）
 	if feetFloatBlock ~= nil then
@@ -600,9 +676,19 @@ local function OnHeartbeat(dt: number)
 			return
 		end
 	end
-	if not HasSolidGroundAt(pos) then
-		if not IsEntireBrickFootprintOverSafeZone(feetPos) then
-			RequestPlaceBrick(feetPos, requireTouchTrigger)
+	local noGroundUnderFeet = not HasSolidGroundAt(pos)
+	if noGroundUnderFeet then
+		if not CheckBrickExists(feetPos) and not IsFloatBlockBlockingPaving(feetPos) then
+			-- 空中脚下无地时，强制请求脚下砖，避免跳跃与安全区边缘漏首块/尾块
+			RequestPlaceBrick(feetPos, requireTouchTrigger, true)
+			FlushPendingPaveQueue()
+		end
+	end
+	-- 从安全区跃迁到海面且脚下无地时，强制首格入队并立刻同步，避免首块漏铺
+	if previousFrameInSafeZone and not currentFrameInSafeZone and (now - firstBrickFallbackAt) >= FIRST_BRICK_FORCE_QUEUE_COOLDOWN then
+		if noGroundUnderFeet then
+			firstBrickFallbackAt = now
+			RequestPlaceBrick(feetPos, requireTouchTrigger, true)
 			FlushPendingPaveQueue()
 		end
 	end
@@ -626,7 +712,7 @@ local function OnHeartbeat(dt: number)
 
 	local isStationary = speed < 0.1
 	local playerWalkSpeed = GetCurrentWalkSpeed()
-	local lookaheadFactor = math.clamp(speed / playerWalkSpeed, 1.0, 1.5)
+	local lookaheadFactor = math.clamp(speed / math.max(1, playerWalkSpeed), 1.0, GameConfig.Paving.HighSpeedLookaheadMaxFactor or 2.2)
 	local targetPos = if isStationary then GetSnappedPosition(pos) else GetSnappedPosition(pos + moveDir * (GRID_SIZE * lookaheadFactor))
 
 	-- [优化] Stationary renewal (防止原地发呆无限扣砖)
@@ -667,10 +753,14 @@ local function OnHeartbeat(dt: number)
 		local diff = targetPos - lastPavePosition
 		local dist = diff.Magnitude
 
-		if dist < GRID_SIZE * 0.9 then
+		if dist < GRID_SIZE * 0.75 then
 			-- No action
-		elseif dist > GRID_SIZE * 1.1 then
-			local stepCount = math.clamp(math.floor(dist / GRID_SIZE), 1, MAX_INTERPOLATION_STEPS)
+		elseif dist > GRID_SIZE * 1.05 then
+			local dynamicMaxSteps = MAX_INTERPOLATION_STEPS
+			if speed > playerWalkSpeed * 1.25 then
+				dynamicMaxSteps = GameConfig.Paving.MaxInterpolationStepsAtHighSpeed or dynamicMaxSteps
+			end
+			local stepCount = math.clamp(math.floor(dist / GRID_SIZE), 1, dynamicMaxSteps)
 			local unitDir = diff.Unit
 			local startPos = lastPavePosition
 			for i = 1, stepCount do
@@ -707,25 +797,48 @@ local function OnHeartbeat(dt: number)
 		end
 	end
 	else
+		-- 无砖时仍允许对脚下已存在的服务器砖发送“保底续命请求”，避免临界寿命下直接穿模掉落
+		if (now - lastOutOfBricksSupportRequestTime) >= OUT_OF_BRICKS_SUPPORT_REQUEST_INTERVAL then
+			local supportPos = feetPosForState
+			if CheckBrickExists(supportPos) then
+				lastOutOfBricksSupportRequestTime = now
+				RequestPlaceBrick(supportPos, false, true)
+				FlushPendingPaveQueue()
+			end
+		end
 		-- 获取不到足够的砖块时停止主动铺砖预测，等待本地现有预测同步完成再关闭模式
 		if next(localBrickMap) == nil then
 			isPavingMode = false
 			lastPavePosition = nil
 		end
 	end
+	previousFrameInSafeZone = currentFrameInSafeZone
 
 	-- [优化] Batch transmission (防止卡顿导致包过大被服务器拒收)
 	if #pendingPaveQueue > 0 and (now - lastBatchTime >= LOCAL_PREDICT_BATCH_INTERVAL) then
 		SendAllPendingPaveBatches()
 		lastBatchTime = now
 	end
+	for batchId, info in pairs(pendingBatchMap) do
+		if (now - info.sentAt) > BATCH_ACK_TIMEOUT then
+			for key in pairs(info.keys) do
+				local entry = localBrickMap[key]
+				if entry and entry.lastBatchId == batchId and not entry.resolved then
+					RemoveLocalBrickEntry(key)
+				end
+			end
+			pendingBatchMap[batchId] = nil
+		end
+	end
 
 	-- 6. Efficient TTL Cleanup (Safe pairs iteration)
 	for key, entry in pairs(localBrickMap) do
 		local aliveTime = now - entry.createdAt
 		if aliveTime >= LOCAL_PREDICT_TTL then
-			local shouldKeepForSupport = aliveTime < MAX_LOCAL_PREDICT_SUPPORT_TIME
-				and IsCharacterStandingOnLocalBrick(entry.part, character)
+			local waitingServerAck = entry.requested and not entry.resolved and (entry.lastRequestAt ~= nil)
+			local keepForAck = waitingServerAck and (now - (entry.lastRequestAt :: number)) <= BATCH_ACK_TIMEOUT
+			local shouldKeepForSupport = keepForAck
+				or (aliveTime < MAX_LOCAL_PREDICT_SUPPORT_TIME and IsCharacterStandingOnLocalBrick(entry.part, character))
 			if shouldKeepForSupport then
 				continue
 			end
@@ -735,6 +848,49 @@ local function OnHeartbeat(dt: number)
 end
 
 runService.Heartbeat:Connect(OnHeartbeat)
+
+local function MarkEntryResolved(entry: LocalPredictEntry)
+	if entry.requested and not entry.resolved then
+		entry.resolved = true
+		unresolvedRequestedCount = math.max(unresolvedRequestedCount - 1, 0)
+	end
+end
+
+NetMsg.ConnectNotifyPlaceBrickBatchResult(function(
+	batchId: number,
+	acceptedIndexes: { number },
+	rejectedList: { { index: number, reason: string } },
+	serverBricks: number,
+	serverNow: number
+)
+	local batchInfo = pendingBatchMap[batchId]
+	if not batchInfo then
+		return
+	end
+
+	for _, acceptedIndex in ipairs(acceptedIndexes) do
+		local pos = batchInfo.positions[acceptedIndex]
+		if pos then
+			local key = GetPosKey(pos)
+			local entry = localBrickMap[key]
+			if entry then
+				MarkEntryResolved(entry)
+			end
+		end
+	end
+
+	for _, rejected in ipairs(rejectedList) do
+		local pos = batchInfo.positions[rejected.index]
+		if pos then
+			local key = GetPosKey(pos)
+			RemoveLocalBrickEntry(key)
+		end
+	end
+
+	pendingBatchMap[batchId] = nil
+	workspace:SetAttribute("PavingLastBatchAckServerTime", serverNow)
+	workspace:SetAttribute("PavingLastServerBricks", serverBricks)
+end)
 
 -- Character management
 local function OnCharacterAdded(character: Model)
