@@ -12,6 +12,7 @@ local clientScripts = scripts:WaitForChild("Client")
 local GameSoundManager = require(clientScripts:FindFirstChild("GameSoundManager"))
 local ClientMsg = require(clientScripts:FindFirstChild("ClientMsg"))
 local tweenService: TweenService = game:GetService("TweenService")
+local userInputService: UserInputService = game:GetService("UserInputService")
 
 local ModalTransparency = 0.3
 local ButtonHoveredScale: number = 1.1 --按钮鼠标移入放大
@@ -216,6 +217,114 @@ function UIManager.ApplySurfaceButtonEffects(button: GuiButton)
 	end)
 end
 
+local function ClampCanvasPosition(scrollingFrame: ScrollingFrame, targetCanvasPosition: Vector2): Vector2
+	local scrollingDirection = scrollingFrame.ScrollingDirection
+	local allowHorizontal = scrollingDirection == Enum.ScrollingDirection.X or scrollingDirection == Enum.ScrollingDirection.XY
+	local maxX = if allowHorizontal then math.max(0, scrollingFrame.AbsoluteCanvasSize.X - scrollingFrame.AbsoluteWindowSize.X) else 0
+	local maxY = math.max(0, scrollingFrame.AbsoluteCanvasSize.Y - scrollingFrame.AbsoluteWindowSize.Y)
+	return Vector2.new(math.clamp(targetCanvasPosition.X, 0, maxX), math.clamp(targetCanvasPosition.Y, 0, maxY))
+end
+
+function UIManager.BindScrollingFrameDragScroll(scrollingFrame: ScrollingFrame)
+	if scrollingFrame:GetAttribute("DragScrollBound") then
+		return
+	end
+	scrollingFrame:SetAttribute("DragScrollBound", true)
+	scrollingFrame.ElasticBehavior = Enum.ElasticBehavior.Never
+
+	local isDragging = false
+	local dragInput: InputObject? = nil
+	local dragStartPosition = Vector2.zero
+	local canvasStartPosition = Vector2.zero
+
+	local function StopDrag()
+		isDragging = false
+		dragInput = nil
+	end
+
+	local function UpdateDrag(currentInput: InputObject)
+		if not isDragging then
+			return
+		end
+		local currentPosition = Vector2.new(currentInput.Position.X, currentInput.Position.Y)
+		local delta = currentPosition - dragStartPosition
+		local targetCanvasPosition = canvasStartPosition - delta
+		scrollingFrame.CanvasPosition = ClampCanvasPosition(scrollingFrame, targetCanvasPosition)
+	end
+
+	scrollingFrame.InputBegan:Connect(function(input: InputObject)
+		local inputType = input.UserInputType
+		if inputType ~= Enum.UserInputType.MouseButton1 and inputType ~= Enum.UserInputType.Touch then
+			return
+		end
+		isDragging = true
+		dragInput = input
+		dragStartPosition = Vector2.new(input.Position.X, input.Position.Y)
+		canvasStartPosition = scrollingFrame.CanvasPosition
+	end)
+
+	scrollingFrame.InputEnded:Connect(function(input: InputObject)
+		if not isDragging then
+			return
+		end
+		if dragInput == input then
+			StopDrag()
+		end
+	end)
+
+	userInputService.InputChanged:Connect(function(input: InputObject, _gameProcessedEvent: boolean)
+		if not isDragging then
+			return
+		end
+		if dragInput == nil then
+			return
+		end
+		if dragInput.UserInputType == Enum.UserInputType.MouseButton1 then
+			if input.UserInputType ~= Enum.UserInputType.MouseMovement then
+				return
+			end
+			UpdateDrag(input)
+			return
+		end
+		if input == dragInput then
+			UpdateDrag(input)
+		end
+	end)
+
+	userInputService.InputEnded:Connect(function(input: InputObject, _gameProcessedEvent: boolean)
+		if not isDragging then
+			return
+		end
+		if dragInput == nil then
+			return
+		end
+		if dragInput.UserInputType == Enum.UserInputType.MouseButton1 and input.UserInputType == Enum.UserInputType.MouseButton1 then
+			StopDrag()
+			return
+		end
+		if input == dragInput then
+			StopDrag()
+		end
+	end)
+
+	scrollingFrame.AncestryChanged:Connect(function(_, parent: Instance?)
+		if parent == nil then
+			StopDrag()
+		end
+	end)
+end
+
+function UIManager.BindDragScrollForDescendants(root: Instance)
+	if root:IsA("ScrollingFrame") then
+		UIManager.BindScrollingFrameDragScroll(root)
+	end
+	for _, descendant in root:GetDescendants() do
+		if descendant:IsA("ScrollingFrame") then
+			UIManager.BindScrollingFrameDragScroll(descendant)
+		end
+	end
+end
+
 --初始化
 function UIManager.Init(gameScreenGuiNew: ScreenGui)
 	gameScreenGui = gameScreenGuiNew
@@ -240,11 +349,17 @@ function UIManager.Init(gameScreenGuiNew: ScreenGui)
 				ApplyButtonEffects(descendant)
 				ApplyButtonClickSound(descendant)
 			end
+			if descendant:IsA("ScrollingFrame") then
+				UIManager.BindScrollingFrameDragScroll(descendant)
+			end
 		end)
 		for descendantIndex: number, descendant: Instance in uiParent:GetDescendants() do
 			if descendant:IsA("GuiButton") then
 				ApplyButtonEffects(descendant)
 				ApplyButtonClickSound(descendant)
+			end
+			if descendant:IsA("ScrollingFrame") then
+				UIManager.BindScrollingFrameDragScroll(descendant)
 			end
 		end
 	end
@@ -262,6 +377,7 @@ function UIManager.CreateFrame(frameName: string, scriptName: string?, framePare
 	else
 		frame.Parent = frameParent
 	end
+	UIManager.BindDragScrollForDescendants(frame)
 	if ZIndex ~= nil and frame:IsA("GuiObject") then
 		frame.ZIndex = ZIndex
 	end
@@ -286,6 +402,7 @@ function UIManager.OpenWindow(windowId: string)
 		end
 		-- Parent to PlayerGui if BillboardGui, otherwise ScreenGui
 		window.Parent = if window:IsA("BillboardGui") then gameScreenGui.Parent else gameScreenGui
+		UIManager.BindDragScrollForDescendants(window)
 		window:SetAttribute("WindowId", windowId)
 		local windowScriptOrigin = script:FindFirstChild(windowConfig.scriptName)
 		if windowScriptOrigin then

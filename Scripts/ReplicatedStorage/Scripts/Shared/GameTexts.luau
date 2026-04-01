@@ -32,6 +32,8 @@ local GameTexts = {
 	CoinMultiplierText = { key = "CoinMultiplierText", source = "{1}x Coin" },
 	SpeedLevelProgress = { key = "SpeedLevelProgress", source = "Speed Lv {1}/{2}" },
 	BricksLevelProgress = { key = "BricksLevelProgress", source = "Bricks Lv {1}/{2}" },
+	UpgradeSpeedLevelIncreased = { key = "UpgradeSpeedLevelIncreased", source = "Speed increased to Lv. {1}！" },
+	UpgradeBricksLevelIncreased = { key = "UpgradeBricksLevelIncreased", source = "Bricks increased to Lv. {1}！" },
 	MissingRequirementsFormat = { key = "MissingRequirementsFormat", source = "Missing requirements:{1}" },
 	InsufficientRebirthCount = { key = "InsufficientRebirthCount", source = "Insufficient rebirths: need at least {1} rebirths to pick up." },
 	TotalRevenueFormat = { key = "TotalRevenueFormat", source = "{1}/s" },

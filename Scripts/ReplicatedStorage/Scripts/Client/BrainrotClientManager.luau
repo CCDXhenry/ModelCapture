@@ -208,7 +208,8 @@ function AttachInfoUIToModel(targetParent: Instance, adornee: BasePart, configId
 					end
 
 					local remaining = tonumber(adornee:GetAttribute("BrainrotTimerRemainingSeconds")) or 0
-					local visible = remaining > 0
+					local isIslandBrainrot = targetParent:IsA("BasePart") and targetParent.Name == "IslandBrainrot"
+					local visible = isIslandBrainrot and remaining > 0
 					timerTextLabel.Visible = visible
 					timerImgLabel.Visible = visible
 					if visible then

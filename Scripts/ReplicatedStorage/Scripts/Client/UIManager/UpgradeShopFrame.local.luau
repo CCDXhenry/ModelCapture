@@ -36,6 +36,28 @@ closeButton.Activated:Connect(function()
 	UIManager.CloseWindow(windowId)
 end)
 
+local UpgradeSuccessTipColor = Color3.fromRGB(80, 255, 120)
+
+local function showUpgradeTip(skillType: number, level: number)
+	if skillType == GameConfig.SkillType.WalkSpeed then
+		ClientMsg.FireShowGameTip(
+			GameTexts.UpgradeSpeedLevelIncreased.source,
+			GameConfig.GameTipTweenType.FlyUp,
+			GameTexts.UpgradeSpeedLevelIncreased.key,
+			{ tostring(level) },
+			UpgradeSuccessTipColor
+		)
+	elseif skillType == GameConfig.SkillType.MaxBricks then
+		ClientMsg.FireShowGameTip(
+			GameTexts.UpgradeBricksLevelIncreased.source,
+			GameConfig.GameTipTweenType.FlyUp,
+			GameTexts.UpgradeBricksLevelIncreased.key,
+			{ tostring(level) },
+			UpgradeSuccessTipColor
+		)
+	end
+end
+
 local function getCostAndLimit(abilityName: string, currentLevel: number, levelAdd: number)
 	local shopData = GameConfig.Shop[abilityName]
 	local totalCost = 0
@@ -220,6 +242,9 @@ end
 
 ClientMsg.ConnectLocalPlayerSkillLevelUpdate(function(skillType, level)
 	refreshAll()
+	if skillType == GameConfig.SkillType.WalkSpeed or skillType == GameConfig.SkillType.MaxBricks then
+		showUpgradeTip(skillType, level)
+	end
 end)
 
 ClientMsg.ConnectLocalPlayerCurrencyUpdate(function()
