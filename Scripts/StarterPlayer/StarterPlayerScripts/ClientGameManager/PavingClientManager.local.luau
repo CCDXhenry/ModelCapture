@@ -135,6 +135,21 @@ local startPointModel = if startPointFolder then startPointFolder:FindFirstChild
 local startTrigger = if startPointModel then startPointModel:FindFirstChild("StartTrigger") :: Part else nil
 local startAttachment = if startTrigger then startTrigger:FindFirstChild("Attachment") :: Attachment else nil
 
+local startTriggerOverlapParams: OverlapParams? = nil
+local function IsLocalCharacterTouchingStartTrigger(character: Model): boolean
+	if not startTrigger then
+		return false
+	end
+	if not startTriggerOverlapParams then
+		local p = OverlapParams.new()
+		p.FilterType = Enum.RaycastFilterType.Include
+		startTriggerOverlapParams = p
+	end
+	(startTriggerOverlapParams :: OverlapParams).FilterDescendantsInstances = { character }
+	local overlapping = workspace:GetPartBoundsInBox(startTrigger.CFrame, startTrigger.Size, startTriggerOverlapParams :: OverlapParams)
+	return #overlapping > 0
+end
+
 if startAttachment then
 	SEA_LEVEL = startAttachment.WorldPosition.Y
 end
@@ -601,8 +616,8 @@ local function OnHeartbeat(dt: number)
 
 	-- 2. Mode Activation Check (Start Trigger or Safe Zone)
 	-- 地震结束后须先处于真实安全区，才允许重新激活铺砖与补砖
-	if pos and allowPavingActivationByEarthquakeGate then
-		local inStartRange = startTrigger and (math.abs(pos.X - startTrigger.Position.X) < GameConfig.Paving.StartActivationRange)
+	if pos and allowPavingActivationByEarthquakeGate and character then
+		local inStartRange = IsLocalCharacterTouchingStartTrigger(character)
 		local inSafeZone = false
 		if not inStartRange then
 			inSafeZone = IsEntireBrickFootprintOverSafeZone(GetSnappedPosition(pos))

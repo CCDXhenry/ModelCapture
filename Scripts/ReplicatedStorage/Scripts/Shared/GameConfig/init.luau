@@ -487,7 +487,6 @@ GameConfig.Paving = {
 	OutOfBricksSupportRequestInterval = 0.12, -- 客户端无砖保底续命请求间隔
 	DeathThreshold = -10, -- 死亡触发高度阈值 (相对于 SEA_LEVEL)
 	DeathRescueProductId = 3567697241, -- 翅膀援助购买产品ID
-	StartActivationRange = 5, -- 修改：从 1 增加到 5，确保护跑时有足够的重合区域。
 	PavingDistanceLimit = 30, -- 距离玩家超过此距离则不让铺
 	StationaryRenewalThreshold = 0.7, -- 剩余寿命低于 70% 时才允许原地续期
 	StationaryRenewalInterval = 0.2, -- 原地续期检测间隔 (加快响应)
