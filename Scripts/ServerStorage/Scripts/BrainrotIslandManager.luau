@@ -158,6 +158,23 @@ local function SetupIslandTeleport(island: Instance)
 end
 
 function ConvertCarryingToQueue(player: Player)
+	-- 防止“死亡瞬间/倒地后”仍触发地面 Touched 导致把携带态错误入队。
+	-- 携带态只在玩家存活时允许转换为背包队列。
+	if player:GetAttribute("BrainrotDeathGuard") == true then
+		return
+	end
+
+	local character = player.Character
+	if character then
+		local humanoid = character:FindFirstChildOfClass("Humanoid") :: Humanoid?
+		if humanoid then
+			-- Health<=0 或状态为 Dead 都视为已死亡/死亡中，直接拒绝入队转换。
+			if humanoid.Health <= 0 or humanoid:GetState() == Enum.HumanoidStateType.Dead then
+				return
+			end
+		end
+	end
+
 	local carryingBrainrot = BrainrotCarryingManager.GetCarryingBrainrot(player)
 	if not carryingBrainrot then
 		return
@@ -866,6 +883,49 @@ end
 
 function BrainrotIslandManager.Init()
 	SetupGroundTrigger()
+
+	-- 死亡清理：如果玩家在“携带态 brainrot（CarryingBrainrot）”还没转换成背包 Tool 前死亡，
+	-- 需要把该 uid 的倒计时态清理并立即在岛上补刷，避免重生后从 brainrotQueue 生成 Tool。
+	local function BindPlayerDeathHandler(player: Player)
+		player.CharacterAdded:Connect(function(character: Model)
+			-- 给 ConvertCarryingToQueue 的防护属性一个确定的初始值
+			player:SetAttribute("BrainrotDeathGuard", false)
+
+			local humanoid = character:WaitForChild("Humanoid", 2) :: Humanoid?
+			if not humanoid then
+				return
+			end
+
+			humanoid.Died:Connect(function()
+				player:SetAttribute("BrainrotDeathGuard", true)
+
+				local carryingBrainrot = character:FindFirstChild("CarryingBrainrot")
+				if not carryingBrainrot then
+					return
+				end
+
+				local itemType = carryingBrainrot:GetAttribute("ItemType") :: number?
+				if itemType ~= GameConfig.ItemType.Brainrot then
+					return
+				end
+
+				local uid = carryingBrainrot:GetAttribute("BrainrotUID") :: string?
+				if uid then
+					TerminateAndRespawnBrainrot(uid)
+				end
+
+				-- 清理携带物，避免死亡后仍触发一些交互/触碰逻辑。
+				if carryingBrainrot.Parent then
+					carryingBrainrot:Destroy()
+				end
+			end)
+		end)
+	end
+
+	for _, player in ipairs(_players:GetPlayers()) do
+		BindPlayerDeathHandler(player)
+	end
+	_players.PlayerAdded:Connect(BindPlayerDeathHandler)
 
 	if not islandsFolder then
 		return
