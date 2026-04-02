@@ -14,7 +14,7 @@ local ClientMsg = require(clientScripts:FindFirstChild("ClientMsg"))
 local tweenService: TweenService = game:GetService("TweenService")
 local userInputService: UserInputService = game:GetService("UserInputService")
 
-local ModalTransparency = 0.3
+local ModalTransparency = 0.9
 local ButtonHoveredScale: number = 1.1 --按钮鼠标移入放大
 local ButtonPressedScale: number = 0.9 --按钮按下缩小
 local ButtonInteractionTweenInfo: TweenInfo = TweenInfo.new(0.1) --按钮交互动画缓动信息

@@ -33,6 +33,7 @@ function ServerGameInfo.InitPlayerInfo(
 		lastOnlineDateUTC = playerSaveInfo.lastOnlineDateUTC,
 		settingInfo = playerSaveInfo.settingInfo,
 		ownedGamePassList = playerSaveInfo.ownedGamePassList,
+		ownedShopBundleMap = playerSaveInfo.ownedShopBundleMap or {},
 		playerInfoChanged = false,
 		timeOfThisLogin = DateTime.now().UnixTimestamp,
 		countryRegion = countryRegion,
@@ -66,6 +67,7 @@ function ServerGameInfo.InitPlayerInfo(
 	local clientLocalPlayerSaveInfo: GameConfig.ClientLocalPlayerSaveInfo = {
 		settingInfo = playerInfo.settingInfo,
 		ownedGamePassList = playerInfo.ownedGamePassList,
+		ownedShopBundleMap = playerInfo.ownedShopBundleMap,
 		currencies = playerInfo.currencies,
 		inventoryInfo = playerInfo.inventoryInfo,
 		homeInfo = playerInfo.homeInfo,
@@ -144,6 +146,7 @@ function ServerGameInfo.CreatePlayerSaveInfoByPlayerInfo(playerInfo: GameConfig.
 		lastOnlineDateUTC = playerInfo.lastOnlineDateUTC,
 		lastOnlineDate = playerInfo.lastOnlineDate,
 		ownedGamePassList = playerInfo.ownedGamePassList,
+		ownedShopBundleMap = playerInfo.ownedShopBundleMap,
 		settingInfo = playerInfo.settingInfo,
 		currencies = playerInfo.currencies,
 		inventoryInfo = playerInfo.inventoryInfo,

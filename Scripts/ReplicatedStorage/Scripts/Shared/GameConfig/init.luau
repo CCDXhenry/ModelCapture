@@ -98,6 +98,7 @@ export type RewardInfo = {
 	rewardCount: number,
 	rewardSource: number?,
 	rewardLv: number?,
+	productIndex: number?,
 }
 
 --奖励类型
@@ -203,6 +204,13 @@ export type BrainrotQueueItem = {
 	quality: number,
 	-- 等级
 	level: number,
+
+	-- === 临时用途：商店/活动发放奖励的提示分组信息 ===
+	-- 仅用于客户端在 UpdateBrainrotQueue 时判断是否需要播放“获得奖励”提示。
+	-- 注意：该信息会随背包队列一起持久化，因此客户端必须通过“新uid”增量逻辑避免重复触发。
+	grantTipKey: string?,
+	grantExpectedCount: number?,
+	grantShopBundleId: number?,
 }
 
 -- 玩家拥有的宠物信息 (存档)
@@ -451,6 +459,9 @@ GameConfig.BrainrotQualityConfig = {
 	},
 }
 
+--RobuxIcon文本
+GameConfig.RobuxIconText = "\u{E002}"
+
 GameConfig.BrainrotQualityTextMap = {
 	[1] = "QualityCommon",
 	[2] = "QualityUncommon",
@@ -580,8 +591,17 @@ export type UpgradeShopData = {
 
 export type ShopBundleConfigurationData = {
 	id: number,
-	productId: number,
-	price: number,
+	type: number,
+	canRepurchased: number,
+	nameColor: { number },
+	productId1: number,
+	productId2: number,
+	productId3: number,
+	price1: number,
+	price2: number,
+	price3: number,
+	beforeDiscountPrice2: number,
+	beforeDiscountPrice3: number,
 	name_t: string,
 	sortId: number,
 	bgIconId: string,
@@ -644,6 +664,7 @@ for _, rewardEntry in pairs(ShopBundleDataModule) do
 			rewardId = rewardEntry.rewardId,
 			rewardCount = rewardEntry.rewardCount,
 			rewardLv = rewardEntry.rewardLv,
+			productIndex = rewardEntry.productIndex or 1,
 		}
 		table.insert(bundle.rewards, rewardInfo)
 	end
@@ -728,6 +749,9 @@ export type PlayerSaveInfo = {
 	--已拥有的通行证列表
 	ownedGamePassList: { number },
 
+	--已拥有的商店捆绑奖励（用于不可复购遮罩）
+	ownedShopBundleMap: { [number]: boolean },
+
 	-- [抓模型] 玩家货币 (Key为币种ID的字符串)
 	currencies: { [string]: number },
 	-- [抓模型] 背包信息 (持久化)
@@ -798,6 +822,7 @@ function GameConfig.CreateDefaultPlayerSaveInfo(): PlayerSaveInfo
 			decelerationOn = false,
 		},
 		ownedGamePassList = {},
+		ownedShopBundleMap = {},
 		currencies = {
 			["1"] = 0, -- 默认初始化金币
 		},
@@ -832,6 +857,9 @@ export type ClientLocalPlayerSaveInfo = {
 	settingInfo: SettingInfo,
 	--已拥有的通行证列表
 	ownedGamePassList: { number },
+
+	--已拥有的商店捆绑奖励（用于不可复购遮罩）
+	ownedShopBundleMap: { [number]: boolean },
 
 	-- [抓模型] 玩家货币 (Key为币种ID的字符串)
 	currencies: { [string]: number },

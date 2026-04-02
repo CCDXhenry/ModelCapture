@@ -62,7 +62,15 @@ local function TweenModelScale(model: Model, fromScale: number, toScale: number,
 	end
 end
 
-local function CreateOrUpdateInfoUI(parentInstance: Instance, adornee: BasePart, brainrotId: number, level: number, model: Model?)
+local function CreateOrUpdateInfoUI(
+	parentInstance: Instance,
+	adornee: BasePart,
+	brainrotId: number,
+	level: number,
+	model: Model?,
+	hideTimers: boolean?
+)
+
 	local brainrotData = GameConfig.BrainrotIdMap[brainrotId]
 	if not brainrotData then
 		return
@@ -70,6 +78,7 @@ local function CreateOrUpdateInfoUI(parentInstance: Instance, adornee: BasePart,
 
 	local qualityCfg = GameConfig.BrainrotQualityConfig[brainrotData.quality]
 	local ui = parentInstance:FindFirstChild("BrainrotInfoUI") :: BillboardGui?
+	
 	if not ui then
 		local clonedUi = brainrotInfoUIParams:Clone() :: BillboardGui
 		clonedUi.Name = "BrainrotInfoUI"
@@ -77,6 +86,7 @@ local function CreateOrUpdateInfoUI(parentInstance: Instance, adornee: BasePart,
 		BillboardManager.Track(clonedUi)
 		ui = clonedUi
 	end
+	print("ui", ui)
 	if not ui then
 		return
 	end
@@ -84,7 +94,7 @@ local function CreateOrUpdateInfoUI(parentInstance: Instance, adornee: BasePart,
 	local offsetY = if model then ModelBillboardOffsetTool.GetVisualOffsetY(model, adornee, 1) else 2
 	ui.StudsOffset = Vector3.new(0, offsetY, 0)
 
-	local controller = ui:FindFirstChild("Controller")
+	local controller = ui:FindFirstChild("ControllerFrame")
 	if not controller then
 		return
 	end
@@ -115,6 +125,16 @@ local function CreateOrUpdateInfoUI(parentInstance: Instance, adornee: BasePart,
 	end
 	if sellPriceText then
 		sellPriceText.Visible = false
+	end
+
+	local shouldHide = hideTimers == true
+	local timerTextLabel = controller:FindFirstChild("TimerText") :: TextLabel?
+	local timerImgLabel = controller:FindFirstChild("TimerImg") :: ImageLabel?
+	if timerTextLabel then
+		timerTextLabel.Visible = not shouldHide
+	end
+	if timerImgLabel then
+		timerImgLabel.Visible = not shouldHide
 	end
 end
 
@@ -318,7 +338,8 @@ local function PlayInWorld(uid: string, chestConfigId: number, chestLevel: numbe
 		if not displayModel or not displayRoot then
 			return
 		end
-		CreateOrUpdateInfoUI(container, displayRoot, brainrotId, chestLevel, displayModel)
+		-- 随机展示的 rewardPool 不需要倒计时 UI
+		CreateOrUpdateInfoUI(container, displayRoot, brainrotId, chestLevel, displayModel, not stayAsFinal)
 		TweenModelScale(displayModel, TinyScale, 1, 0.14, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
 		if stayAsFinal then
 			TweenModelScale(displayModel, 1, 1.15, 0.22, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
@@ -406,7 +427,8 @@ function LittleElfChestOpenAnimationManager.Play(tool: Tool?, uid: string, chest
 				continue
 			end
 
-			CreateOrUpdateInfoUI(tool, root, randomId, chestLevel, showModel)
+			-- 随机展示的 rewardPool 不需要倒计时 UI
+			CreateOrUpdateInfoUI(tool, root, randomId, chestLevel, showModel, true)
 			TweenModelScale(showModel, TinyScale, 1, 0.14, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
 			task.wait(0.05)
 			TweenModelScale(showModel, 1, TinyScale, 0.1, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
@@ -416,7 +438,8 @@ function LittleElfChestOpenAnimationManager.Play(tool: Tool?, uid: string, chest
 		-- 最终定格模型
 		local finalModel, finalRoot = CreateDisplayModel(tool, finalBrainrotId)
 		if finalModel and finalRoot then
-			CreateOrUpdateInfoUI(tool, finalRoot, finalBrainrotId, chestLevel, finalModel)
+			-- 最终定格展示允许倒计时 UI
+			CreateOrUpdateInfoUI(tool, finalRoot, finalBrainrotId, chestLevel, finalModel, true)
 			TweenModelScale(finalModel, TinyScale, 1.15, 0.22, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
 			TweenModelScale(finalModel, 1.15, 1, 0.1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 		end

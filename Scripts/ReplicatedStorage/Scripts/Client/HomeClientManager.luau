@@ -1417,12 +1417,12 @@ function HomeClientManager.Init()
 		if char then
 			local carry = char:FindFirstChild("CarryingBrainrot")
 			if carry then
-				if carry:GetAttribute("BrainrotUID") and carry:GetAttribute("ItemType") ~= 2 then
+				if carry:GetAttribute("BrainrotUID") and carry:GetAttribute("ItemType") == GameConfig.ItemType.Brainrot then
 					holding = true
 				end
 			else
 				local tool = char:FindFirstChildOfClass("Tool")
-				if tool and tool:GetAttribute("BrainrotUID") and tool:GetAttribute("ItemType") ~= 2 then
+				if tool and tool:GetAttribute("BrainrotUID") and tool:GetAttribute("ItemType") == GameConfig.ItemType.Brainrot then
 					holding = true
 				end
 			end

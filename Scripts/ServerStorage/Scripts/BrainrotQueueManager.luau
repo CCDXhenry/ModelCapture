@@ -188,15 +188,31 @@ local function NotifyQueueUpdate(player: Player, queue: { GameConfig.BrainrotQue
 	NetMsg.FireNotifyBrainrotQueueUpdate(player, queue)
 end
 
--- 向玩家背包队列添加一个 Brainrot/Coil
-function BrainrotQueueManager.AddItem(player: Player, configId: number, quality: number, level: number, equipImmediately: boolean?, itemType: number?): boolean
+-- shouldEnforceMaxCapacity:
+-- - true: 超过 MaxCapacity 则拒绝入队（岛屿“拿在手上转成队列/背包tool”的流程）
+-- - false: 允许队列突破上限（例如商店发放），UI 仍只显示前 9 个。
+-- grantTipKey/grantExpectedCount/grantShopBundleId:
+-- - 用于客户端“获得奖励提示”的播放分组判定（不做服务端去重）
+function BrainrotQueueManager.AddItem(
+	player: Player,
+	configId: number,
+	quality: number,
+	level: number,
+	equipImmediately: boolean?,
+	itemType: number?,
+	shouldEnforceMaxCapacity: boolean?,
+	grantTipKey: string?,
+	grantExpectedCount: number?,
+	grantShopBundleId: number?
+): boolean
 	local playerInfo = ServerGameInfo.GetPlayerInfo(player)
 	if not playerInfo then
 		warn("[BrainrotQueueManager] AddItem failed: playerInfo not found for", player.Name)
 		return false
 	end
 
-	if #playerInfo.brainrotQueue >= MaxCapacity then
+	local enforceCapacity = if shouldEnforceMaxCapacity == nil then true else shouldEnforceMaxCapacity
+	if enforceCapacity and #playerInfo.brainrotQueue >= MaxCapacity then
 		-- 提示玩家背包已满 (增加 5 秒间隔限制)
 		local now = os.clock()
 		local lastTip = playerLastFullTipTime[player] or 0
@@ -213,6 +229,10 @@ function BrainrotQueueManager.AddItem(player: Player, configId: number, quality:
 		configId = configId,
 		quality = quality,
 		level = level,
+
+		grantTipKey = grantTipKey,
+		grantExpectedCount = grantExpectedCount,
+		grantShopBundleId = grantShopBundleId,
 	}
 
 	table.insert(playerInfo.brainrotQueue, item)
@@ -381,7 +401,7 @@ function BrainrotQueueManager.OpenChest(player: Player, uid: string)
 		if not latestPlayerInfo then
 			return
 		end
-		BrainrotQueueManager.AddItem(player, rewardId, rewardConfig.quality, chestLevel, true, rewardType)
+		BrainrotQueueManager.AddItem(player, rewardId, rewardConfig.quality, chestLevel, true, rewardType, false)
 		-- 提示
 	NetMsg.FireNotifyShowGameTip(player, GameTexts.ReceivedReward.source, GameConfig.GameTipTweenType.FlyUp, GameTexts.ReceivedReward.key, {rewardConfig.name_t})
 	end)

@@ -8,7 +8,7 @@ local tweenService = game:GetService("TweenService")
 
 local localPlayer = players.LocalPlayer
 local holdAnimInstance = Instance.new("Animation")
-holdAnimInstance.AnimationId = "rbxassetid://0" -- 手动替换为双手托举的动作ID
+holdAnimInstance.AnimationId = "rbxassetid://93311785688859" -- 手动替换为双手托举的动作ID
 local holdAnimTrack: AnimationTrack? = nil
 local isPlayerOnIsland = false -- 将在阶段四中由区域检测系统更新
 
@@ -262,32 +262,6 @@ local function ProcessDescendantAdded(descendant: Instance)
 end
 
 local function OnLocalToolEquipped(tool: Tool, character: Model)
-	local humanoid = character:FindFirstChildOfClass("Humanoid")
-	local animator = humanoid and humanoid:FindFirstChildOfClass("Animator")
-	if not animator then
-		return
-	end
-
-	if not holdAnimTrack then
-		holdAnimTrack = animator:LoadAnimation(holdAnimInstance)
-		if holdAnimTrack then
-			holdAnimTrack.Priority = Enum.AnimationPriority.Action
-		end
-	end
-
-	-- 停止默认拿取动画
-	task.defer(function()
-		for _, track in ipairs(animator:GetPlayingAnimationTracks()) do
-			if track.Name == "toolanim" then
-				track:Stop()
-			end
-		end
-	end)
-
-	if holdAnimTrack then
-		holdAnimTrack:Play()
-	end
-
 	-- Motor6D Tween 视觉位置
 	local handle = tool:FindFirstChild("Handle")
 	if handle then
@@ -306,9 +280,80 @@ local function OnLocalToolEquipped(tool: Tool, character: Model)
 end
 
 local function OnLocalToolUnequipped(tool: Tool)
+	-- holdAnimInstance is driven by island pickup state (CarryingBrainrot),
+	-- not by tool equip/unequip.
+end
+
+local isHoldAnimPlaying = false
+
+local function ResetHoldAnimTrack()
 	if holdAnimTrack then
 		holdAnimTrack:Stop()
 	end
+	holdAnimTrack = nil
+	isHoldAnimPlaying = false
+end
+
+local function GetLocalAnimator(character: Model): Animator?
+	local humanoid = character:FindFirstChildOfClass("Humanoid") :: Humanoid?
+	local animator = humanoid and humanoid:FindFirstChildOfClass("Animator") :: Animator?
+	return animator
+end
+
+local function PlayHoldAnim(character: Model)
+	if isHoldAnimPlaying then
+		return
+	end
+
+	local animator = GetLocalAnimator(character)
+	if not animator then
+		return
+	end
+
+	if not holdAnimTrack then
+		holdAnimTrack = animator:LoadAnimation(holdAnimInstance)
+		if holdAnimTrack then
+			holdAnimTrack.Priority = Enum.AnimationPriority.Action
+		end
+	end
+
+	if holdAnimTrack then
+		holdAnimTrack:Play()
+		isHoldAnimPlaying = true
+	end
+end
+
+local function StopHoldAnim()
+	if not isHoldAnimPlaying then
+		return
+	end
+
+	if holdAnimTrack then
+		holdAnimTrack:Stop()
+	end
+	isHoldAnimPlaying = false
+end
+
+local function SetupLocalPlayerCarryingBrainrotTracking(character: Model)
+	-- If player is already carrying when we start tracking
+	do
+		local carrying = character:FindFirstChild("CarryingBrainrot")
+		if carrying and carrying:GetAttribute("ItemType") == GameConfig.ItemType.Brainrot then
+			PlayHoldAnim(character)
+		end
+	end
+
+	character.ChildAdded:Connect(function(child)
+		if child.Name == "CarryingBrainrot" and child:GetAttribute("ItemType") == GameConfig.ItemType.Brainrot then
+			PlayHoldAnim(character)
+		end
+	end)
+
+	character.ChildRemoved:Connect(function(child)
+		if child.Name == "CarryingBrainrot" and child:GetAttribute("ItemType") == GameConfig.ItemType.Brainrot then
+			StopHoldAnim()
+		end
+	end)
 end
 
 local function SetupLocalPlayerToolTracking(character: Model)
@@ -393,9 +438,15 @@ function BrainrotClientManager.Init()
 
 	-- Local Player Tool Tracking
 	if localPlayer.Character then
+		ResetHoldAnimTrack()
 		SetupLocalPlayerToolTracking(localPlayer.Character)
+		SetupLocalPlayerCarryingBrainrotTracking(localPlayer.Character)
 	end
-	localPlayer.CharacterAdded:Connect(SetupLocalPlayerToolTracking)
+	localPlayer.CharacterAdded:Connect(function(char)
+		ResetHoldAnimTrack()
+		SetupLocalPlayerToolTracking(char)
+		SetupLocalPlayerCarryingBrainrotTracking(char)
+	end)
 
 	NetMsg.ConnectNotifyChestOpenResult(OnNotifyChestOpenResult)
 end

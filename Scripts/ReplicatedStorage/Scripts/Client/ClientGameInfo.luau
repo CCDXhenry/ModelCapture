@@ -11,6 +11,11 @@ local ClientMsg = require(clientScripts:FindFirstChild("ClientMsg"))
 local localPlayerInfo: GameConfig.ClientLocalPlayerInfo?
 local otherPlayerInfoMap: { [number]: GameConfig.ClientOtherPlayerInfo } = {}
 
+-- 用于“新增 uid 才显示获得奖励提示”的增量判定
+-- 避免玩家重新进游戏时把旧队列也触发提示。
+local seenQueueUidSet: { [string]: boolean } = {}
+local triggeredGrantTipKeySet: { [string]: boolean } = {}
+
 --初始化玩家信息
 function ClientGameInfo.InitPlayerInfo(
 	localPlayerSaveInfo: GameConfig.ClientLocalPlayerSaveInfo,
@@ -28,6 +33,7 @@ function ClientGameInfo.InitPlayerInfo(
 	localPlayerInfo = {
 		settingInfo = localPlayerSaveInfo.settingInfo,
 		ownedGamePassList = localPlayerSaveInfo.ownedGamePassList,
+		ownedShopBundleMap = localPlayerSaveInfo.ownedShopBundleMap or {},
 		ownedGamePassMap = {},
 		playerConfigInfo = playerConfigInfo,
 
@@ -49,6 +55,13 @@ function ClientGameInfo.InitPlayerInfo(
 	if localPlayerInfo == nil then
 		return
 	end
+
+	-- 初始化“已存在 uid”集合：首次 UpdateBrainrotQueue 时不触发提示
+	local initialQueue = localPlayerSaveInfo.brainrotQueue or {}
+	for _, item in ipairs(initialQueue) do
+		seenQueueUidSet[item.uid] = true
+	end
+
 	for ownedGamePassIndex: number, ownedGamePassId: number in localPlayerInfo.ownedGamePassList do
 		localPlayerInfo.ownedGamePassMap[ownedGamePassId] = true
 	end
@@ -208,8 +221,82 @@ end
 -- 更新无障碍信息
 function ClientGameInfo.UpdateBrainrotQueue(queue: { GameConfig.BrainrotQueueItem })
 	if localPlayerInfo then
+		-- 1) 统计每个 grantTipKey 对应的“总数”和“新增 uid 数”
+		local groupInfoByTipKey:
+			{ [string]: {
+				expectedCount: number,
+				itemType: number,
+				configId: number,
+				shopBundleId: number?,
+				totalCount: number,
+				newCount: number,
+			} } = {}
+
+		for _, item in ipairs(queue) do
+			local tipKey = item.grantTipKey
+			if tipKey ~= nil then
+				local g = groupInfoByTipKey[tipKey]
+				if g == nil then
+					g = {
+						expectedCount = item.grantExpectedCount or 0,
+						itemType = item.itemType or GameConfig.ItemType.Brainrot,
+						configId = item.configId,
+						shopBundleId = item.grantShopBundleId,
+						totalCount = 0,
+						newCount = 0,
+					}
+					groupInfoByTipKey[tipKey] = g
+				end
+
+				g.totalCount += 1
+				if not seenQueueUidSet[item.uid] then
+					g.newCount += 1
+				end
+			end
+		end
+
+		-- 2) 更新本地队列状态并广播
 		localPlayerInfo.brainrotQueue = queue
 		ClientMsg.FireBrainrotQueueUpdate(queue)
+
+		-- 3) 触发“获得奖励提示”（只对“新增 uid”触发）
+		for tipKey, g in pairs(groupInfoByTipKey) do
+			if not triggeredGrantTipKeySet[tipKey]
+				and g.expectedCount > 0
+				and g.totalCount >= g.expectedCount
+				and g.newCount > 0
+			then
+				local rewardType: number?
+				if g.itemType == GameConfig.ItemType.Brainrot then
+					rewardType = GameConfig.RewardType.Brainrot
+				elseif g.itemType == GameConfig.ItemType.Coil then
+					rewardType = GameConfig.RewardType.Coil
+				elseif g.itemType == GameConfig.ItemType.LittleElfChest then
+					rewardType = GameConfig.RewardType.LittleElfChest
+				end
+
+				if rewardType ~= nil then
+					local rewardInfo: GameConfig.RewardInfo = {
+						rewardType = rewardType,
+						rewardId = g.configId,
+						rewardCount = g.expectedCount,
+					}
+					ClientMsg.FireShowAddRewardsTip({ rewardInfo })
+					triggeredGrantTipKeySet[tipKey] = true
+
+					-- 更新本地“已购”状态：用于商店界面立刻展示不可复购遮罩
+					if g.shopBundleId ~= nil then
+						localPlayerInfo.ownedShopBundleMap[g.shopBundleId] = true
+					end
+				end
+			end
+		end
+
+		-- 4) 将队列 uid 记为已见，确保后续增量判定正确
+		for _, item in ipairs(queue) do
+			seenQueueUidSet[item.uid] = true
+		end
+
 		print("[ClientGameInfo] BrainrotQueue updated, count:", #queue)
 	end
 end

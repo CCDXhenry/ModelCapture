@@ -187,7 +187,7 @@ function ConvertCarryingToQueue(player: Player)
 	local itemType = carryingBrainrot:GetAttribute("ItemType") :: number?
 
 	if configId and uid then
-		local success = BrainrotQueueManager.AddItem(player, configId, quality, level, true, itemType)
+		local success = BrainrotQueueManager.AddItem(player, configId, quality, level, true, itemType, true)
 		if success then
 			-- 把携带 brainrot 移出岛面（放回队列）时：终止该 uid 倒计时并立即补刷
 			if itemType == GameConfig.ItemType.Brainrot then
@@ -666,20 +666,19 @@ local function GetActiveBrainrot(player: Player): Instance?
 		return nil
 	end
 
-	local equippedTool = character:FindFirstChildOfClass("Tool")
-	if equippedTool and equippedTool:GetAttribute("BrainrotUID") then
-		if equippedTool:GetAttribute("ItemType") == 2 then
-			return nil
-		end
-		return equippedTool
-	end
-
 	local carrying = character:FindFirstChild("CarryingBrainrot")
 	if carrying and carrying:GetAttribute("BrainrotUID") then
-		if carrying:GetAttribute("ItemType") == 2 then
-			return nil
+		if carrying:GetAttribute("ItemType") == GameConfig.ItemType.Brainrot then
+			return carrying
 		end
-		return carrying
+		return nil
+	end
+
+	local equippedTool = character:FindFirstChildOfClass("Tool")
+	if equippedTool and equippedTool:GetAttribute("BrainrotUID") then
+		if equippedTool:GetAttribute("ItemType") == GameConfig.ItemType.Brainrot then
+			return equippedTool
+		end
 	end
 
 	return nil
@@ -703,6 +702,15 @@ local function OnRequestPlaceCarryingBrainrot(player: Player, pointIndex: number
 			end
 
 			local itemType = carryingBrainrot:GetAttribute("ItemType") :: number?
+			if itemType ~= GameConfig.ItemType.Brainrot then
+				warn(
+					"[BrainrotIslandManager] OnRequestPlaceCarryingBrainrot rejected: itemType is not Brainrot for",
+					player.Name,
+					"itemType",
+					itemType
+				)
+				return
+			end
 
 			if carryingBrainrot:IsA("Tool") then
 				if not BrainrotQueueManager.RemoveItem(player, uid) then

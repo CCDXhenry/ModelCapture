@@ -155,7 +155,7 @@ function PlayerInteractManager.Init()
 					-- 销毁发送方Tool/Carrying
 					senderBrainrot:Destroy()
 					-- 接收方自动装备
-					local success = BrainrotQueueManager.AddItem(player, configId, quality, level, true)
+					local success = BrainrotQueueManager.AddItem(player, configId, quality, level, true, nil, false)
 					if success then
 						NetMsg.FireNotifyGiftResult(sender, true, "Success")
 						NetMsg.FireNotifyGiftResult(player, true, "Success")

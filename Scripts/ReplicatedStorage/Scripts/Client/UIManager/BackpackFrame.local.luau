@@ -236,14 +236,20 @@ local function RefreshBackpackUI(queue: { GameConfig.BrainrotQueueItem })
 	activeSlots = {}
 	currentEquippedIndex = 0
 
+	local MAX_UI_SLOTS = 9
+
 	-- 创建新格子
-	for i, item in ipairs(queue) do
-		local slot = CreateSlot(i, item)
-		table.insert(activeSlots, slot)
+	local shownCount = math.min(#queue, MAX_UI_SLOTS)
+	for i = 1, shownCount do
+		local item = queue[i]
+		if item then
+			local slot = CreateSlot(i, item)
+			table.insert(activeSlots, slot)
+		end
 	end
 
 	-- 显示/隐藏整个容器
-	bottomButtonsFrame.Visible = #queue > 0
+	bottomButtonsFrame.Visible = shownCount > 0
 end
 
 -- 公开接口：更新当前装备索引

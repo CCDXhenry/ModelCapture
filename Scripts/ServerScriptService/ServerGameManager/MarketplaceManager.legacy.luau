@@ -12,7 +12,13 @@ local NetMsg = require(sharedScripts:FindFirstChild("NetMsg"))
 local players: Players = game:GetService("Players")
 local marketplaceService: MarketplaceService = game:GetService("MarketplaceService")
 
-local function GrantShopBundleReward(player: Player, reward: GameConfig.RewardInfo)
+local function GrantShopBundleReward(
+	player: Player,
+	reward: GameConfig.RewardInfo,
+	grantTipKey: string?,
+	grantExpectedCount: number?,
+	shopBundleId: number?
+)
 	if reward.rewardType == GameConfig.RewardType.Currency then
 		ServerGameInfo.UpdatePlayerCurrency(
 			player,
@@ -23,10 +29,28 @@ local function GrantShopBundleReward(player: Player, reward: GameConfig.RewardIn
 		return
 	end
 
+	local rewardCount = reward.rewardCount or 1
+	if rewardCount <= 0 then
+		return
+	end
+
 	if reward.rewardType == GameConfig.RewardType.Brainrot then
 		local config = GameConfig.BrainrotIdMap[reward.rewardId]
 		if config then
-			BrainrotQueueManager.AddItem(player, reward.rewardId, config.quality, reward.rewardLv or 1, false, GameConfig.ItemType.Brainrot)
+			for _ = 1, rewardCount do
+				BrainrotQueueManager.AddItem(
+					player,
+					reward.rewardId,
+					config.quality,
+					reward.rewardLv or 1,
+					false,
+					GameConfig.ItemType.Brainrot,
+					false, -- 非岛屿流程：允许突破队列上限
+					grantTipKey,
+					grantExpectedCount,
+					shopBundleId
+				)
+			end
 		end
 		return
 	end
@@ -34,7 +58,20 @@ local function GrantShopBundleReward(player: Player, reward: GameConfig.RewardIn
 	if reward.rewardType == GameConfig.RewardType.Coil then
 		local config = GameConfig.CoilIdMap[reward.rewardId]
 		if config then
-			BrainrotQueueManager.AddItem(player, reward.rewardId, config.quality, reward.rewardLv or 1, false, GameConfig.ItemType.Coil)
+			for _ = 1, rewardCount do
+				BrainrotQueueManager.AddItem(
+					player,
+					reward.rewardId,
+					config.quality,
+					reward.rewardLv or 1,
+					false,
+					GameConfig.ItemType.Coil,
+					false, -- 非岛屿流程：允许突破队列上限
+					grantTipKey,
+					grantExpectedCount,
+					shopBundleId
+				)
+			end
 		end
 		return
 	end
@@ -42,23 +79,70 @@ local function GrantShopBundleReward(player: Player, reward: GameConfig.RewardIn
 	if reward.rewardType == GameConfig.RewardType.LittleElfChest then
 		local config = GameConfig.LittleElfChestIdMap[reward.rewardId]
 		if config then
-			BrainrotQueueManager.AddItem(player, reward.rewardId, config.quality, reward.rewardLv or 1, false, GameConfig.ItemType.LittleElfChest)
+			for _ = 1, rewardCount do
+				BrainrotQueueManager.AddItem(
+					player,
+					reward.rewardId,
+					config.quality,
+					reward.rewardLv or 1,
+					false,
+					GameConfig.ItemType.LittleElfChest,
+					false, -- 非岛屿流程：允许突破队列上限
+					grantTipKey,
+					grantExpectedCount,
+					shopBundleId
+				)
+			end
 		end
 		return
 	end
 end
 
-local function GrantShopBundleByProductId(player: Player, productId: number): boolean
+local function GrantShopBundleByProductId(player: Player, receiptInfo: GameConfig.ReceiptInfo): (boolean, boolean)
+	local productId = receiptInfo.ProductId
+	local purchaseId = receiptInfo.PurchaseId
+	local playerInfo: GameConfig.PlayerInfo? = ServerGameInfo.GetPlayerInfo(player)
+	if playerInfo == nil then
+		return false, false
+	end
 	for _, bundleId in ipairs(GameConfig.ShopBundleList) do
 		local bundleData = GameConfig.ShopBundleById[bundleId]
-		if bundleData and bundleData.config.productId == productId then
-			for _, reward in ipairs(bundleData.rewards) do
-				GrantShopBundleReward(player, reward)
+		if bundleData then
+			local productIndex: number? = nil
+			if bundleData.config.productId1 == productId then
+				productIndex = 1
+			elseif bundleData.config.productId2 == productId then
+				productIndex = 2
+			elseif bundleData.config.productId3 == productId then
+				productIndex = 3
 			end
-			return true
+			if productIndex == nil then
+				continue
+			end
+			local shopBundleId = bundleData.config.id
+			if bundleData.config.canRepurchased == 0 and playerInfo.ownedShopBundleMap[shopBundleId] == true then
+				return false, true
+			end
+			local function getGrantTipKey(reward: GameConfig.RewardInfo): string
+				return `shopgrant_{purchaseId}_{shopBundleId}_{reward.rewardType}_{reward.rewardId}`
+			end
+			for _, reward in ipairs(bundleData.rewards) do
+				if (reward.productIndex or 1) == productIndex then
+					GrantShopBundleReward(
+						player,
+						reward,
+						getGrantTipKey(reward),
+						reward.rewardCount,
+						shopBundleId
+					)
+				end
+			end
+			playerInfo.ownedShopBundleMap[shopBundleId] = true
+			playerInfo.playerInfoChanged = true
+			return true, false
 		end
 	end
-	return false
+	return false, false
 end
 
 local function OnPromptGamePassPurchaseFinished(player: Instance, gamePassId: number, wasPurchased: boolean)
@@ -101,9 +185,17 @@ local function ProcessReceipt(receiptInfo: GameConfig.ReceiptInfo): Enum.Product
 		ServerGameInfo.UpgradeAbilityPaid(player, "MaxBricks", 10)
 		AnalyticsTool.AddProductPurchaseEvent(player, receiptInfo)
 		return Enum.ProductPurchaseDecision.PurchaseGranted
-	elseif GrantShopBundleByProductId(player, receiptInfo.ProductId) then
-		AnalyticsTool.AddProductPurchaseEvent(player, receiptInfo)
-		return Enum.ProductPurchaseDecision.PurchaseGranted
+	else
+		local ok, denied = GrantShopBundleByProductId(player, receiptInfo)
+		if ok then
+			AnalyticsTool.AddProductPurchaseEvent(player, receiptInfo)
+			return Enum.ProductPurchaseDecision.PurchaseGranted
+		end
+		if denied then
+			-- 项目当前枚举类型不包含 PurchaseDenied，使用 NotProcessedYet 表示“不处理”，
+			-- 同时由 GrantShopBundleByProductId 内的 owned 判断保证不会再次发放奖励。
+			return Enum.ProductPurchaseDecision.NotProcessedYet
+		end
 	end
 
 	return Enum.ProductPurchaseDecision.NotProcessedYet

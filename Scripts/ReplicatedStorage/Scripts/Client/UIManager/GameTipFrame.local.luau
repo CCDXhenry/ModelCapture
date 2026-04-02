@@ -299,6 +299,21 @@ local function OnRenderStepped(deltaTime: number)
 				if currencyType == GameConfig.CurrencyType.Coin then
 					ShowAddRewardsTip(GameConfig.CoinIconImage, rewardInfo.rewardCount)
 				end
+			elseif rewardInfo.rewardType == GameConfig.RewardType.Brainrot then
+				local brainrotData = GameConfig.BrainrotIdMap[rewardInfo.rewardId]
+				if brainrotData and brainrotData.iconImageId and brainrotData.iconImageId ~= "" then
+					ShowAddRewardsTip(brainrotData.iconImageId, rewardInfo.rewardCount)
+				end
+			elseif rewardInfo.rewardType == GameConfig.RewardType.Coil then
+				local coilData = GameConfig.CoilIdMap[rewardInfo.rewardId]
+				if coilData and coilData.iconImageId and coilData.iconImageId ~= "" then
+					ShowAddRewardsTip(coilData.iconImageId, rewardInfo.rewardCount)
+				end
+			elseif rewardInfo.rewardType == GameConfig.RewardType.LittleElfChest then
+				local chestData = GameConfig.LittleElfChestIdMap[rewardInfo.rewardId]
+				if chestData and chestData.iconImageId and chestData.iconImageId ~= "" then
+					ShowAddRewardsTip(chestData.iconImageId, rewardInfo.rewardCount)
+				end
 			end
 		end
 		lastShowedAddRewardsTipTime = nowTime

@@ -1,7 +1,7 @@
 return {
 	[1] = {
 		["coilType"] = 1,
-		["description"] = "increases speed by 10.",
+		["description"] = "Increases speed by 10.",
 		["id"] = 1,
 		["iconImageId"] = "rbxassetid://112970408632130",
 		["name_t"] = "Speed Coil",
@@ -13,7 +13,7 @@ return {
 	},
 	[2] = {
 		["coilType"] = 1,
-		["description"] = "increases speed by 15.",
+		["description"] = "Increases speed by 15.",
 		["id"] = 2,
 		["iconImageId"] = "rbxassetid://97835723925030",
 		["name_t"] = "Fire Coil",
@@ -25,11 +25,11 @@ return {
 	},
 	[3] = {
 		["coilType"] = 2,
-		["description"] = "enables a mid-air double jump.",
+		["description"] = "Enables a mid-air double jump.",
 		["id"] = 3,
 		["iconImageId"] = "rbxassetid://93370823965535",
 		["name_t"] = "Double Jump Coil",
-		["gravitationalValue"] = 1,
+		["gravitationalValue"] = 0.75,
 		["speedValue"] = 0,
 		["modelRes"] = "DoubleJumpCoil",
 		["extraJumps"] = 1,
@@ -37,11 +37,11 @@ return {
 	},
 	[4] = {
 		["coilType"] = 3,
-		["description"] = "provides continuous upward thrust, allowing you to jump higher and farther.",
+		["description"] = "Provides continuous upward thrust, allowing you to jump higher and farther.",
 		["id"] = 4,
 		["iconImageId"] = "rbxassetid://82037402052073",
 		["name_t"] = "Gravity Coil",
-		["gravitationalValue"] = 0.5,
+		["gravitationalValue"] = 0.3,
 		["speedValue"] = 0.5,
 		["modelRes"] = "RainbowCoil",
 		["extraJumps"] = 0,

@@ -36,7 +36,7 @@ return {
 	},
 	[6] = {
 		["type"] = 2,
-		["upgradeCost"] = 80,
+		["upgradeCost"] = 50,
 		["ability"] = 40,
 		["lv"] = 1,
 		["name_t"] = "MaxBricks",

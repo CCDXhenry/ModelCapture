@@ -51,7 +51,7 @@ local function OnGiveCoilCommandTriggered(originTextSource: TextSource, unfilter
 	if #args >= 2 then
 		local configId = tonumber(args[2])
 		if configId then
-			BrainrotQueueManager.AddItem(player, configId, 1, 1, true, GameConfig.ItemType.Coil)
+			BrainrotQueueManager.AddItem(player, configId, 1, 1, true, GameConfig.ItemType.Coil, false)
 			print("[PlayerChatCommandManager] Gave Coil", configId, "to", player.Name)
 		end
 	end

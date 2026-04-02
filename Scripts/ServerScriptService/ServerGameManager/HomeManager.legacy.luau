@@ -142,6 +142,16 @@ local function OnRequestPlaceHomeModel(player: Player, instanceId: string, point
 	end
 
 	if targetModel and modelIndex then
+		if not GameConfig.BrainrotIdMap[targetModel.configId] then
+			warn(
+				"[HomeManager] OnRequestPlaceHomeModel rejected: configId is not Brainrot for",
+				player.Name,
+				"configId",
+				targetModel.configId
+			)
+			return
+		end
+
 		table.remove(playerInfo.inventoryInfo.models, modelIndex)
 
 		-- 使用封装的方法更新放置模型，会自动通知客户端

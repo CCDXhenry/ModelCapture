@@ -38,13 +38,17 @@ function HomeManager.OnRequestPickupHomeModel(player: Player, pointIndex: number
 		if not char then return nil end
 		local tool = char:FindFirstChildOfClass("Tool")
 		if tool and tool:GetAttribute("BrainrotUID") then
-			if tool:GetAttribute("ItemType") == 2 then return nil end
-			return tool
+			if tool:GetAttribute("ItemType") == GameConfig.ItemType.Brainrot then
+				return tool
+			end
+			return nil
 		end
 		local carrying = char:FindFirstChild("CarryingBrainrot")
 		if carrying and carrying:GetAttribute("BrainrotUID") then
-			if carrying:GetAttribute("ItemType") == 2 then return nil end
-			return carrying
+			if carrying:GetAttribute("ItemType") == GameConfig.ItemType.Brainrot then
+				return carrying
+			end
+			return nil
 		end
 		return nil
 	end
@@ -87,7 +91,7 @@ function HomeManager.OnRequestPickupHomeModel(player: Player, pointIndex: number
 			ServerGameInfo.UpdatePlayerPlacedModel(player, pointIndex, newPlacedData :: any)
 
 			-- 把手里的替换为展台原来的并直接装备
-			BrainrotQueueManager.AddItem(player, oldConfigId, oldQuality, oldLevel, true)
+			BrainrotQueueManager.AddItem(player, oldConfigId, oldQuality, oldLevel, true, nil, false)
 			
 			print(string.format("[HomeManager] Player %s swapped held brainrot (%d) with display point %d (%d)", player.Name, heldConfigId, pointIndex, oldConfigId))
 			return
@@ -102,7 +106,7 @@ function HomeManager.OnRequestPickupHomeModel(player: Player, pointIndex: number
 	ServerGameInfo.UpdatePlayerPlacedModel(player, pointIndex, nil :: any)
 
 	-- 2. 直接入背包队列（自动创建 Tool 并存盘）并自动装备
-	BrainrotQueueManager.AddItem(player, configId, quality, level, true)
+	BrainrotQueueManager.AddItem(player, configId, quality, level, true, nil, false)
 	print("[HomeManager] Player", player.Name, "picked up model from point", pointIndex, "into backpack queue")
 end
 
