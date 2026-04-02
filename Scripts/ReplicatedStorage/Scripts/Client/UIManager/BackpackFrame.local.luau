@@ -55,6 +55,12 @@ local function GetIconForConfigId(configId: number, itemType: number?): string
 		end
 		-- Default icon for coils if missing
 		return "rbxassetid://16865598960"
+	elseif typeVal == GameConfig.ItemType.LittleElfChest then
+		local chestConfig = GameConfig.LittleElfChestIdMap[configId]
+		if chestConfig and chestConfig.iconImageId and chestConfig.iconImageId ~= "" then
+			return chestConfig.iconImageId
+		end
+		return "rbxassetid://0"
 	else
 		local brainrotConfig = GameConfig.BrainrotIdMap[configId]
 		if brainrotConfig and brainrotConfig.iconImageId and brainrotConfig.iconImageId ~= "" then
@@ -71,6 +77,11 @@ local function GetNameForConfigId(configId: number, itemType: number?): string
 		local coilConfig = GameConfig.CoilIdMap[configId]
 		if coilConfig then
 			return coilConfig.name_t or "???"
+		end
+	elseif typeVal == GameConfig.ItemType.LittleElfChest then
+		local chestConfig = GameConfig.LittleElfChestIdMap[configId]
+		if chestConfig then
+			return chestConfig.name_t or "???"
 		end
 	else
 		local brainrotConfig = GameConfig.BrainrotIdMap[configId]
@@ -105,6 +116,11 @@ local function GetDisplayQuality(item: GameConfig.BrainrotQueueItem): number
 		local coilConfig = GameConfig.CoilIdMap[item.configId]
 		if coilConfig and coilConfig.quality then
 			return coilConfig.quality
+		end
+	elseif typeVal == GameConfig.ItemType.LittleElfChest then
+		local chestConfig = GameConfig.LittleElfChestIdMap[item.configId]
+		if chestConfig and chestConfig.quality then
+			return chestConfig.quality
 		end
 	end
 	return item.quality

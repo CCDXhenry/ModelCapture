@@ -60,6 +60,7 @@ GameConfig.GuideType = {
 
 GameConfig.GuideStepKey = {
 	BricksIntroFinished = "BricksIntroFinished",
+	BrainrotPlaceFinished = "BrainrotPlaceFinished",
 }
 
 GameConfig.GuideBricksIntroMinCoin = 50
@@ -127,6 +128,14 @@ GameConfig.ItemType = {
 	Brainrot = 1,
 	Coil = 2,
 	LittleElfChest = 3,
+}
+
+-- model_get 埋点 get_source
+GameConfig.ModelGetSource = {
+	Island = 1,
+	LittleElfChest = 2,
+	Shop = 3,
+	PlayerGift = 4,
 }
 
 -- 线圈类型
@@ -693,6 +702,10 @@ export type ModelInfo = {
 	level: number,
 	-- 未领取收益
 	unclaimedYield: number?,
+	-- 当前未领取收益开始累积的 Unix 秒（埋点 duration_sec = 领取时刻 - 本值；重连后仍有效）
+	yieldAccrueStartUnix: number?,
+	-- 旧版：按秒累加计数（仅用于读档迁移，新逻辑请用 yieldAccrueStartUnix）
+	yieldAccruedSeconds: number?,
 }
 
 --玩家设置信息
@@ -773,6 +786,8 @@ export type PlayerSaveInfo = {
 	brainrotQueue: { BrainrotQueueItem },
 	-- 引导进度
 	guideProgressInfo: GuideProgressSaveInfo,
+	-- 已发现过的岛屿 id（生涯首次到达，用于埋点）
+	discoveredIslandIds: { [string]: boolean }?,
 }
 
 export type PlayerInfo = PlayerSaveInfo & {
@@ -793,6 +808,8 @@ export type PlayerInfo = PlayerSaveInfo & {
 
 	-- [抓模型] 运行时瞬态数据
 	carriedInfo: PlayerCarriedInfo,
+	-- 最近一次脚下判定为有效岛屿的 id（用于 player_death 等；默认 1）
+	lastArrivedIslandId: number,
 }
 
 --内购订单信息
@@ -848,6 +865,7 @@ function GameConfig.CreateDefaultPlayerSaveInfo(): PlayerSaveInfo
 			guideStepDoneMap = {},
 			appearedGuideTypeInfo = {},
 		},
+		discoveredIslandIds = {},
 	}
 end
 

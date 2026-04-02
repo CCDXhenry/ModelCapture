@@ -11,6 +11,7 @@ local NetMsg = require(sharedScripts:FindFirstChild("NetMsg"))
 local serverScripts = serverStorage:WaitForChild("Scripts")
 local GameConfig = require(sharedScripts:FindFirstChild("GameConfig"))
 local BrainrotQueueManager = require(serverScripts:FindFirstChild("BrainrotQueueManager"))
+local AnalyticsTool = require(serverScripts:FindFirstChild("AnalyticsTool"))
 
 function PlayerInteractManager.Init()
 	-- 监听玩家加入并为其创建交互按钮
@@ -155,7 +156,20 @@ function PlayerInteractManager.Init()
 					-- 销毁发送方Tool/Carrying
 					senderBrainrot:Destroy()
 					-- 接收方自动装备
-					local success = BrainrotQueueManager.AddItem(player, configId, quality, level, true, nil, false)
+					local success = BrainrotQueueManager.AddItem(
+						player,
+						configId,
+						quality,
+						level,
+						true,
+						nil,
+						false,
+						nil,
+						nil,
+						nil,
+						GameConfig.ModelGetSource.PlayerGift,
+						sender.UserId
+					)
 					if success then
 						NetMsg.FireNotifyGiftResult(sender, true, "Success")
 						NetMsg.FireNotifyGiftResult(player, true, "Success")

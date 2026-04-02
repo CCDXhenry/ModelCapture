@@ -14,8 +14,17 @@ local sharedScripts = scripts:WaitForChild("Shared")
 local GameConfig = require(sharedScripts:FindFirstChild("GameConfig"))
 local NetMsg = require(sharedScripts:FindFirstChild("NetMsg"))
 local players = game:GetService("Players")
+local workspace = game:GetService("Workspace")
 
 local playerInfoMap: { [number]: GameConfig.PlayerInfo } = {}
+
+local analyticsToolModule: any = nil
+local function analyticsTool(): any
+	if analyticsToolModule == nil then
+		analyticsToolModule = require(serverScripts:FindFirstChild("AnalyticsTool"))
+	end
+	return analyticsToolModule
+end
 
 --初始化玩家信息
 function ServerGameInfo.InitPlayerInfo(
@@ -51,12 +60,14 @@ function ServerGameInfo.InitPlayerInfo(
 				guideStepDoneMap = {},
 				appearedGuideTypeInfo = {},
 			},
+		discoveredIslandIds = playerSaveInfo.discoveredIslandIds or {},
 		homeSlot = "",
 
 		-- 初始化瞬态数据
 		carriedInfo = {
 			bricks = 0,
 		},
+		lastArrivedIslandId = 1,
 	}
 	for ownedGamePassIndex: number, ownedGamePassId: number in playerInfo.ownedGamePassList do
 		playerInfo.ownedGamePassMap[ownedGamePassId] = true
@@ -111,6 +122,16 @@ function ServerGameInfo.InitPlayerInfo(
 		task.wait(0.2)
 		ServerMsg.FireLoadBackpackTools(player)
 		ServerGameInfo.SetPlayerBricksToMax(player)
+		local humanoid = character:WaitForChild("Humanoid", 5) :: Humanoid?
+		if humanoid then
+			humanoid.Died:Connect(function()
+				local totalBricks = ServerGameInfo.GetPlayerMaxBricks(player)
+				local remainingBricks = ServerGameInfo.GetPlayerCarriedBricks(player)
+				local pinfo = ServerGameInfo.GetPlayerInfo(player)
+				local islandId = if pinfo and pinfo.lastArrivedIslandId > 0 then pinfo.lastArrivedIslandId else 1
+				analyticsTool().LogPlayerDeath(player, totalBricks, remainingBricks, islandId)
+			end)
+		end
 	end)
 
 	print("[ServerGameInfo] InitPlayerInfo complete for", player.Name)
@@ -155,6 +176,7 @@ function ServerGameInfo.CreatePlayerSaveInfoByPlayerInfo(playerInfo: GameConfig.
 		brainrotsInfo = playerInfo.brainrotsInfo,
 		brainrotQueue = playerInfo.brainrotQueue,
 		guideProgressInfo = playerInfo.guideProgressInfo,
+		discoveredIslandIds = playerInfo.discoveredIslandIds,
 	}
 end
 
@@ -214,6 +236,9 @@ function ServerGameInfo.ExecuteRebirth(player: Player, isPaid: boolean): boolean
 		return false
 	end
 
+	local brickLevelBeforeRebirth = playerInfo.shopInfo.maxBricksLevel
+	local speedLevelBeforeRebirth = playerInfo.shopInfo.walkSpeedLevel
+
 	if not isPaid then
 		-- 免费重生：重置等级
 		playerInfo.shopInfo.walkSpeedLevel = 1
@@ -234,6 +259,13 @@ function ServerGameInfo.ExecuteRebirth(player: Player, isPaid: boolean): boolean
 	NetMsg.FireNotifyPlayerSkillLevelUpdate(player, GameConfig.SkillType.RebirthLevel, playerInfo.shopInfo.rebirthLevel)
 
 	print("[ServerGameInfo] ExecuteRebirth success for", player.Name, "New Level:", playerInfo.shopInfo.rebirthLevel, "isPaid:", isPaid)
+	analyticsTool().LogPlayerRebirth(
+		player,
+		playerInfo.shopInfo.rebirthLevel,
+		brickLevelBeforeRebirth,
+		speedLevelBeforeRebirth,
+		if isPaid then 1 else 0
+	)
 	return true
 end
 
@@ -286,10 +318,52 @@ function ServerGameInfo.UpdatePlayerPlacedModel(player: Player, pointIndex: numb
 		warn("[ServerGameInfo] UpdatePlayerPlacedModel failed: playerInfo not found for", player.Name)
 		return
 	end
-	playerInfo.homeInfo.placedModels[tostring(pointIndex)] = modelInfo
-	if modelInfo and modelInfo.unclaimedYield == nil then
-		modelInfo.unclaimedYield = 0
+
+	-- Mark guide progress when transitioning from "no brainrot on home" to "has brainrot on home".
+	local hadBrainrotBefore = false
+	for _, placedModel in pairs(playerInfo.homeInfo.placedModels) do
+		if placedModel ~= nil then
+			local placedAny = placedModel :: any
+			local configId = placedAny.configId :: number?
+			if configId ~= nil and GameConfig.BrainrotIdMap[configId] ~= nil then
+				hadBrainrotBefore = true
+				break
+			end
+		end
 	end
+
+	local modelInfoAny = modelInfo :: any
+	local isBrainrotAfter = false
+	if modelInfoAny ~= nil then
+		local configId = modelInfoAny.configId :: number?
+		isBrainrotAfter = configId ~= nil and GameConfig.BrainrotIdMap[configId] ~= nil
+	end
+
+	playerInfo.homeInfo.placedModels[tostring(pointIndex)] = modelInfo
+	if modelInfoAny then
+		if modelInfoAny.unclaimedYield == nil then
+			modelInfoAny.unclaimedYield = 0
+		end
+		-- 新放置的展台模型：从当前时刻开始计累积时长（用于 model_collect_cash duration_sec）
+		if modelInfoAny.yieldAccrueStartUnix == nil then
+			local legacySec = modelInfoAny.yieldAccruedSeconds
+			if typeof(legacySec) == "number" and legacySec > 0 then
+				modelInfoAny.yieldAccrueStartUnix = DateTime.now().UnixTimestamp - math.floor(legacySec)
+			else
+				modelInfoAny.yieldAccrueStartUnix = DateTime.now().UnixTimestamp
+			end
+		end
+	end
+
+	if not hadBrainrotBefore and isBrainrotAfter then
+		local key = GameConfig.GuideStepKey.BrainrotPlaceFinished
+		if not playerInfo.guideProgressInfo.guideStepDoneMap[key] then
+			playerInfo.guideProgressInfo.guideStepDoneMap[key] = true
+			playerInfo.playerInfoChanged = true
+			NetMsg.FireNotifyGuideProgressInfo(player, playerInfo.guideProgressInfo)
+		end
+	end
+
 	playerInfo.playerInfoChanged = true
 
 	-- 通知客户端更新 (封装在数据层)
@@ -346,6 +420,16 @@ function ServerGameInfo.UpdateModelUnclaimedYield(player: Player, pointIndex: nu
 		model.unclaimedYield = amount
 	else
 		model.unclaimedYield = (model.unclaimedYield or 0) + amount
+		local modelAny = model :: any
+		-- 旧存档仅有 yieldAccruedSeconds、无 yieldAccrueStartUnix 时，在首次加收益时补起点
+		if modelAny.yieldAccrueStartUnix == nil then
+			local legacySec = modelAny.yieldAccruedSeconds
+			if typeof(legacySec) == "number" and legacySec > 0 then
+				modelAny.yieldAccrueStartUnix = DateTime.now().UnixTimestamp - math.floor(legacySec)
+			else
+				modelAny.yieldAccrueStartUnix = DateTime.now().UnixTimestamp
+			end
+		end
 	end
 	playerInfo.playerInfoChanged = true
 end
@@ -396,12 +480,30 @@ function ServerGameInfo.ClaimModelYield(player: Player, targetPlayerId: number, 
 		return
 	end
 
+	local modelAny = model :: any
+	local nowUnix = DateTime.now().UnixTimestamp
+	local startUnix: number? = modelAny.yieldAccrueStartUnix
+	if startUnix == nil then
+		local legacySec = modelAny.yieldAccruedSeconds
+		if typeof(legacySec) == "number" and legacySec > 0 then
+			startUnix = nowUnix - math.floor(legacySec)
+		else
+			startUnix = nowUnix
+		end
+	end
+	local durationSec = math.max(0, math.floor(nowUnix - (startUnix :: number)))
 	local amount = model.unclaimedYield
+	local configId = model.configId
+	local level = model.level
 	model.unclaimedYield = 0
+	modelAny.yieldAccrueStartUnix = nowUnix
+	modelAny.yieldAccruedSeconds = nil
 	targetInfo.playerInfoChanged = true
 
 	-- 给当前触摸者（player）增加货币
 	ServerGameInfo.UpdatePlayerCurrency(player, GameConfig.CurrencyType.Coin, amount, GameConfig.ItemCountChangeReason.GainFromClaimModelYield)
+
+	analyticsTool().LogModelCollectCash(player, configId, level, durationSec, amount)
 
 	-- 通知双方客户端家园信息更新
 	ServerGameInfo.NotifyPlayerHomeInfoUpdate(player.UserId)
@@ -568,6 +670,15 @@ function ServerGameInfo.UpgradeAbility(player: Player, abilityName: string, leve
 
 	playerInfo.playerInfoChanged = true
 	print("[ServerGameInfo] UpgradeAbility for", player.Name, "ability", abilityName, "to level", nextLevel)
+	if abilityName == "HomeLevel" then
+		analyticsTool().LogBaseUpgrade(player, nextLevel)
+	elseif abilityName == "MaxBricks" then
+		local upgradeType = if addLevels >= 10 then 2 else 1
+		analyticsTool().LogPlayerUpgrade(player, upgradeType, nextLevel)
+	elseif abilityName == "WalkSpeed" then
+		local upgradeType = if addLevels >= 10 then 4 else 3
+		analyticsTool().LogPlayerUpgrade(player, upgradeType, nextLevel)
+	end
 	return true
 end
 
@@ -629,6 +740,15 @@ function ServerGameInfo.UpgradeAbilityPaid(player: Player, abilityName: string, 
 
 	playerInfo.playerInfoChanged = true
 	print("[ServerGameInfo] UpgradeAbilityPaid for", player.Name, "ability", abilityName, "to level", nextLevel)
+	if abilityName == "HomeLevel" then
+		analyticsTool().LogBaseUpgrade(player, nextLevel)
+	elseif abilityName == "MaxBricks" then
+		local upgradeType = if upgradedCount >= 10 then 2 else 1
+		analyticsTool().LogPlayerUpgrade(player, upgradeType, nextLevel)
+	elseif abilityName == "WalkSpeed" then
+		local upgradeType = if upgradedCount >= 10 then 4 else 3
+		analyticsTool().LogPlayerUpgrade(player, upgradeType, nextLevel)
+	end
 	return true
 end
 
@@ -749,6 +869,50 @@ function ServerGameInfo.UpdateVibrationOn(player: Player, vibrationOn: boolean)
 	playerInfo.settingInfo.vibrationOn = vibrationOn
 	playerInfo.playerInfoChanged = true
 	print("[ServerGameInfo] UpdateVibrationOn for", player.Name, "to", vibrationOn)
+end
+
+function ServerGameInfo.GetIslandIdAtPosition(worldPosition: Vector3): number
+	local islandsFolder = workspace:FindFirstChild("Islands")
+	if not islandsFolder then
+		return 0
+	end
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Include
+	params.FilterDescendantsInstances = { islandsFolder }
+	local origin = worldPosition + Vector3.new(0, 12, 0)
+	local result = workspace:Raycast(origin, Vector3.new(0, -200, 0), params)
+	if not result then
+		return 0
+	end
+	local inst = result.Instance
+	local island: Instance? = inst
+	while island and island.Parent ~= islandsFolder and island.Parent ~= game do
+		island = island.Parent
+	end
+	if not island or island.Parent ~= islandsFolder then
+		return 0
+	end
+	local id = tonumber(string.match(island.Name, "^Island(%d+)$"))
+	return if id then id else 0
+end
+
+function ServerGameInfo.TryMarkIslandDiscovered(player: Player, islandId: number)
+	if islandId <= 0 then
+		return
+	end
+	local playerInfo = playerInfoMap[player.UserId]
+	if not playerInfo then
+		return
+	end
+	local discoveredMap: { [string]: boolean } = playerInfo.discoveredIslandIds or {}
+	playerInfo.discoveredIslandIds = discoveredMap
+	local key = tostring(islandId)
+	if discoveredMap[key] then
+		return
+	end
+	discoveredMap[key] = true
+	playerInfo.playerInfoChanged = true
+	analyticsTool().LogIslandDiscover(player, islandId)
 end
 
 return ServerGameInfo

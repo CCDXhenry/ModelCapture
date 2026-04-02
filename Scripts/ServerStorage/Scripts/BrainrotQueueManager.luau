@@ -13,6 +13,7 @@ local GameTexts = require(sharedScripts:FindFirstChild("GameTexts"))
 local serverScripts = serverStorage:WaitForChild("Scripts")
 local MaxCapacity = GameConfig.BrainrotQueue.MaxCapacity
 local ServerGameInfo = require(serverScripts:FindFirstChild("ServerGameInfo"))
+local AnalyticsTool = require(serverScripts:FindFirstChild("AnalyticsTool"))
 
 local actualModels = replicatedStorage:WaitForChild("Models"):WaitForChild("Brainrots")
 local actualChests = replicatedStorage:WaitForChild("Models"):WaitForChild("LittleElfChests")
@@ -203,7 +204,9 @@ function BrainrotQueueManager.AddItem(
 	shouldEnforceMaxCapacity: boolean?,
 	grantTipKey: string?,
 	grantExpectedCount: number?,
-	grantShopBundleId: number?
+	grantShopBundleId: number?,
+	analyticsGetSource: number?,
+	analyticsGetSourceId: number?
 ): boolean
 	local playerInfo = ServerGameInfo.GetPlayerInfo(player)
 	if not playerInfo then
@@ -252,6 +255,12 @@ function BrainrotQueueManager.AddItem(
 
 	print("[BrainrotQueueManager] AddItem for", player.Name, "configId:", configId, "uid:", item.uid, "total:", #playerInfo.brainrotQueue)
 	NotifyQueueUpdate(player, playerInfo.brainrotQueue)
+
+	local resolvedType = itemType or GameConfig.ItemType.Brainrot
+	if analyticsGetSource ~= nil then
+		AnalyticsTool.LogModelGet(player, configId, level, analyticsGetSource, analyticsGetSourceId or 0, resolvedType)
+	end
+
 	return true
 end
 
@@ -396,12 +405,26 @@ function BrainrotQueueManager.OpenChest(player: Player, uid: string)
 	NotifyQueueUpdate(player, playerInfo.brainrotQueue)
 
 	-- 动画播放期间先不显示最终 brainrotTool，延迟后再发放并展示
+	local chestConfigIdForAnalytics = chestItem.configId
 	task.delay(OpenChestRevealDelay, function()
 		local latestPlayerInfo = ServerGameInfo.GetPlayerInfo(player)
 		if not latestPlayerInfo then
 			return
 		end
-		BrainrotQueueManager.AddItem(player, rewardId, rewardConfig.quality, chestLevel, true, rewardType, false)
+		BrainrotQueueManager.AddItem(
+			player,
+			rewardId,
+			rewardConfig.quality,
+			chestLevel,
+			true,
+			rewardType,
+			false,
+			nil,
+			nil,
+			nil,
+			if rewardType == GameConfig.ItemType.Brainrot then GameConfig.ModelGetSource.LittleElfChest else nil,
+			if rewardType == GameConfig.ItemType.Brainrot then chestConfigIdForAnalytics else nil
+		)
 		-- 提示
 	NetMsg.FireNotifyShowGameTip(player, GameTexts.ReceivedReward.source, GameConfig.GameTipTweenType.FlyUp, GameTexts.ReceivedReward.key, {rewardConfig.name_t})
 	end)

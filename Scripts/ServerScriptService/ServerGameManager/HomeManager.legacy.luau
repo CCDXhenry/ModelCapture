@@ -4,6 +4,7 @@ local HomeManager = {}
 local serverScripts = serverStorage:WaitForChild("Scripts")
 local ServerGameInfo = require(serverScripts:FindFirstChild("ServerGameInfo"))
 local HomeManagerModule = require(serverScripts:FindFirstChild("HomeManager"))
+local AnalyticsTool = require(serverScripts:FindFirstChild("AnalyticsTool"))
 local replicatedStorage = game:GetService("ReplicatedStorage")
 local scripts = replicatedStorage:WaitForChild("Scripts")
 local sharedScripts = scripts:WaitForChild("Shared")
@@ -20,6 +21,7 @@ end
 
 local availableSlots = {}
 local yieldAccumulator = 0
+local islandDiscoverAccumulator = 0
 local basePlotsCount = 0
 
 -- Initialize available slots from PlayersHome
@@ -157,6 +159,8 @@ local function OnRequestPlaceHomeModel(player: Player, instanceId: string, point
 		-- 使用封装的方法更新放置模型，会自动通知客户端
 		ServerGameInfo.UpdatePlayerPlacedModel(player, pointIndex, targetModel)
 
+		AnalyticsTool.LogModelPlace(player, targetModel.configId, targetModel.level)
+
 		print("[HomeManager] Player", player.Name, "placed model", instanceId, "at point", pointIndex)
 	else
 		warn("[HomeManager] OnRequestPlaceHomeModel failed: targetModel not in inventory", instanceId)
@@ -184,11 +188,17 @@ local function OnRequestUpgradeModel(player: Player, pointIndex: number)
 	local cost = GameConfig.GetBrainrotUpgradeCost(brainrotData.baseAbility, model.level)
 	local currentGold = playerInfo.currencies["1"] or 0
 	if currentGold >= cost then
+		local configIdBefore = model.configId
 		-- 统一管理金币消耗
 		ServerGameInfo.UpdatePlayerCurrency(player, GameConfig.CurrencyType.Coin, -cost, GameConfig.ItemCountChangeReason.SpendOnUpgradeBrainrot)
 
 		-- 统一管理模型升级，会自动通知客户端
 		ServerGameInfo.UpgradePlacedModel(player, pointIndex)
+
+		local modelAfter = playerInfo.homeInfo.placedModels[tostring(pointIndex)]
+		if modelAfter then
+			AnalyticsTool.LogModelUpgrade(player, configIdBefore, modelAfter.level)
+		end
 
 		print("[HomeManager] Player", player.Name, "upgraded model at point", pointIndex, "to level", model.level)
 	else
@@ -216,12 +226,16 @@ local function OnRequestSellModel(player: Player, pointIndex: number)
 	end
 
 	local returnVal = GameConfig.GetBrainrotSellPrice(brainrotData.baseAbility, model.level)
+	local sellConfigId = model.configId
+	local sellLevel = model.level
 
 	-- 增加金币
 	ServerGameInfo.UpdatePlayerCurrency(player, GameConfig.CurrencyType.Coin, returnVal, GameConfig.ItemCountChangeReason.GainFromSellModel)
 
 	-- 移除模型 (设置为 nil)
 	ServerGameInfo.UpdatePlayerPlacedModel(player, pointIndex, nil :: any)
+
+	AnalyticsTool.LogModelSell(player, 1, returnVal, { sellConfigId }, { sellLevel })
 
 	print("[HomeManager] Player", player.Name, "sold model at point", pointIndex, "for", returnVal)
 end
@@ -267,6 +281,7 @@ end
 
 local function OnHeartbeat(dt: number)
 	yieldAccumulator += dt
+	islandDiscoverAccumulator += dt
 
 	-- 表现层全在客户端，不再需要在 Heartbeat 中同步结构
 	if yieldAccumulator >= 1 then
@@ -292,6 +307,24 @@ local function OnHeartbeat(dt: number)
 		end
 		-- 统一广播一次全服收益更新 (极致优化版：全服一秒仅一次广播)
 		ServerGameInfo.BroadcastAllPlayersModelYields()
+	end
+
+	if islandDiscoverAccumulator >= 3 then
+		islandDiscoverAccumulator -= 3
+		for _, plr in ipairs(players:GetPlayers()) do
+			local char = plr.Character
+			local hrp = char and char:FindFirstChild("HumanoidRootPart") :: BasePart?
+			if hrp then
+				local islandId = ServerGameInfo.GetIslandIdAtPosition(hrp.Position)
+				if islandId > 0 then
+					local pinfo = ServerGameInfo.GetPlayerInfo(plr)
+					if pinfo then
+						pinfo.lastArrivedIslandId = islandId
+					end
+				end
+				ServerGameInfo.TryMarkIslandDiscovered(plr, islandId)
+			end
+		end
 	end
 end
 

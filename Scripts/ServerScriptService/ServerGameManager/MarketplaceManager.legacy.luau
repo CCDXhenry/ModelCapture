@@ -17,7 +17,8 @@ local function GrantShopBundleReward(
 	reward: GameConfig.RewardInfo,
 	grantTipKey: string?,
 	grantExpectedCount: number?,
-	shopBundleId: number?
+	shopBundleId: number?,
+	purchaseProductId: number?
 )
 	if reward.rewardType == GameConfig.RewardType.Currency then
 		ServerGameInfo.UpdatePlayerCurrency(
@@ -48,7 +49,9 @@ local function GrantShopBundleReward(
 					false, -- 非岛屿流程：允许突破队列上限
 					grantTipKey,
 					grantExpectedCount,
-					shopBundleId
+					shopBundleId,
+					GameConfig.ModelGetSource.Shop,
+					purchaseProductId or 0
 				)
 			end
 		end
@@ -69,7 +72,9 @@ local function GrantShopBundleReward(
 					false, -- 非岛屿流程：允许突破队列上限
 					grantTipKey,
 					grantExpectedCount,
-					shopBundleId
+					shopBundleId,
+					nil,
+					nil
 				)
 			end
 		end
@@ -90,7 +95,9 @@ local function GrantShopBundleReward(
 					false, -- 非岛屿流程：允许突破队列上限
 					grantTipKey,
 					grantExpectedCount,
-					shopBundleId
+					shopBundleId,
+					nil,
+					nil
 				)
 			end
 		end
@@ -133,7 +140,8 @@ local function GrantShopBundleByProductId(player: Player, receiptInfo: GameConfi
 						reward,
 						getGrantTipKey(reward),
 						reward.rewardCount,
-						shopBundleId
+						shopBundleId,
+						productId
 					)
 				end
 			end

@@ -5,6 +5,7 @@ local serverStorage = game:GetService("ServerStorage")
 local serverScripts = serverStorage:WaitForChild("Scripts")
 local ServerGameInfo = require(serverScripts:FindFirstChild("ServerGameInfo"))
 local BrainrotQueueManager = require(serverScripts:FindFirstChild("BrainrotQueueManager"))
+local AnalyticsTool = require(serverScripts:FindFirstChild("AnalyticsTool"))
 local GameConfig = require(game:GetService("ReplicatedStorage"):WaitForChild("Scripts"):WaitForChild("Shared"):WaitForChild("GameConfig"))
 local HttpService = game:GetService("HttpService")
 
@@ -91,8 +92,10 @@ function HomeManager.OnRequestPickupHomeModel(player: Player, pointIndex: number
 			ServerGameInfo.UpdatePlayerPlacedModel(player, pointIndex, newPlacedData :: any)
 
 			-- 把手里的替换为展台原来的并直接装备
-			BrainrotQueueManager.AddItem(player, oldConfigId, oldQuality, oldLevel, true, nil, false)
-			
+			if BrainrotQueueManager.AddItem(player, oldConfigId, oldQuality, oldLevel, true, nil, false) then
+				AnalyticsTool.LogModelHold(player, oldConfigId, oldLevel)
+			end
+
 			print(string.format("[HomeManager] Player %s swapped held brainrot (%d) with display point %d (%d)", player.Name, heldConfigId, pointIndex, oldConfigId))
 			return
 		end
@@ -106,7 +109,9 @@ function HomeManager.OnRequestPickupHomeModel(player: Player, pointIndex: number
 	ServerGameInfo.UpdatePlayerPlacedModel(player, pointIndex, nil :: any)
 
 	-- 2. 直接入背包队列（自动创建 Tool 并存盘）并自动装备
-	BrainrotQueueManager.AddItem(player, configId, quality, level, true, nil, false)
+	if BrainrotQueueManager.AddItem(player, configId, quality, level, true, nil, false) then
+		AnalyticsTool.LogModelHold(player, configId, level)
+	end
 	print("[HomeManager] Player", player.Name, "picked up model from point", pointIndex, "into backpack queue")
 end
 

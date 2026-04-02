@@ -20,6 +20,7 @@ local homesFolder = workspace:WaitForChild("PlayersHome")
 local _actualModels = replicatedStorage:WaitForChild("Models"):WaitForChild("Brainrots")
 local _actualChests = replicatedStorage:WaitForChild("Models"):WaitForChild("LittleElfChests")
 local BrainrotCarryingManager = require(serverScripts:FindFirstChild("BrainrotCarryingManager"))
+local AnalyticsTool = require(serverScripts:FindFirstChild("AnalyticsTool"))
 
 local BrainrotIslandManager = {}
 local rng = Random.new()
@@ -187,7 +188,21 @@ function ConvertCarryingToQueue(player: Player)
 	local itemType = carryingBrainrot:GetAttribute("ItemType") :: number?
 
 	if configId and uid then
-		local success = BrainrotQueueManager.AddItem(player, configId, quality, level, true, itemType, true)
+		local resolvedItemType = itemType or GameConfig.ItemType.Brainrot
+		local success = BrainrotQueueManager.AddItem(
+			player,
+			configId,
+			quality,
+			level,
+			true,
+			itemType,
+			true,
+			nil,
+			nil,
+			nil,
+			if resolvedItemType == GameConfig.ItemType.Brainrot then GameConfig.ModelGetSource.Island else nil,
+			if resolvedItemType == GameConfig.ItemType.Brainrot then 0 else nil
+		)
 		if success then
 			-- 把携带 brainrot 移出岛面（放回队列）时：终止该 uid 倒计时并立即补刷
 			if itemType == GameConfig.ItemType.Brainrot then
@@ -204,8 +219,13 @@ function StartCarryingBrainrot(player: Player, randomBrainrot: Instance)
 	local configId = tonumber(randomBrainrot:GetAttribute("ConfigId"))
 
 	if configId then
+		local level = tonumber(randomBrainrot:GetAttribute("Level")) or 1
+		local itemType = (randomBrainrot:GetAttribute("ItemType") :: number?) or GameConfig.ItemType.Brainrot
 		local carry = BrainrotCarryingManager.StartCarrying(player, randomBrainrot)
 		if carry then
+			if itemType == GameConfig.ItemType.Brainrot or itemType == GameConfig.ItemType.LittleElfChest then
+				AnalyticsTool.LogModelPickUp(player, configId, level, itemType)
+			end
 			randomBrainrot:Destroy()
 		end
 	end
@@ -739,6 +759,8 @@ local function OnRequestPlaceCarryingBrainrot(player: Player, pointIndex: number
 				rarity = rarity,
 			})
 
+			AnalyticsTool.LogModelPlace(player, tonumber(configId) or 1, placedLevel)
+
 			carryingBrainrot:Destroy()
 		end
 	end
@@ -781,6 +803,7 @@ local function OnRequestSellCarryingBrainrot(player: Player)
 				local sellPrice = GameConfig.GetBrainrotSellPrice(brainrotConfig.baseAbility, currentLevel)
 
 				ServerGameInfo.UpdatePlayerCurrency(player, GameConfig.CurrencyType.Coin, sellPrice, GameConfig.ItemCountChangeReason.GainFromSellModel)
+				AnalyticsTool.LogModelSell(player, 1, sellPrice, { tonumber(configId) or 0 }, { currentLevel })
 				carryingBrainrot:Destroy()
 
 				print("[BrainrotIslandManager] Player", player.Name, "sold tool brainrot for", sellPrice)

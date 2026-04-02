@@ -86,7 +86,7 @@ local function CreateOrUpdateInfoUI(
 		BillboardManager.Track(clonedUi)
 		ui = clonedUi
 	end
-	print("ui", ui)
+
 	if not ui then
 		return
 	end

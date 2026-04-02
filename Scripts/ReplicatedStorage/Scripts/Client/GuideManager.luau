@@ -104,6 +104,10 @@ local function IsBricksIntroFinished(info: GameConfig.ClientLocalPlayerInfo): bo
 	return info.guideProgressInfo.guideStepDoneMap[GameConfig.GuideStepKey.BricksIntroFinished] == true
 end
 
+local function IsBrainrotPlaceFinished(info: GameConfig.ClientLocalPlayerInfo): boolean
+	return info.guideProgressInfo.guideStepDoneMap[GameConfig.GuideStepKey.BrainrotPlaceFinished] == true
+end
+
 local function ResolveNearestEmptyPlotPosition(info: GameConfig.ClientLocalPlayerInfo): Vector3?
 	if info.homeSlot == nil or info.homeSlot == "" then
 		return nil
@@ -348,7 +352,7 @@ local function ResolveGuideType(): number
 		return GameConfig.GuideType.None
 	end
 
-	if not HasBrainrotPlacedOnHome(info) then
+	if not HasBrainrotPlacedOnHome(info) and not IsBrainrotPlaceFinished(info) then
 		if CountCarryingBrainrotsInQueue(info) > 0 then
 			if IsLocalPlayerCarryingBrainrot() then
 				return GameConfig.GuideType.TutorialBrainrotPlace

@@ -8,6 +8,11 @@ local serverScripts = serverStorage:WaitForChild("Scripts")
 local PlayerSaveInfoVersionUpdateTool = require(serverScripts:FindFirstChild("PlayerSaveInfoVersionUpdateTool"))
 local ServerGameInfo = require(serverScripts:FindFirstChild("ServerGameInfo"))
 local AnalyticsTool = require(serverScripts:FindFirstChild("AnalyticsTool"))
+AnalyticsTool.SetDataAccess({
+	GetPlayerInfo = function(player: Player)
+		return ServerGameInfo.GetPlayerInfo(player)
+	end,
+})
 local BrainrotIslandManager = require(serverScripts:FindFirstChild("BrainrotIslandManager"))
 local PlayerInteractManager = require(serverScripts:FindFirstChild("PlayerInteractManager"))
 local CoilManager = require(serverScripts:FindFirstChild("CoilManager"))

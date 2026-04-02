@@ -52,7 +52,7 @@ return {
 		["rewardLv"] = 1,
 		["id"] = 3,
 		["rewardCount"] = 1,
-		["rewardId"] = 1,
+		["rewardId"] = 2,
 		["productIndex"] = 1,
 	},
 	[8] = {
@@ -60,7 +60,7 @@ return {
 		["rewardLv"] = 1,
 		["id"] = 3,
 		["rewardCount"] = 3,
-		["rewardId"] = 1,
+		["rewardId"] = 2,
 		["productIndex"] = 2,
 	},
 	[9] = {
@@ -68,7 +68,7 @@ return {
 		["rewardLv"] = 1,
 		["id"] = 3,
 		["rewardCount"] = 10,
-		["rewardId"] = 1,
+		["rewardId"] = 2,
 		["productIndex"] = 3,
 	},
 	[10] = {
