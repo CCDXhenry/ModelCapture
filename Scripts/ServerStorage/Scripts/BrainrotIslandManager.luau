@@ -704,6 +704,162 @@ local function GetActiveBrainrot(player: Player): Instance?
 	return nil
 end
 
+local function DestroyBrainrotToolsByUid(player: Player, uid: string)
+	local char = player.Character
+	if char then
+		for _, child in ipairs(char:GetChildren()) do
+			if child:IsA("Tool") and child:GetAttribute("BrainrotUID") == uid then
+				child:Destroy()
+			end
+		end
+	end
+	for _, child in ipairs(player.Backpack:GetChildren()) do
+		if child:IsA("Tool") and child:GetAttribute("BrainrotUID") == uid then
+			child:Destroy()
+		end
+	end
+end
+
+--- @return success, sellPrice, configId, level（后三者仅在 success 时有效）
+local function SellOneActiveBrainrot(player: Player, suppressAnalytics: boolean?): (boolean, number?, number?, number?)
+	local playerInfo = ServerGameInfo.GetPlayerInfo(player)
+	if not playerInfo then
+		return false
+	end
+	local carryingBrainrot = GetActiveBrainrot(player)
+	if not carryingBrainrot then
+		return false
+	end
+	local configId = carryingBrainrot:GetAttribute("ConfigId")
+	if not configId then
+		return false
+	end
+	local uid = carryingBrainrot:GetAttribute("BrainrotUID") :: string?
+	if not uid then
+		return false
+	end
+
+	local itemType = carryingBrainrot:GetAttribute("ItemType") :: number?
+
+	if carryingBrainrot:IsA("Tool") then
+		if not BrainrotQueueManager.RemoveItem(player, uid) then
+			return false
+		end
+	else
+		if not carryingBrainrot.Parent then
+			return false
+		end
+	end
+
+	if itemType == GameConfig.ItemType.Brainrot then
+		TerminateAndRespawnBrainrot(uid)
+	end
+
+	local brainrotConfig = GameConfig.BrainrotIdMap[tonumber(configId) or 0]
+	if not brainrotConfig then
+		return false
+	end
+	local currentLevel = tonumber(carryingBrainrot:GetAttribute("Level")) or 1
+	local sellPrice = GameConfig.GetBrainrotSellPrice(brainrotConfig.baseAbility, currentLevel)
+	local configIdNum = tonumber(configId) or 0
+
+	ServerGameInfo.UpdatePlayerCurrency(player, GameConfig.CurrencyType.Coin, sellPrice, GameConfig.ItemCountChangeReason.GainFromSellModel)
+	if not suppressAnalytics then
+		AnalyticsTool.LogModelSell(player, 1, sellPrice, { configIdNum }, { currentLevel })
+	end
+	carryingBrainrot:Destroy()
+
+	print("[BrainrotIslandManager] Player", player.Name, "sold tool brainrot for", sellPrice)
+	return true, sellPrice, configIdNum, currentLevel
+end
+
+--- @return success, sellPrice, configId, level（后三者仅在 success 时有效）
+local function SellOneQueuedBrainrotByUid(player: Player, uid: string, suppressAnalytics: boolean?): (boolean, number?, number?, number?)
+	local playerInfo = ServerGameInfo.GetPlayerInfo(player)
+	if not playerInfo then
+		return false
+	end
+	local item: GameConfig.BrainrotQueueItem? = nil
+	for _, q in ipairs(playerInfo.brainrotQueue) do
+		if q.uid == uid and q.itemType == GameConfig.ItemType.Brainrot then
+			item = q
+			break
+		end
+	end
+	if not item then
+		return false
+	end
+	local brainrotConfig = GameConfig.BrainrotIdMap[item.configId]
+	if not brainrotConfig then
+		return false
+	end
+	DestroyBrainrotToolsByUid(player, uid)
+	if not BrainrotQueueManager.RemoveItem(player, uid) then
+		return false
+	end
+	local sellPrice = GameConfig.GetBrainrotSellPrice(brainrotConfig.baseAbility, item.level)
+	ServerGameInfo.UpdatePlayerCurrency(player, GameConfig.CurrencyType.Coin, sellPrice, GameConfig.ItemCountChangeReason.GainFromSellModel)
+	if not suppressAnalytics then
+		AnalyticsTool.LogModelSell(player, 1, sellPrice, { item.configId }, { item.level })
+	end
+	return true, sellPrice, item.configId, item.level
+end
+
+local function OnRequestSellAllBrainrotInQueue(player: Player)
+	local playerInfo = ServerGameInfo.GetPlayerInfo(player)
+	if not playerInfo then
+		return
+	end
+
+	local hadAnyBrainrotInQueue = false
+	for _, item in ipairs(playerInfo.brainrotQueue) do
+		if item.itemType == GameConfig.ItemType.Brainrot then
+			hadAnyBrainrotInQueue = true
+			break
+		end
+	end
+	if not GetActiveBrainrot(player) and not hadAnyBrainrotInQueue then
+		return
+	end
+
+	local totalMoney = 0
+	local modelIdList: { number } = {}
+	local levelList: { number } = {}
+
+	local soldActive, priceA, idA, lvA = SellOneActiveBrainrot(player, true)
+	if soldActive and priceA ~= nil and idA ~= nil and lvA ~= nil then
+		totalMoney += priceA
+		table.insert(modelIdList, idA)
+		table.insert(levelList, lvA)
+	end
+
+	playerInfo = ServerGameInfo.GetPlayerInfo(player)
+	if not playerInfo then
+		return
+	end
+
+	local uidsToSell: { string } = {}
+	for _, item in ipairs(playerInfo.brainrotQueue) do
+		if item.itemType == GameConfig.ItemType.Brainrot then
+			table.insert(uidsToSell, item.uid)
+		end
+	end
+
+	for _, uid in ipairs(uidsToSell) do
+		local ok, p, cid, lv = SellOneQueuedBrainrotByUid(player, uid, true)
+		if ok and p ~= nil and cid ~= nil and lv ~= nil then
+			totalMoney += p
+			table.insert(modelIdList, cid)
+			table.insert(levelList, lv)
+		end
+	end
+
+	local totalCount = #modelIdList
+	if totalCount > 0 then
+		AnalyticsTool.LogModelSell(player, totalCount, totalMoney, modelIdList, levelList)
+	end
+end
+
 local function OnRequestPlaceCarryingBrainrot(player: Player, pointIndex: number)
 	local playerInfo = ServerGameInfo.GetPlayerInfo(player)
 	if not playerInfo then
@@ -767,49 +923,7 @@ local function OnRequestPlaceCarryingBrainrot(player: Player, pointIndex: number
 end
 
 local function OnRequestSellCarryingBrainrot(player: Player)
-	local playerInfo = ServerGameInfo.GetPlayerInfo(player)
-	if not playerInfo then
-		return
-	end
-	local carryingBrainrot = GetActiveBrainrot(player)
-	if carryingBrainrot then
-		local configId = carryingBrainrot:GetAttribute("ConfigId")
-		if configId then
-			local uid = carryingBrainrot:GetAttribute("BrainrotUID") :: string?
-			if not uid then
-				return
-			end
-
-			local itemType = carryingBrainrot:GetAttribute("ItemType") :: number?
-
-			if carryingBrainrot:IsA("Tool") then
-				if not BrainrotQueueManager.RemoveItem(player, uid) then
-					return
-				end
-			else
-				if not carryingBrainrot.Parent then
-					return
-				end
-			end
-
-			if itemType == GameConfig.ItemType.Brainrot then
-				-- 出售时把携带 brainrot 移出岛面：终止倒计时并立即补刷
-				TerminateAndRespawnBrainrot(uid)
-			end
-
-			local brainrotConfig = GameConfig.BrainrotIdMap[tonumber(configId) or 0]
-			if brainrotConfig then
-				local currentLevel = tonumber(carryingBrainrot:GetAttribute("Level")) or 1
-				local sellPrice = GameConfig.GetBrainrotSellPrice(brainrotConfig.baseAbility, currentLevel)
-
-				ServerGameInfo.UpdatePlayerCurrency(player, GameConfig.CurrencyType.Coin, sellPrice, GameConfig.ItemCountChangeReason.GainFromSellModel)
-				AnalyticsTool.LogModelSell(player, 1, sellPrice, { tonumber(configId) or 0 }, { currentLevel })
-				carryingBrainrot:Destroy()
-
-				print("[BrainrotIslandManager] Player", player.Name, "sold tool brainrot for", sellPrice)
-			end
-		end
-	end
+	SellOneActiveBrainrot(player)
 end
 
 local function StartSpawnLoop()
@@ -977,6 +1091,7 @@ function BrainrotIslandManager.Init()
 
 	NetMsg.ConnectRequestPlaceCarryingBrainrot(OnRequestPlaceCarryingBrainrot)
 	NetMsg.ConnectRequestSellCarryingBrainrot(OnRequestSellCarryingBrainrot)
+	NetMsg.ConnectRequestSellAllBrainrotInQueue(OnRequestSellAllBrainrotInQueue)
 
 	StartBrainrotTimerTickLoop()
 	StartSpawnLoop()

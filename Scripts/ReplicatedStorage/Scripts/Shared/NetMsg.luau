@@ -30,6 +30,7 @@ local requestStartPavingEvent: RemoteEvent = remoteEventsFolder:FindFirstChild("
 local notifyPlaceBrickBatchResultEvent: RemoteEvent = remoteEventsFolder:FindFirstChild("NotifyPlaceBrickBatchResult") :: RemoteEvent
 local requestPlaceCarryingBrainrotEvent: RemoteEvent = remoteEventsFolder:FindFirstChild("RequestPlaceCarryingBrainrot") :: RemoteEvent
 local requestSellCarryingBrainrotEvent: RemoteEvent = remoteEventsFolder:FindFirstChild("RequestSellCarryingBrainrot") :: RemoteEvent
+local requestSellAllBrainrotInQueueEvent: RemoteEvent = remoteEventsFolder:FindFirstChild("RequestSellAllBrainrotInQueue") :: RemoteEvent
 local notifyPlayerInventoryUpdateEvent: RemoteEvent = remoteEventsFolder:FindFirstChild("NotifyPlayerInventoryUpdate") :: RemoteEvent
 local notifyPlayerSkillLevelUpdateEvent: RemoteEvent = remoteEventsFolder:FindFirstChild("NotifyPlayerSkillLevelUpdate") :: RemoteEvent
 local notifyPlayerCarriedUpdateEvent: RemoteEvent = remoteEventsFolder:FindFirstChild("NotifyPlayerCarriedUpdate") :: RemoteEvent
@@ -265,6 +266,16 @@ function NetMsg.FireRequestSellCarryingBrainrot()
 end
 function NetMsg.ConnectRequestSellCarryingBrainrot(callback: (player: Player) -> ())
 	requestSellCarryingBrainrotEvent.OnServerEvent:Connect(callback)
+end
+
+-- 客户端请求出售手上（若有）及背包队列中所有 Brainrot
+function NetMsg.FireRequestSellAllBrainrotInQueue()
+	print("[NetMsg] FireRequestSellAllBrainrotInQueue")
+	requestSellAllBrainrotInQueueEvent:FireServer()
+end
+
+function NetMsg.ConnectRequestSellAllBrainrotInQueue(callback: (player: Player) -> ())
+	requestSellAllBrainrotInQueueEvent.OnServerEvent:Connect(callback)
 end
 
 -- 通知客户端玩家库存更新 (持久化部分)

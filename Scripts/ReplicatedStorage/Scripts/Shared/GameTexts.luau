@@ -56,5 +56,13 @@ local GameTexts = {
 	GuideTutorialBrainrotPlaceSlot = { key = "", source = "Tap the slot to equip your brainrot again." },
 	GuideTutorialBricksLobby = { key = "", source = "Open the shop to upgrade max bricks." },
 	GuideTutorialBricksShop = { key = "", source = "Tap here to upgrade bricks capacity." },
+	-- Sell shop (Billboard options)
+	SellShopOptionIndex = { key = "SellShopOptionIndex", source = "{1}." },
+	SellShopSellSingle = { key = "", source = "I want to sell this brainrot." },
+	SellShopSellAll = { key = "", source = "I want to sell everything in my inventory." },
+	SellShopAskPrice = { key = "", source = "How much is this brainrot worth?" },
+	SellShopGoodbye = { key = "", source = "Goodbye." },
+	NoBrainrotToSell = { key = "", source = "No brainrot available to sell." },
+	SellShopBrainrotPriceTip = { key = "SellShopBrainrotPriceTip", source = "This brainrot sells for {1} coins." },
 }
 return GameTexts
