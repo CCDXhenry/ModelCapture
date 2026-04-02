@@ -18,6 +18,13 @@ function ClientGameInfo.InitPlayerInfo(
 	playerConfigInfo: GameConfig.PlayerConfigInfo
 )
 	--初始化自己的玩家信息
+	local guideProgressInfo = localPlayerSaveInfo.guideProgressInfo
+	if guideProgressInfo == nil then
+		guideProgressInfo = {
+			guideStepDoneMap = {},
+			appearedGuideTypeInfo = {},
+		}
+	end
 	localPlayerInfo = {
 		settingInfo = localPlayerSaveInfo.settingInfo,
 		ownedGamePassList = localPlayerSaveInfo.ownedGamePassList,
@@ -31,6 +38,8 @@ function ClientGameInfo.InitPlayerInfo(
 		brainrotsInfo = localPlayerSaveInfo.brainrotsInfo,
 		brainrotQueue = localPlayerSaveInfo.brainrotQueue or {},
 		homeSlot = localPlayerSaveInfo.homeSlot,
+		guideProgressInfo = guideProgressInfo,
+		currentGuideType = GameConfig.GuideType.None,
 
 		-- 初始化瞬态信息
 		carriedInfo = {
@@ -211,6 +220,32 @@ function ClientGameInfo.GetBrainrotQueue(): { GameConfig.BrainrotQueueItem }
 		return localPlayerInfo.brainrotQueue
 	end
 	return {}
+end
+
+function ClientGameInfo.GetCurrentGuideType(): number
+	if localPlayerInfo == nil then
+		return GameConfig.GuideType.None
+	end
+	return localPlayerInfo.currentGuideType
+end
+
+function ClientGameInfo.SetCurrentGuideType(guideType: number)
+	if localPlayerInfo == nil then
+		return
+	end
+	if localPlayerInfo.currentGuideType == guideType then
+		return
+	end
+	localPlayerInfo.currentGuideType = guideType
+	ClientMsg.FireCurrentGuideTypeChanged()
+end
+
+function ClientGameInfo.UpdateGuideProgressInfo(guideProgressInfo: GameConfig.GuideProgressSaveInfo)
+	if localPlayerInfo == nil then
+		return
+	end
+	localPlayerInfo.guideProgressInfo = guideProgressInfo
+	ClientMsg.FireCurrentGuideTypeChanged()
 end
 
 -- 移除其他玩家信息 (当玩家离开时)

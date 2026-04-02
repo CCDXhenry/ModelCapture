@@ -51,5 +51,10 @@ local GameTexts = {
 	EarthquakeActive = { key = "", source = "Earthquake in progress" },
 	DecelerationOn = { key = "", source = "[T] Deceleration: ON" },
 	DecelerationOff = { key = "", source = "[T] Deceleration: OFF" },
+	GuideTutorialBrainrotPickup = { key = "", source = "Pick up a brainrot on the island." },
+	GuideTutorialBrainrotPlace = { key = "", source = "Place it on your home stand." },
+	GuideTutorialBrainrotPlaceSlot = { key = "", source = "Tap the slot to equip your brainrot again." },
+	GuideTutorialBricksLobby = { key = "", source = "Open the shop to upgrade max bricks." },
+	GuideTutorialBricksShop = { key = "", source = "Tap here to upgrade bricks capacity." },
 }
 return GameTexts

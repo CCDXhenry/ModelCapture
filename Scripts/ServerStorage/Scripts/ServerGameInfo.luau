@@ -45,6 +45,11 @@ function ServerGameInfo.InitPlayerInfo(
 		shopInfo = playerSaveInfo.shopInfo,
 		brainrotsInfo = playerSaveInfo.brainrotsInfo,
 		brainrotQueue = playerSaveInfo.brainrotQueue or {},
+		guideProgressInfo = playerSaveInfo.guideProgressInfo
+			or {
+				guideStepDoneMap = {},
+				appearedGuideTypeInfo = {},
+			},
 		homeSlot = "",
 
 		-- 初始化瞬态数据
@@ -68,6 +73,7 @@ function ServerGameInfo.InitPlayerInfo(
 		brainrotsInfo = playerInfo.brainrotsInfo,
 		brainrotQueue = playerInfo.brainrotQueue,
 		homeSlot = playerInfo.homeSlot,
+		guideProgressInfo = playerInfo.guideProgressInfo,
 	}
 	local clientOtherPlayerSaveInfo: GameConfig.ClientOtherPlayerSyncInfo = {
 		homeSlot = playerInfo.homeSlot,
@@ -145,7 +151,25 @@ function ServerGameInfo.CreatePlayerSaveInfoByPlayerInfo(playerInfo: GameConfig.
 		shopInfo = playerInfo.shopInfo,
 		brainrotsInfo = playerInfo.brainrotsInfo,
 		brainrotQueue = playerInfo.brainrotQueue,
+		guideProgressInfo = playerInfo.guideProgressInfo,
 	}
+end
+
+function ServerGameInfo.TryMarkBricksIntroGuideFinished(player: Player, maxBricksLevel: number)
+	if maxBricksLevel < 2 then
+		return
+	end
+	local playerInfo: GameConfig.PlayerInfo? = ServerGameInfo.GetPlayerInfo(player)
+	if playerInfo == nil then
+		return
+	end
+	local key = GameConfig.GuideStepKey.BricksIntroFinished
+	if playerInfo.guideProgressInfo.guideStepDoneMap[key] then
+		return
+	end
+	playerInfo.guideProgressInfo.guideStepDoneMap[key] = true
+	playerInfo.playerInfoChanged = true
+	NetMsg.FireNotifyGuideProgressInfo(player, playerInfo.guideProgressInfo)
 end
 
 --获取玩家重生倍率
@@ -463,6 +487,7 @@ function ServerGameInfo.UpdateMaxBricksLevel(player: Player, levelAdd: number)
 	-- 同时更新持久化部分 ( inventoryInfo ) -> 保持兼容性或根据需求移除，既然提到弃用则主要同步技能等级
 	NetMsg.FireNotifyPlayerInventoryUpdate(player, playerInfo.inventoryInfo)
 
+	ServerGameInfo.TryMarkBricksIntroGuideFinished(player, playerInfo.shopInfo.maxBricksLevel)
 	print("[ServerGameInfo] UpdateMaxBricksLevel for", player.Name, "by", levelAdd, "total", playerInfo.shopInfo.maxBricksLevel)
 end
 
@@ -529,6 +554,7 @@ function ServerGameInfo.UpgradeAbility(player: Player, abilityName: string, leve
 		NetMsg.FireNotifyPlayerSkillLevelUpdate(player, GameConfig.SkillType.MaxBricks, nextLevel)
 		-- 通知客户端库存变更
 		ServerGameInfo.UpdateInventoryBricks(player, 0) -- 虽然是0，但能触发一次状态同步
+		ServerGameInfo.TryMarkBricksIntroGuideFinished(player, nextLevel)
 	elseif abilityName == "HomeLevel" then
 		playerInfo.homeInfo.level = nextLevel
 		-- 家园等级变更通知
@@ -591,6 +617,7 @@ function ServerGameInfo.UpgradeAbilityPaid(player: Player, abilityName: string, 
 		playerInfo.shopInfo.maxBricksLevel = nextLevel
 		NetMsg.FireNotifyPlayerSkillLevelUpdate(player, GameConfig.SkillType.MaxBricks, nextLevel)
 		ServerGameInfo.UpdateInventoryBricks(player, 0) -- 触发客户端库存同步
+		ServerGameInfo.TryMarkBricksIntroGuideFinished(player, nextLevel)
 	elseif abilityName == "HomeLevel" then
 		playerInfo.homeInfo.level = nextLevel
 		ServerGameInfo.NotifyPlayerHomeInfoUpdate(player.UserId)

@@ -22,6 +22,7 @@ local PlayerInteractClientManager = require(clientScripts:WaitForChild("PlayerIn
 local BrainrotClientManager = require(clientScripts:WaitForChild("BrainrotClientManager"))
 local CoilClientManager = require(clientScripts:WaitForChild("CoilClientManager"))
 local EarthquakeClientManager = require(clientScripts:WaitForChild("EarthquakeClientManager"))
+local GuideManager = require(clientScripts:WaitForChild("GuideManager"))
 local starterGui: StarterGui = game:GetService("StarterGui")
 local contentProvider: ContentProvider = game:GetService("ContentProvider")
 local modelOriginsFolder: Folder? = replicatedStorage:FindFirstChild("Models") :: Folder?
@@ -46,6 +47,8 @@ local function InitUI()
 	local lobbyFrame = UIManager.CreateFrame("LobbyFrame", "LobbyFrame", gameScreenGui, 0) :: Frame
 	-- 创建游戏提示界面
 	UIManager.CreateFrame("GameTipFrame", "GameTipFrame", gameScreenGui, GameTipZIndex)
+	-- 引导手指层（低于 GameTip，高于 Lobby）
+	UIManager.CreateFrame(GameConfig.GuideAssetName.UiFrame, "GuideFrame", gameScreenGui, 1500)
 	
 	-- 创建背包界面 (逻辑已集成到 LobbyFrame.BottomButtonsFrame)
 	-- UIManager.CreateFrame("BackpackFrame", "BackpackFrame", gameScreenGui, 10)
@@ -69,6 +72,7 @@ local function InitUI()
 	BrainrotClientManager.Init()
 	CoilClientManager.Init()
 	EarthquakeClientManager.Init()
+	GuideManager.Init()
 	-- 初始化背包输入控制
 	local BackpackInputManager = require(clientScripts:WaitForChild("BackpackInputManager"))
 	BackpackInputManager.Init()

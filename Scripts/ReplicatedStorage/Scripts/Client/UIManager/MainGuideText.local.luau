@@ -12,21 +12,38 @@ local clientScripts = scripts:WaitForChild("Client")
 local ClientGameInfo = require(clientScripts:FindFirstChild("ClientGameInfo"))
 local ClientMsg = require(clientScripts:FindFirstChild("ClientMsg"))
 
-local localPlayerInfo: GameConfig.ClientLocalPlayerInfo? = ClientGameInfo.GetLocalPlayerInfo()
-if localPlayerInfo == nil then
-	return
-end
-
 local guideText: TextLabel = script.Parent
 
 local function RefreshGuideText()
-	guideText.Visible = false
+	if ClientGameInfo.GetLocalPlayerInfo() == nil then
+		guideText.Visible = false
+		return
+	end
+	local currentGuideType = ClientGameInfo.GetCurrentGuideType()
+	if currentGuideType == GameConfig.GuideType.None then
+		guideText.Visible = false
+		return
+	end
+
+	local textKey = GameConfig.GuideTextKeyMap[currentGuideType]
+	local textConfig = if textKey then (GameTexts[textKey] :: { source: string, key: string }) else nil
+	if textConfig == nil then
+		guideText.Visible = false
+		return
+	end
+
+	guideText.Visible = true
+	TranslationTool.CustomAutoLocalizeTextLabel(guideText, textConfig.source, textConfig.key)
 end
 
 local function OnCurrentGuideTypeChanged()
 	RefreshGuideText()
 end
 
-RefreshGuideText()
+ClientMsg.ConnectLocalPlayerInfoInit(function()
+	RefreshGuideText()
+end)
 
 ClientMsg.ConnectCurrentGuideTypeChanged(OnCurrentGuideTypeChanged)
+
+RefreshGuideText()

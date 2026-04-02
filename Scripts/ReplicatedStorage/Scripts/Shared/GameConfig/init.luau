@@ -47,6 +47,47 @@ GameConfig.DecelerationOnImage = "rbxassetid://114216336762183"
 GameConfig.DecelerationOffImage = "rbxassetid://113696020530948"
 GameConfig.DecelerationButtonShowSpeed = 80
 
+-- Guide（仅两条：Brainrot 拾取+放置；50 金币后升砖块）
+GameConfig.GuideType = {
+	None = 0,
+	TutorialBrainrotPickup = 1,
+	TutorialBrainrotPlace = 2,
+	TutorialBricksLobby = 3,
+	TutorialBricksShop = 4,
+	-- 队列里有 Brainrot 但已收回 Tool：指引点击底部槽位重新装备
+	TutorialBrainrotPlaceSlot = 5,
+}
+
+GameConfig.GuideStepKey = {
+	BricksIntroFinished = "BricksIntroFinished",
+}
+
+GameConfig.GuideBricksIntroMinCoin = 50
+
+GameConfig.GuideWorldAnchorName = {
+	UpgradeShop = "UpgradeShop",
+}
+
+GameConfig.GuideTextKeyMap = {
+	[GameConfig.GuideType.TutorialBrainrotPickup] = "GuideTutorialBrainrotPickup",
+	[GameConfig.GuideType.TutorialBrainrotPlace] = "GuideTutorialBrainrotPlace",
+	[GameConfig.GuideType.TutorialBrainrotPlaceSlot] = "GuideTutorialBrainrotPlaceSlot",
+	[GameConfig.GuideType.TutorialBricksLobby] = "GuideTutorialBricksLobby",
+	[GameConfig.GuideType.TutorialBricksShop] = "GuideTutorialBricksShop",
+}
+
+GameConfig.GuideAssetName = {
+	UiFrame = "GuideFrame",
+	ModelArrow = "GuideArrow",
+}
+
+GameConfig.GuideArrowYOffset = 4
+-- 放置引导 Beam 终点：每个空展台 PlaceModel*.Booth.BoothModel 中取离玩家最近的一个（homeSlot 随玩家变化）
+GameConfig.GuidePlacementBoothPath = {
+	BoothFolderName = "Booth",
+	BoothModelName = "BoothModel",
+}
+
 --六次方群组id
 GameConfig.SixcubeGroupId = 33977495
 
@@ -665,6 +706,11 @@ export type PlayerCarriedInfo = {
 	bricks: number, -- 当前背上的砖块数量
 }
 
+export type GuideProgressSaveInfo = {
+	guideStepDoneMap: { [string]: boolean },
+	appearedGuideTypeInfo: { [string]: boolean },
+}
+
 export type PlayerSaveInfo = {
 	--数据版本
 	dataVersion: number,
@@ -702,6 +748,8 @@ export type PlayerSaveInfo = {
 	brainrotsInfo: BrainrotInventoryInfo,
 	-- [Brainrot背包] Brainrot 队列 (存盘)
 	brainrotQueue: { BrainrotQueueItem },
+	-- 引导进度
+	guideProgressInfo: GuideProgressSaveInfo,
 }
 
 export type PlayerInfo = PlayerSaveInfo & {
@@ -772,6 +820,10 @@ function GameConfig.CreateDefaultPlayerSaveInfo(): PlayerSaveInfo
 			brainrotUsingNumMax = 3, -- 默认最大携带3只
 		},
 		brainrotQueue = {},
+		guideProgressInfo = {
+			guideStepDoneMap = {},
+			appearedGuideTypeInfo = {},
+		},
 	}
 end
 
@@ -803,6 +855,8 @@ export type ClientLocalPlayerSaveInfo = {
 	brainrotQueue: { BrainrotQueueItem },
 	-- [抓模型] 基地玩家槽位
 	homeSlot: string,
+	-- 引导进度
+	guideProgressInfo: GuideProgressSaveInfo,
 }
 export type ClientLocalPlayerInfo = ClientLocalPlayerSaveInfo & {
 	--已拥有的通行证映射
@@ -812,6 +866,8 @@ export type ClientLocalPlayerInfo = ClientLocalPlayerSaveInfo & {
 
 	-- [抓模型] 运行时瞬态数据
 	carriedInfo: PlayerCarriedInfo,
+	-- 当前引导类型（客户端）
+	currentGuideType: number,
 }
 
 --客户端其他玩家信息

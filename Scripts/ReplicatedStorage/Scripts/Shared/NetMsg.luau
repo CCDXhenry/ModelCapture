@@ -46,6 +46,8 @@ local notifyShowGameTipEvent: RemoteEvent = remoteEventsFolder:FindFirstChild("N
 local notifyRescueStartEvent: RemoteEvent = remoteEventsFolder:FindFirstChild("NotifyRescueStart") :: RemoteEvent
 local requestOpenChestEvent: RemoteEvent = remoteEventsFolder:FindFirstChild("RequestOpenChest") :: RemoteEvent
 local notifyChestOpenResultEvent: RemoteEvent = remoteEventsFolder:FindFirstChild("NotifyChestOpenResult") :: RemoteEvent
+local notifyGuideProgressInfoEvent: RemoteEvent? =
+	remoteEventsFolder:FindFirstChild("NotifyGuideProgressInfo") :: RemoteEvent?
 
 -- Rebirth
 local requestRebirthEvent: RemoteEvent = remoteEventsFolder:FindFirstChild("RequestRebirth") :: RemoteEvent
@@ -493,6 +495,20 @@ function NetMsg.ConnectNotifyEarthquakeRecover(
 	callback: (earthquakeId: number, recoverFloatBlocks: { any }, recoverPavedBricks: { any }) -> ()
 )
 	notifyEarthquakeRecoverEvent.OnClientEvent:Connect(callback)
+end
+
+function NetMsg.FireNotifyGuideProgressInfo(player: Player, guideProgressInfo: GameConfig.GuideProgressSaveInfo)
+	if notifyGuideProgressInfoEvent == nil then
+		return
+	end
+	notifyGuideProgressInfoEvent:FireClient(player, guideProgressInfo)
+end
+
+function NetMsg.ConnectNotifyGuideProgressInfo(callback: (guideProgressInfo: GameConfig.GuideProgressSaveInfo) -> ())
+	if notifyGuideProgressInfoEvent == nil then
+		return
+	end
+	notifyGuideProgressInfoEvent.OnClientEvent:Connect(callback)
 end
 
 return NetMsg
