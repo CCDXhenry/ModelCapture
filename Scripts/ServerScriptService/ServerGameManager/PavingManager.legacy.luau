@@ -560,6 +560,25 @@ local function OnRequestPlaceBrickBatch(player: Player, positions: any, batchId:
 	UpdateMetricAttributes()
 end
 
+local startTriggerOverlapParams: OverlapParams? = nil
+local function IsPlayerOverlappingStartTrigger(player: Player): boolean
+	if not startTrigger or not startTrigger:IsA("BasePart") then
+		return false
+	end
+	local character = player.Character
+	if not character then
+		return false
+	end
+	if not startTriggerOverlapParams then
+		local p = OverlapParams.new()
+		p.FilterType = Enum.RaycastFilterType.Include
+		startTriggerOverlapParams = p
+	end
+	(startTriggerOverlapParams :: OverlapParams).FilterDescendantsInstances = { character }
+	local overlapping = workspace:GetPartBoundsInBox(startTrigger.CFrame, startTrigger.Size, startTriggerOverlapParams :: OverlapParams)
+	return #overlapping > 0
+end
+
 local function OnHeartbeat(deltaTime: number)
 	local now = os.clock()
 	for brick, data in pairs(activeBricks) do
@@ -588,7 +607,10 @@ local function OnRequestStartPaving(player: Player)
 			return
 		end
 		local feetCenter = GetSnappedPositionForPaving(rootPart.Position)
-		if not IsEntireBrickFootprintOverPavingSafeZone(feetCenter) then
+		-- 与客户端一致：人在 StartTrigger 内即允许补砖，不要求整砖四角都在安全区（避免边缘漏判）
+		local footprintOk = IsEntireBrickFootprintOverPavingSafeZone(feetCenter)
+		local onStartTrigger = IsPlayerOverlappingStartTrigger(player)
+		if not footprintOk and not onStartTrigger then
 			return
 		end
 	end

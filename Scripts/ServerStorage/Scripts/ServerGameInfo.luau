@@ -26,6 +26,44 @@ local function analyticsTool(): any
 	return analyticsToolModule
 end
 
+-- 与 PavingManager.legacy.luau 竖直射线参数对齐
+local GROUND_RAY_ORIGIN_Y = 50
+local GROUND_RAY_LENGTH = 60
+
+local function GetWorkspaceGroundFolder(): Instance?
+	return workspace:FindFirstChild("Ground") or workspace:FindFirstChild("ground")
+end
+
+local function IsPlayerOnWorkspaceGround(player: Player): boolean
+	local character = player.Character
+	if not character then
+		return false
+	end
+	local rootPart = character:FindFirstChild("HumanoidRootPart") :: BasePart?
+	if not rootPart then
+		return false
+	end
+	local groundFolder = GetWorkspaceGroundFolder()
+	if not groundFolder then
+		return false
+	end
+	local samplePos = rootPart.Position
+	local rayOrigin = samplePos + Vector3.new(0, GROUND_RAY_ORIGIN_Y, 0)
+	local rayDirection = Vector3.new(0, -GROUND_RAY_LENGTH, 0)
+	local raycastParams = RaycastParams.new()
+	raycastParams.FilterType = Enum.RaycastFilterType.Include
+	raycastParams.FilterDescendantsInstances = { groundFolder }
+	return workspace:Raycast(rayOrigin, rayDirection, raycastParams) ~= nil
+end
+
+local function SyncCarriedBricksAfterMaxBricksUpgrade(player: Player)
+	if IsPlayerOnWorkspaceGround(player) then
+		ServerGameInfo.SetPlayerBricksToMax(player)
+	else
+		ServerGameInfo.UpdateInventoryBricks(player, 0)
+	end
+end
+
 --初始化玩家信息
 function ServerGameInfo.InitPlayerInfo(
 	player: Player,
@@ -593,6 +631,7 @@ function ServerGameInfo.UpdateMaxBricksLevel(player: Player, levelAdd: number)
 	NetMsg.FireNotifyPlayerInventoryUpdate(player, playerInfo.inventoryInfo)
 
 	ServerGameInfo.TryMarkBricksIntroGuideFinished(player, playerInfo.shopInfo.maxBricksLevel)
+	SyncCarriedBricksAfterMaxBricksUpgrade(player)
 	print("[ServerGameInfo] UpdateMaxBricksLevel for", player.Name, "by", levelAdd, "total", playerInfo.shopInfo.maxBricksLevel)
 end
 
@@ -657,8 +696,8 @@ function ServerGameInfo.UpgradeAbility(player: Player, abilityName: string, leve
 		playerInfo.shopInfo.maxBricksLevel = nextLevel
 		-- 通知客户端技能等级变更
 		NetMsg.FireNotifyPlayerSkillLevelUpdate(player, GameConfig.SkillType.MaxBricks, nextLevel)
-		-- 通知客户端库存变更
-		ServerGameInfo.UpdateInventoryBricks(player, 0) -- 虽然是0，但能触发一次状态同步
+		-- 在 Ground 上则补满背负砖，否则仅触发携带态同步
+		SyncCarriedBricksAfterMaxBricksUpgrade(player)
 		ServerGameInfo.TryMarkBricksIntroGuideFinished(player, nextLevel)
 	elseif abilityName == "HomeLevel" then
 		playerInfo.homeInfo.level = nextLevel
@@ -730,7 +769,7 @@ function ServerGameInfo.UpgradeAbilityPaid(player: Player, abilityName: string, 
 	elseif abilityName == "MaxBricks" then
 		playerInfo.shopInfo.maxBricksLevel = nextLevel
 		NetMsg.FireNotifyPlayerSkillLevelUpdate(player, GameConfig.SkillType.MaxBricks, nextLevel)
-		ServerGameInfo.UpdateInventoryBricks(player, 0) -- 触发客户端库存同步
+		SyncCarriedBricksAfterMaxBricksUpgrade(player)
 		ServerGameInfo.TryMarkBricksIntroGuideFinished(player, nextLevel)
 	elseif abilityName == "HomeLevel" then
 		playerInfo.homeInfo.level = nextLevel

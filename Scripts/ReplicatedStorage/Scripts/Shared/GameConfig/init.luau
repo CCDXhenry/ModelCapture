@@ -511,6 +511,8 @@ GameConfig.Paving = {
 	StationaryRenewalThreshold = 0.7, -- 剩余寿命低于 70% 时才允许原地续期
 	StationaryRenewalInterval = 0.2, -- 原地续期检测间隔 (加快响应)
 	RebirthProductId = 3567723594, -- 付费重生产品ID
+	-- StartTrigger 补砖请求最小间隔（防刷 Remote）；过大会导致快速经过时漏补
+	StartTriggerRefillCooldown = 0.35,
 }
 
 GameConfig.PavingRejectReason = {

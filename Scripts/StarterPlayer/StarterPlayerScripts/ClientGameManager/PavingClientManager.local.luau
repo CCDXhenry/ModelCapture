@@ -678,7 +678,10 @@ local function OnHeartbeat(dt: number)
 	end
 
 	local needSafeZoneToActivatePaving = hasEarthquakeEndedAtLeastOnce and not earthquakeActiveNow and workspace:GetAttribute("EarthquakeRescuePaving") ~= true
-	local allowPavingActivationByEarthquakeGate = not needSafeZoneToActivatePaving or IsEntireBrickFootprintOverSafeZone(GetSnappedPosition(pos))
+	-- 触碰 StartTrigger 时也应允许激活：仅用「整砖四角在安全区」会与触发器边缘/网格对齐冲突，导致漏补砖
+	local allowPavingActivationByEarthquakeGate = not needSafeZoneToActivatePaving
+		or IsEntireBrickFootprintOverSafeZone(GetSnappedPosition(pos))
+		or (character ~= nil and IsLocalCharacterTouchingStartTrigger(character))
 
 	-- 2. Mode Activation Check (Start Trigger or Safe Zone)
 	-- 地震结束后须先处于真实安全区，才允许重新激活铺砖与补砖
@@ -706,7 +709,8 @@ local function OnHeartbeat(dt: number)
 			end
 
 			if inStartRange then
-				if now - lastRefillTime > 2 then
+				local refillCooldown = GameConfig.Paving.StartTriggerRefillCooldown or 0.35
+				if now - lastRefillTime > refillCooldown then
 					NetMsg.FireRequestStartPaving()
 					lastRefillTime = now
 				end
