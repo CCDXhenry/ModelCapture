@@ -878,7 +878,7 @@ function ServerGameInfo.SetPlayerBricksToMax(player: Player)
 	-- 同步瞬态层
 	NetMsg.FireNotifyPlayerCarriedUpdate(player, playerInfo.carriedInfo)
 
-	print("[ServerGameInfo] SetPlayerBricksToMax for", player.Name, "to", maxBricks)
+	--print("[ServerGameInfo] SetPlayerBricksToMax for", player.Name, "to", maxBricks)
 end
 
 --添加模型到库存

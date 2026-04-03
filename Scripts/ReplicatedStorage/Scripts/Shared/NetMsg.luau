@@ -243,7 +243,7 @@ end
 
 -- 客户端请求触发铺砖模式 (触碰 StartTrigger)
 function NetMsg.FireRequestStartPaving()
-	print("[NetMsg] FireRequestStartPaving")
+	--print("[NetMsg] FireRequestStartPaving")
 	requestStartPavingEvent:FireServer()
 end
 function NetMsg.ConnectRequestStartPaving(callback: (player: Player) -> ())
