@@ -401,6 +401,9 @@ local function TickEarthquake(now: number)
 			local totalCount = math.max(1, #executeQueue)
 			local windowSeconds = math.max(0.05, GameConfig.Earthquake.DropExecuteWindowSeconds or 1.0)
 			local perDropInterval = windowSeconds / totalCount
+			local droppedFloatBatch = {} :: { any }
+			local droppedPavedBatch = {} :: { any }
+			local batchJudgeIndex = executeQueueIndex
 			while executeQueueIndex <= #executeQueue and now >= nextExecuteAt do
 				local entry = executeQueue[executeQueueIndex]
 				local part = entry.part :: BasePart
@@ -410,19 +413,23 @@ local function TickEarthquake(now: number)
 				if kind == "FloatBlock" then
 					payload = DropPart(part, "FloatBlock", now, entry.recoverDelayMin, entry.recoverDelayMax)
 					if payload ~= nil then
-						BroadcastDrop(earthquakeId, executeQueueIndex, { payload }, {})
+						table.insert(droppedFloatBatch, payload)
 					end
 				else
 					payload = DropPart(part, "PavedBrick", now)
 					if payload ~= nil then
-						BroadcastDrop(earthquakeId, executeQueueIndex, {}, { payload })
+						table.insert(droppedPavedBatch, payload)
 					end
 				end
 
+				batchJudgeIndex = executeQueueIndex
 				executeQueueIndex += 1
 				if executeQueueIndex <= #executeQueue then
 					nextExecuteAt += perDropInterval
 				end
+			end
+			if #droppedFloatBatch > 0 or #droppedPavedBatch > 0 then
+				BroadcastDrop(earthquakeId, batchJudgeIndex, droppedFloatBatch, droppedPavedBatch)
 			end
 
 			if executeQueueIndex > #executeQueue then

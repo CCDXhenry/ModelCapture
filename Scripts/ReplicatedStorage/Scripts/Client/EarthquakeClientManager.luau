@@ -42,6 +42,9 @@ type MarkedVisualState = {
 }
 
 local markedPartMap: { [BasePart]: MarkedVisualState } = {}
+local lastMarkedRefreshAt = 0
+
+local MARKED_PARTS_REFRESH_INTERVAL = 0.2
 
 local function GetMarkedTransparencyForKind(kind: unknown): number
 	local raw: number
@@ -334,8 +337,11 @@ local function OnRenderStep()
 	local now = os.clock()
 	if earthquakeActive then
 		ApplyEarthquakeCameraShake(now)
-		-- 持续补扫：解决“新铺砖 ChildAdded 先到、标记属性后到”导致抖动不一致
-		RefreshMarkedParts()
+		-- 降低补扫频率，避免每帧遍历目录导致客户端输入延迟。
+		if now - lastMarkedRefreshAt >= MARKED_PARTS_REFRESH_INTERVAL then
+			lastMarkedRefreshAt = now
+			RefreshMarkedParts()
+		end
 	else
 		local humanoid = GetHumanoid()
 		if humanoid then

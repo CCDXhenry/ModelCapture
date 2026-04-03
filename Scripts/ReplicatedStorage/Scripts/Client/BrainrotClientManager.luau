@@ -34,6 +34,14 @@ local actualChests = replicatedStorage:WaitForChild("Models"):WaitForChild("Litt
 local uIFolder = replicatedStorage:WaitForChild("UI")
 local brainrotInfoUIParams = uIFolder:WaitForChild("BrainrotInfoUI") :: BillboardGui
 local littleElfChestInfoUIParams = uIFolder:WaitForChild("LittleElfChestInfoUI") :: BillboardGui
+local BILLBOARD_TRACKED_ATTR = "BillboardTracked"
+
+local function EnsureBillboardTracked(gui: BillboardGui)
+	if gui:GetAttribute(BILLBOARD_TRACKED_ATTR) ~= true then
+		gui:SetAttribute(BILLBOARD_TRACKED_ATTR, true)
+	end
+	BillboardManager.Track(gui)
+end
 
 local AttachInfoUIToModel -- 向前声明
 local pendingOpenChestToolMap: { [string]: Tool } = {}
@@ -234,7 +242,7 @@ function AttachInfoUIToModel(targetParent: Instance, adornee: BasePart, configId
 	newBrainrotUI.StudsOffset = Vector3.new(0, offsetY, 0)
 	newBrainrotUI.Adornee = adornee
 	newBrainrotUI.Parent = targetParent
-	BillboardManager.Track(newBrainrotUI)
+	EnsureBillboardTracked(newBrainrotUI)
 end
 
 local function ProcessDescendantAdded(descendant: Instance)

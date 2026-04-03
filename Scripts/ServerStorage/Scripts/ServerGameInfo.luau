@@ -17,6 +17,7 @@ local players = game:GetService("Players")
 local workspace = game:GetService("Workspace")
 
 local playerInfoMap: { [number]: GameConfig.PlayerInfo } = {}
+local lastBroadcastModelYieldMap: { [number]: { [string]: number } } = {}
 
 local analyticsToolModule: any = nil
 local function analyticsTool(): any
@@ -186,6 +187,7 @@ end
 --移除玩家信息
 function ServerGameInfo.RemovePlayerInfo(player: Player)
 	playerInfoMap[player.UserId] = nil
+	lastBroadcastModelYieldMap[player.UserId] = nil
 	print("[ServerGameInfo] RemovePlayerInfo for", player.Name)
 end
 
@@ -477,17 +479,37 @@ function ServerGameInfo.BroadcastAllPlayersModelYields()
 	local allYields: { [string]: { [string]: number } } = {}
 
 	for userId, playerInfo in pairs(playerInfoMap) do
+		local oldSnapshot = lastBroadcastModelYieldMap[userId] or {}
+		local newSnapshot: { [string]: number } = {}
 		local playerYields: { [string]: number } = {}
-		local hasYield = false
+		local hasDelta = false
 		for pointIndexStr, model in pairs(playerInfo.homeInfo.placedModels) do
-			if model.unclaimedYield and model.unclaimedYield > 0 then
-				playerYields[pointIndexStr] = model.unclaimedYield
-				hasYield = true
+			local amount = model.unclaimedYield or 0
+			if amount > 0 then
+				newSnapshot[pointIndexStr] = amount
+				if oldSnapshot[pointIndexStr] ~= amount then
+					playerYields[pointIndexStr] = amount
+					hasDelta = true
+				end
 			end
 		end
 
-		if hasYield then
+		for pointIndexStr, oldAmount in pairs(oldSnapshot) do
+			if newSnapshot[pointIndexStr] == nil and oldAmount > 0 then
+				playerYields[pointIndexStr] = 0
+				hasDelta = true
+			end
+		end
+
+		lastBroadcastModelYieldMap[userId] = newSnapshot
+		if hasDelta then
 			allYields[tostring(userId)] = playerYields
+		end
+	end
+
+	for userId in pairs(lastBroadcastModelYieldMap) do
+		if playerInfoMap[userId] == nil then
+			lastBroadcastModelYieldMap[userId] = nil
 		end
 	end
 

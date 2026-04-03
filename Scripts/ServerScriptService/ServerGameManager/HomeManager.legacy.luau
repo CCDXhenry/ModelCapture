@@ -20,9 +20,13 @@ if homesFolder.Parent ~= workspace then
 end
 
 local availableSlots = {}
-local yieldAccumulator = 0
+local yieldUpdateAccumulator = 0
+local yieldBroadcastAccumulator = 0
 local islandDiscoverAccumulator = 0
 local basePlotsCount = 0
+
+local YIELD_UPDATE_INTERVAL = 1
+local YIELD_BROADCAST_INTERVAL = 2
 
 -- Initialize available slots from PlayersHome
 local function InitSlots()
@@ -280,12 +284,13 @@ local function OnRequestClaimYield(player: Player, targetPlayerId: number, point
 end
 
 local function OnHeartbeat(dt: number)
-	yieldAccumulator += dt
+	yieldUpdateAccumulator += dt
+	yieldBroadcastAccumulator += dt
 	islandDiscoverAccumulator += dt
 
 	-- 表现层全在客户端，不再需要在 Heartbeat 中同步结构
-	if yieldAccumulator >= 1 then
-		yieldAccumulator -= 1
+	if yieldUpdateAccumulator >= YIELD_UPDATE_INTERVAL then
+		yieldUpdateAccumulator -= YIELD_UPDATE_INTERVAL
 		for _, player in ipairs(players:GetPlayers()) do
 			local playerInfo = ServerGameInfo.GetPlayerInfo(player)
 			if playerInfo then
@@ -305,7 +310,10 @@ local function OnHeartbeat(dt: number)
 				end
 			end
 		end
-		-- 统一广播一次全服收益更新 (极致优化版：全服一秒仅一次广播)
+	end
+
+	if yieldBroadcastAccumulator >= YIELD_BROADCAST_INTERVAL then
+		yieldBroadcastAccumulator -= YIELD_BROADCAST_INTERVAL
 		ServerGameInfo.BroadcastAllPlayersModelYields()
 	end
 

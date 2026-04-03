@@ -24,6 +24,14 @@ local actualModels = replicatedStorage:WaitForChild("Models"):WaitForChild("Brai
 local actualChests = replicatedStorage:WaitForChild("Models"):WaitForChild("LittleElfChests")
 local uiFolder = replicatedStorage:WaitForChild("UI")
 local brainrotInfoUIParams = uiFolder:WaitForChild("BrainrotInfoUI") :: BillboardGui
+local BILLBOARD_TRACKED_ATTR = "BillboardTracked"
+
+local function EnsureBillboardTracked(gui: BillboardGui)
+	if gui:GetAttribute(BILLBOARD_TRACKED_ATTR) ~= true then
+		gui:SetAttribute(BILLBOARD_TRACKED_ATTR, true)
+	end
+	BillboardManager.Track(gui)
+end
 
 local RandomCount = 10
 local TinyScale = 0.02
@@ -83,7 +91,7 @@ local function CreateOrUpdateInfoUI(
 		local clonedUi = brainrotInfoUIParams:Clone() :: BillboardGui
 		clonedUi.Name = "BrainrotInfoUI"
 		clonedUi.Parent = parentInstance
-		BillboardManager.Track(clonedUi)
+		EnsureBillboardTracked(clonedUi)
 		ui = clonedUi
 	end
 

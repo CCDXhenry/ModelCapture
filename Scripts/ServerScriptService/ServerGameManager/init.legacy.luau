@@ -35,6 +35,11 @@ local runService: RunService = game:GetService("RunService")
 local configService: ConfigService = game:GetService("ConfigService")
 
 local AutoSavePlayerInfoInterval: number = 30 --自动保存玩家信息间隔时间
+local GAME_TIME_UPDATE_INTERVAL = 0.25
+local LOGIN_DAY_CHECK_INTERVAL = 5
+
+local gameTimeAccumulator = 0
+local loginDayCheckAccumulator = 0
 
 local autoSaveThreads: { [number]: thread } = {}
 
@@ -186,10 +191,23 @@ local function OnPlayerRemoving(player: Player)
 end
 
 local function OnHeartbeat(deltaTime: number)
-	local nowDate: DateTimeExtension.DateTimeTable = DateTimeExtension.GetNowDate()
-	for playerIndex: number, player: Player in players:GetPlayers() do
-		ServerGameInfo.AddPlayerGameTime(player, deltaTime)
-		CheckPlayerLoginDays(player, nowDate)
+	gameTimeAccumulator += deltaTime
+	loginDayCheckAccumulator += deltaTime
+
+	if gameTimeAccumulator >= GAME_TIME_UPDATE_INTERVAL then
+		local addGameTime = gameTimeAccumulator
+		gameTimeAccumulator = 0
+		for _, player: Player in players:GetPlayers() do
+			ServerGameInfo.AddPlayerGameTime(player, addGameTime)
+		end
+	end
+
+	if loginDayCheckAccumulator >= LOGIN_DAY_CHECK_INTERVAL then
+		loginDayCheckAccumulator = 0
+		local nowDate: DateTimeExtension.DateTimeTable = DateTimeExtension.GetNowDate()
+		for _, player: Player in players:GetPlayers() do
+			CheckPlayerLoginDays(player, nowDate)
+		end
 	end
 end
 

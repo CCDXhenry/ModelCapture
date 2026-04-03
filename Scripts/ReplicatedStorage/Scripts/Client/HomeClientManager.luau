@@ -46,6 +46,19 @@ end
 local pendingUpdates = {}
 local promptToPlotMap: { [ProximityPrompt]: { pointIndex: number, slotName: string } } = {}
 local isLocalHoldingBrainrot = false
+local lastFocusRefreshAt = 0
+local lastFocusSlotName = ""
+local lastFocusWinnerPointIndex: number? = nil
+
+local INTERACTION_FOCUS_REFRESH_INTERVAL = 0.1
+local BILLBOARD_TRACKED_ATTR = "BillboardTracked"
+
+local function EnsureBillboardTracked(gui: BillboardGui)
+	if gui:GetAttribute(BILLBOARD_TRACKED_ATTR) ~= true then
+		gui:SetAttribute(BILLBOARD_TRACKED_ATTR, true)
+	end
+	BillboardManager.Track(gui)
+end
 
 local function LocalizeQualityLabel(qualityLabel: TextLabel, quality: number)
 	local qualityTextName = GameConfig.BrainrotQualityTextMap[quality]
@@ -99,7 +112,7 @@ local function SetPromptState(
 		if shouldApplyEnabled then
 			billboard.Enabled = visible
 		end
-		BillboardManager.Track(billboard)
+		EnsureBillboardTracked(billboard)
 	end
 end
 
@@ -126,18 +139,84 @@ local function SetSellButtonVisibility(
 		if shouldApplyEnabled then
 			billboard.Enabled = visible
 		end
-		BillboardManager.Track(billboard)
+		EnsureBillboardTracked(billboard)
 	end
 end
 
+local function FindPlotByPointIndex(slotModel: Instance, pointIndex: number): Instance?
+	for _, floor in ipairs(slotModel:GetChildren()) do
+		if floor.Name:match("^Lv%d+$") then
+			local plot = floor:FindFirstChild("PlaceModel" .. tostring(pointIndex))
+			if plot then
+				return plot
+			end
+		end
+	end
+	return nil
+end
+
+local function ApplyFocusToPlot(slotModel: Instance, pointIndex: number, showPlace: boolean, showSell: boolean)
+	local plot = FindPlotByPointIndex(slotModel, pointIndex)
+	if not plot then
+		return
+	end
+	local rootPart = plot:FindFirstChild("RootPart") :: BasePart?
+	local placeAttachment = rootPart and rootPart:FindFirstChild("PlaceAttachment") :: Attachment?
+	local sellAttachment = rootPart and rootPart:FindFirstChild("SellAttachment") :: Attachment?
+	if placeAttachment then
+		local placePrompt = placeAttachment:FindFirstChildOfClass("ProximityPrompt")
+		if placePrompt then
+			placePrompt.Enabled = showPlace
+		end
+		local placeBillboard = placeAttachment:FindFirstChildOfClass("BillboardGui")
+		if placeBillboard then
+			placeBillboard.Enabled = showPlace
+		end
+	end
+	if sellAttachment then
+		local sellPrompt = sellAttachment:FindFirstChildOfClass("ProximityPrompt")
+		if sellPrompt then
+			sellPrompt.Enabled = showSell
+		end
+		local sellBillboard = sellAttachment:FindFirstChildOfClass("BillboardGui")
+		if sellBillboard then
+			sellBillboard.Enabled = showSell
+		end
+	end
+end
+
+local function ClearLastFocusWinner()
+	if lastFocusWinnerPointIndex == nil or lastFocusSlotName == "" then
+		lastFocusWinnerPointIndex = nil
+		return
+	end
+	local slotModel = homesFolder:FindFirstChild(lastFocusSlotName)
+	if slotModel then
+		ApplyFocusToPlot(slotModel, lastFocusWinnerPointIndex, false, false)
+	end
+	lastFocusWinnerPointIndex = nil
+end
+
 local function RefreshLocalHomeInteractionFocus()
+	local now = os.clock()
+	if now - lastFocusRefreshAt < INTERACTION_FOCUS_REFRESH_INTERVAL then
+		return
+	end
+	lastFocusRefreshAt = now
+
 	local localInfo = ClientGameInfo.GetLocalPlayerInfo()
 	if not localInfo or localInfo.homeSlot == nil or localInfo.homeSlot == "" then
+		ClearLastFocusWinner()
 		return
 	end
 	local slotName = localInfo.homeSlot
+	if slotName ~= lastFocusSlotName then
+		ClearLastFocusWinner()
+		lastFocusSlotName = slotName
+	end
 	local state = slotStateCache[slotName]
 	if not state or not state.active or not state.isLocalPlayer or not state.homeInfo then
+		ClearLastFocusWinner()
 		return
 	end
 	local homeInfo = state.homeInfo
@@ -173,7 +252,8 @@ local function RefreshLocalHomeInteractionFocus()
 		end
 	end
 
-	local candidates: { { pointIndex: number, plot: Instance, dist: number } } = {}
+	local winnerPointIndex: number? = nil
+	local winnerDist = math.huge
 	if charPos then
 		for _, floor in ipairs(slotModel:GetChildren()) do
 			if floor.Name:match("^Lv%d+$") then
@@ -193,8 +273,9 @@ local function RefreshLocalHomeInteractionFocus()
 							local placePrompt = placeAttachment
 								and placeAttachment:FindFirstChildOfClass("ProximityPrompt")
 							local maxDist = if placePrompt then placePrompt.MaxActivationDistance else 15
-							if dist <= maxDist then
-								table.insert(candidates, { pointIndex = pointIndex, plot = plot, dist = dist })
+							if dist <= maxDist and (dist < winnerDist or (dist == winnerDist and winnerPointIndex ~= nil and pointIndex < winnerPointIndex)) then
+								winnerDist = dist
+								winnerPointIndex = pointIndex
 							end
 						end
 					end
@@ -203,55 +284,16 @@ local function RefreshLocalHomeInteractionFocus()
 		end
 	end
 
-	table.sort(candidates, function(a, b)
-		if a.dist ~= b.dist then
-			return a.dist < b.dist
-		end
-		return a.pointIndex < b.pointIndex
-	end)
-	local winnerPointIndex: number? = if #candidates > 0 then candidates[1].pointIndex else nil
-
-	for _, floor in ipairs(slotModel:GetChildren()) do
-		if floor.Name:match("^Lv%d+$") then
-			for _, plot in ipairs(floor:GetChildren()) do
-				local pointIndex = tonumber(plot.Name:match("^PlaceModel(%d+)$"))
-				if not pointIndex then
-					continue
-				end
-				local isOccupied = homeInfo.placedModels[tostring(pointIndex)] ~= nil
-				local wantPlace = (not isOccupied and isLocalHoldingBrainrot) or isOccupied
-				local wantSell = isOccupied
-				local isWinner = winnerPointIndex ~= nil and pointIndex == winnerPointIndex
-				local showPlace = wantPlace and isWinner
-				local showSell = wantSell and isWinner
-
-				local rootPart = plot:FindFirstChild("RootPart") :: BasePart?
-				local placeAttachment = rootPart and rootPart:FindFirstChild("PlaceAttachment") :: Attachment?
-				local sellAttachment = rootPart and rootPart:FindFirstChild("SellAttachment") :: Attachment?
-
-				if placeAttachment then
-					local placePrompt = placeAttachment:FindFirstChildOfClass("ProximityPrompt")
-					if placePrompt then
-						placePrompt.Enabled = showPlace
-					end
-					local placeBillboard = placeAttachment:FindFirstChildOfClass("BillboardGui")
-					if placeBillboard then
-						placeBillboard.Enabled = showPlace
-					end
-				end
-				if sellAttachment then
-					local sellPrompt = sellAttachment:FindFirstChildOfClass("ProximityPrompt")
-					if sellPrompt then
-						sellPrompt.Enabled = showSell
-					end
-					local sellBillboard = sellAttachment:FindFirstChildOfClass("BillboardGui")
-					if sellBillboard then
-						sellBillboard.Enabled = showSell
-					end
-				end
-			end
-		end
+	if lastFocusWinnerPointIndex ~= nil and lastFocusWinnerPointIndex ~= winnerPointIndex then
+		ApplyFocusToPlot(slotModel, lastFocusWinnerPointIndex, false, false)
 	end
+	if winnerPointIndex ~= nil then
+		local isOccupied = homeInfo.placedModels[tostring(winnerPointIndex)] ~= nil
+		local showPlace = (not isOccupied and isLocalHoldingBrainrot) or isOccupied
+		local showSell = isOccupied
+		ApplyFocusToPlot(slotModel, winnerPointIndex, showPlace, showSell)
+	end
+	lastFocusWinnerPointIndex = winnerPointIndex
 end
 
 -- Focus on refreshing only interactive prompts (lighter than full refresh)
@@ -351,7 +393,7 @@ local function SetupBillboardAdaptation(gui: BillboardGui)
 		end
 	end
 
-	BillboardManager.Track(gui)
+	EnsureBillboardTracked(gui)
 end
 
 -- Handles model placement for a single plot

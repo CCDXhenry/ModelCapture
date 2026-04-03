@@ -11,6 +11,14 @@ local coreClientScripts = coreScripts:WaitForChild("Client")
 local GameTexts = require(sharedScripts:WaitForChild("GameTexts"))
 local TranslationTool = require(coreClientScripts:WaitForChild("TranslationTool"))
 local BillboardManager = require(clientScripts:WaitForChild("BillboardManager"))
+local BILLBOARD_TRACKED_ATTR = "BillboardTracked"
+
+local function EnsureBillboardTracked(gui: BillboardGui)
+	if gui:GetAttribute(BILLBOARD_TRACKED_ATTR) ~= true then
+		gui:SetAttribute(BILLBOARD_TRACKED_ATTR, true)
+	end
+	BillboardManager.Track(gui)
+end
 
 local islandsFolder = workspace:WaitForChild("Islands")
 
@@ -24,7 +32,7 @@ local function LocalizeLittleElfChestInfoUI(ui: BillboardGui)
 	if levelLabel then
 		TranslationTool.CustomAutoLocalizeTextLabel(levelLabel, GameTexts.UnknownLevel.source, GameTexts.UnknownLevel.key, {})
 	end
-	BillboardManager.Track(ui)
+	EnsureBillboardTracked(ui)
 end
 
 local function LocalizeBrainrotUI(ui: BillboardGui)
@@ -50,7 +58,7 @@ local function LocalizeBrainrotUI(ui: BillboardGui)
 		TranslationTool.CustomAutoLocalizeTextLabel(levelLabel, GameTexts.LevelWithNumber.source, GameTexts.LevelWithNumber.key, { lv })
 	end
 
-	BillboardManager.Track(ui)
+	EnsureBillboardTracked(ui)
 end
 
 local function OnIslandDescendantAdded(desc: Instance)

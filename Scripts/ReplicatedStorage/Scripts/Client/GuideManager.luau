@@ -23,6 +23,16 @@ local lastGuideType = GameConfig.GuideType.None
 local guideArrowModel: Model? = nil
 local guideArrowStartPart: BasePart? = nil
 local guideArrowEndPart: BasePart? = nil
+local lastGuideTypeRefreshAt = 0
+local lastArrowTargetRefreshAt = 0
+local cachedArrowGuideType = GameConfig.GuideType.None
+local cachedArrowTarget: Vector3? = nil
+local pickupCandidatesInitialized = false
+local pickupCandidatePartMap: { [BasePart]: boolean } = {}
+
+local GUIDE_TYPE_REFRESH_INTERVAL = 0.2
+local GUIDE_TARGET_REFRESH_INTERVAL = 0.2
+local InitPickupCandidates: () -> ()
 
 local function ApplyGuideArrowPartPhysics(part: BasePart)
 	part.Anchored = true
@@ -239,6 +249,9 @@ local function ResolvePlacementBoothWorldPosition(info: GameConfig.ClientLocalPl
 end
 
 local function ResolvePickupBrainrotTarget(): Vector3?
+	if not pickupCandidatesInitialized then
+		InitPickupCandidates()
+	end
 	if localPlayer == nil then
 		return nil
 	end
@@ -248,23 +261,21 @@ local function ResolvePickupBrainrotTarget(): Vector3?
 	if origin == nil then
 		return nil
 	end
-	local islandsFolder = workspace:FindFirstChild("Islands")
-	if islandsFolder == nil then
-		return nil
-	end
 	local bestPart: BasePart? = nil
 	local bestDist = math.huge
-	for _, desc in islandsFolder:GetDescendants() do
-		if desc:IsA("BasePart") then
-			local configId = desc:GetAttribute("ConfigId") :: number?
-			if configId ~= nil then
-				local itemType = desc:GetAttribute("ItemType") :: number?
-				if itemType == nil or itemType == GameConfig.ItemType.Brainrot then
-					local dist = (desc.Position - origin).Magnitude
-					if dist < bestDist then
-						bestDist = dist
-						bestPart = desc
-					end
+	for part in pairs(pickupCandidatePartMap) do
+		if part.Parent == nil then
+			pickupCandidatePartMap[part] = nil
+			continue
+		end
+		local configId = part:GetAttribute("ConfigId") :: number?
+		if configId ~= nil then
+			local itemType = part:GetAttribute("ItemType") :: number?
+			if itemType == nil or itemType == GameConfig.ItemType.Brainrot then
+				local dist = (part.Position - origin).Magnitude
+				if dist < bestDist then
+					bestDist = dist
+					bestPart = part
 				end
 			end
 		end
@@ -334,7 +345,13 @@ local function UpdateGuideArrow()
 		guideArrowModel.Parent = nil
 		return
 	end
-	local target = ResolveWorldTargetForGuide(guideType)
+	local now = os.clock()
+	if cachedArrowGuideType ~= guideType or now - lastArrowTargetRefreshAt >= GUIDE_TARGET_REFRESH_INTERVAL then
+		lastArrowTargetRefreshAt = now
+		cachedArrowGuideType = guideType
+		cachedArrowTarget = ResolveWorldTargetForGuide(guideType)
+	end
+	local target = cachedArrowTarget
 	if target == nil then
 		guideArrowModel.Parent = nil
 		return
@@ -384,12 +401,48 @@ local function ResolveGuideType(): number
 end
 
 local function RefreshGuideType()
+	local now = os.clock()
+	if now - lastGuideTypeRefreshAt < GUIDE_TYPE_REFRESH_INTERVAL then
+		return
+	end
+	lastGuideTypeRefreshAt = now
 	local currentGuideType = ResolveGuideType()
 	if currentGuideType == lastGuideType then
 		return
 	end
 	lastGuideType = currentGuideType
 	ClientGameInfo.SetCurrentGuideType(currentGuideType)
+end
+
+local function ForceRefreshGuideType()
+	lastGuideTypeRefreshAt = 0
+	RefreshGuideType()
+end
+
+InitPickupCandidates = function()
+	if pickupCandidatesInitialized then
+		return
+	end
+	local islandsFolder = workspace:FindFirstChild("Islands")
+	if islandsFolder == nil then
+		return
+	end
+	pickupCandidatesInitialized = true
+	for _, desc in islandsFolder:GetDescendants() do
+		if desc:IsA("BasePart") then
+			pickupCandidatePartMap[desc] = true
+		end
+	end
+	islandsFolder.DescendantAdded:Connect(function(desc: Instance)
+		if desc:IsA("BasePart") then
+			pickupCandidatePartMap[desc] = true
+		end
+	end)
+	islandsFolder.DescendantRemoving:Connect(function(desc: Instance)
+		if desc:IsA("BasePart") then
+			pickupCandidatePartMap[desc] = nil
+		end
+	end)
 end
 
 local function TryCreateArrowModel()
@@ -454,36 +507,37 @@ function GuideManager.Init()
 	initialized = true
 
 	TryCreateArrowModel()
+	InitPickupCandidates()
 
 	ClientMsg.ConnectLocalPlayerInfoInit(function()
-		RefreshGuideType()
+		ForceRefreshGuideType()
 	end)
 
 	ClientMsg.ConnectLocalPlayerInventoryUpdate(function()
-		RefreshGuideType()
+		ForceRefreshGuideType()
 	end)
 
 	ClientMsg.ConnectLocalPlayerSkillLevelUpdate(function()
-		RefreshGuideType()
+		ForceRefreshGuideType()
 	end)
 
 	ClientMsg.ConnectBrainrotQueueUpdate(function()
-		RefreshGuideType()
+		ForceRefreshGuideType()
 	end)
 
 	ClientMsg.ConnectPlayerHomeInfoUpdate(function(playerId: number)
 		local lp = localPlayer
 		if lp and playerId == lp.UserId then
-			RefreshGuideType()
+			ForceRefreshGuideType()
 		end
 	end)
 
 	ClientMsg.ConnectLocalPlayerCurrencyUpdate(function()
-		RefreshGuideType()
+		ForceRefreshGuideType()
 	end)
 
 	ClientMsg.ConnectCloseWindow(function()
-		RefreshGuideType()
+		ForceRefreshGuideType()
 	end)
 
 	NetMsg.ConnectNotifyGuideProgressInfo(function(guideProgressInfo: GameConfig.GuideProgressSaveInfo)
