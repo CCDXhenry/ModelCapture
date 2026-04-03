@@ -21,8 +21,8 @@ local UIManager = require(clientScripts:FindFirstChild("UIManager"))
 local initialized = false
 local lastGuideType = GameConfig.GuideType.None
 local guideArrowModel: Model? = nil
-local guideArrowStartPart: BasePart? = nil
-local guideArrowEndPart: BasePart? = nil
+local guideArrowStartAttachment: Attachment? = nil
+local guideArrowEndAttachment: Attachment? = nil
 local lastGuideTypeRefreshAt = 0
 local lastArrowTargetRefreshAt = 0
 local cachedArrowGuideType = GameConfig.GuideType.None
@@ -51,9 +51,6 @@ local function ApplyGuideArrowPhysics(root: Instance)
 		end
 	end
 end
-
--- 终点承载 Part（透明），与起点分离 Beam 才能拉满世界距离
-local GUIDE_BEAM_END_ANCHOR_SIZE = 0.2
 
 local function HasBrainrotPlacedOnHome(info: GameConfig.ClientLocalPlayerInfo): boolean
 	for _, placed in info.homeInfo.placedModels do
@@ -327,8 +324,20 @@ local function GetLocalPlayerHrp(): BasePart?
 	return character:FindFirstChild("HumanoidRootPart") :: BasePart?
 end
 
+local function UpdateAttachmentsRotation()
+	local startAttachment = guideArrowStartAttachment
+	local endAttachment = guideArrowEndAttachment
+	if startAttachment == nil or endAttachment == nil then
+		return
+	end
+	local rotation: CFrame = CFrame.new(startAttachment.Position, endAttachment.Position)
+		:ToWorldSpace(CFrame.Angles(0, 0, math.rad(90))).Rotation
+	startAttachment.CFrame = rotation + startAttachment.Position
+	endAttachment.CFrame = rotation + endAttachment.Position
+end
+
 local function UpdateGuideArrow()
-	if guideArrowModel == nil or guideArrowStartPart == nil or guideArrowEndPart == nil then
+	if guideArrowModel == nil or guideArrowStartAttachment == nil or guideArrowEndAttachment == nil then
 		return
 	end
 	local guideType = ClientGameInfo.GetCurrentGuideType()
@@ -358,8 +367,9 @@ local function UpdateGuideArrow()
 	end
 	local startPos = hrp.Position
 	local endPos = target + Vector3.new(0, GameConfig.GuideArrowYOffset, 0)
-	guideArrowStartPart.CFrame = CFrame.new(startPos)
-	guideArrowEndPart.CFrame = CFrame.new(endPos)
+	guideArrowStartAttachment.WorldCFrame = CFrame.new(startPos)
+	guideArrowEndAttachment.WorldCFrame = CFrame.new(endPos)
+	UpdateAttachmentsRotation()
 	guideArrowModel.Parent = workspace
 end
 
@@ -455,45 +465,42 @@ local function TryCreateArrowModel()
 		warn("[GuideManager] GuideArrow model not found:", GameConfig.GuideAssetName.ModelArrow)
 		return
 	end
-	if not template:IsA("BasePart") then
-		warn("[GuideManager] GuideArrow root must be a BasePart, got", template.ClassName)
+	if not (template:IsA("Model") or template:IsA("BasePart")) then
+		warn("[GuideManager] GuideArrow root must be Model or BasePart, got", template.ClassName)
 		return
 	end
-	local startPart = template:Clone() :: BasePart
-	startPart.Name = "GuideArrowStart"
 
-	local beam = startPart:FindFirstChild("ArrowBeam")
-	local startAtt = startPart:FindFirstChild("StartAttachment")
-	local endAtt = startPart:FindFirstChild("EndAttachment")
+	local clone = template:Clone()
+	local container: Model
+	if clone:IsA("Model") then
+		container = clone :: Model
+		container.Name = "ClientGuideArrow"
+	else
+		local rootPart = clone :: BasePart
+		rootPart.Name = "GuideArrowRoot"
+		container = Instance.new("Model")
+		container.Name = "ClientGuideArrow"
+		rootPart.Parent = container
+	end
+
+	local beam = container:FindFirstChild("ArrowBeam", true)
+	local startAtt = container:FindFirstChild("StartAttachment", true)
+	local endAtt = container:FindFirstChild("EndAttachment", true)
 	if not (beam and beam:IsA("Beam") and startAtt and startAtt:IsA("Attachment") and endAtt and endAtt:IsA("Attachment")) then
-		warn("[GuideManager] GuideArrow needs ArrowBeam, StartAttachment, EndAttachment under root Part")
-		startPart:Destroy()
+		warn("[GuideManager] GuideArrow needs ArrowBeam, StartAttachment, EndAttachment in hierarchy")
+		container:Destroy()
 		return
 	end
-
-	local endPart = Instance.new("Part")
-	endPart.Name = "GuideArrowEnd"
-	endPart.Size = Vector3.new(GUIDE_BEAM_END_ANCHOR_SIZE, GUIDE_BEAM_END_ANCHOR_SIZE, GUIDE_BEAM_END_ANCHOR_SIZE)
-	endPart.Transparency = 1
-	endPart.Shape = Enum.PartType.Ball
-
-	endAtt.Parent = endPart
-	endAtt.Position = Vector3.zero
-	startAtt.Position = Vector3.zero
 
 	beam.Attachment0 = startAtt
 	beam.Attachment1 = endAtt
 	beam.Enabled = true
 
-	local container = Instance.new("Model")
-	container.Name = "ClientGuideArrow"
-	startPart.Parent = container
-	endPart.Parent = container
 	ApplyGuideArrowPhysics(container)
 
 	guideArrowModel = container
-	guideArrowStartPart = startPart
-	guideArrowEndPart = endPart
+	guideArrowStartAttachment = startAtt
+	guideArrowEndAttachment = endAtt
 end
 
 function GuideManager.Init()
