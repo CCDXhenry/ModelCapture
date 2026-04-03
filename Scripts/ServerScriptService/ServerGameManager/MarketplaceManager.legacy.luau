@@ -12,6 +12,15 @@ local NetMsg = require(sharedScripts:FindFirstChild("NetMsg"))
 local players: Players = game:GetService("Players")
 local marketplaceService: MarketplaceService = game:GetService("MarketplaceService")
 
+-- 付费随机策略拒付：运行时引擎有 PurchaseDenied 则使用；否则 typings/旧版无此枚举项，回退 NotProcessedYet。
+local function getPolicyDeniedPurchaseDecision(): Enum.ProductPurchaseDecision
+	local productPurchaseDecisionAny: any = Enum.ProductPurchaseDecision
+	if productPurchaseDecisionAny.PurchaseDenied ~= nil then
+		return productPurchaseDecisionAny.PurchaseDenied :: Enum.ProductPurchaseDecision
+	end
+	return Enum.ProductPurchaseDecision.NotProcessedYet
+end
+
 local function GrantShopBundleReward(
 	player: Player,
 	reward: GameConfig.RewardInfo,
@@ -105,12 +114,12 @@ local function GrantShopBundleReward(
 	end
 end
 
-local function GrantShopBundleByProductId(player: Player, receiptInfo: GameConfig.ReceiptInfo): (boolean, boolean)
+local function GrantShopBundleByProductId(player: Player, receiptInfo: GameConfig.ReceiptInfo): (boolean, boolean, boolean)
 	local productId = receiptInfo.ProductId
 	local purchaseId = receiptInfo.PurchaseId
 	local playerInfo: GameConfig.PlayerInfo? = ServerGameInfo.GetPlayerInfo(player)
 	if playerInfo == nil then
-		return false, false
+		return false, false, false
 	end
 	for _, bundleId in ipairs(GameConfig.ShopBundleList) do
 		local bundleData = GameConfig.ShopBundleById[bundleId]
@@ -127,8 +136,11 @@ local function GrantShopBundleByProductId(player: Player, receiptInfo: GameConfi
 				continue
 			end
 			local shopBundleId = bundleData.config.id
+			if bundleData.config.arePaidRandomItemsRestricted ~= 0 and playerInfo.playerConfigInfo.arePaidRandomItemsRestricted then
+				return false, false, true
+			end
 			if bundleData.config.canRepurchased == 0 and playerInfo.ownedShopBundleMap[shopBundleId] == true then
-				return false, true
+				return false, true, false
 			end
 			local function getGrantTipKey(reward: GameConfig.RewardInfo): string
 				return `shopgrant_{purchaseId}_{shopBundleId}_{reward.rewardType}_{reward.rewardId}`
@@ -147,10 +159,10 @@ local function GrantShopBundleByProductId(player: Player, receiptInfo: GameConfi
 			end
 			playerInfo.ownedShopBundleMap[shopBundleId] = true
 			playerInfo.playerInfoChanged = true
-			return true, false
+			return true, false, false
 		end
 	end
-	return false, false
+	return false, false, false
 end
 
 local function OnPromptGamePassPurchaseFinished(player: Instance, gamePassId: number, wasPurchased: boolean)
@@ -194,13 +206,16 @@ local function ProcessReceipt(receiptInfo: GameConfig.ReceiptInfo): Enum.Product
 		AnalyticsTool.AddProductPurchaseEvent(player, receiptInfo)
 		return Enum.ProductPurchaseDecision.PurchaseGranted
 	else
-		local ok, denied = GrantShopBundleByProductId(player, receiptInfo)
+		local ok, denied, policyDenied = GrantShopBundleByProductId(player, receiptInfo)
 		if ok then
 			AnalyticsTool.AddProductPurchaseEvent(player, receiptInfo)
 			return Enum.ProductPurchaseDecision.PurchaseGranted
 		end
+		if policyDenied then
+			return getPolicyDeniedPurchaseDecision()
+		end
 		if denied then
-			-- 项目当前枚举类型不包含 PurchaseDenied，使用 NotProcessedYet 表示“不处理”，
+			-- 使用 NotProcessedYet 表示“不处理”，
 			-- 同时由 GrantShopBundleByProductId 内的 owned 判断保证不会再次发放奖励。
 			return Enum.ProductPurchaseDecision.NotProcessedYet
 		end

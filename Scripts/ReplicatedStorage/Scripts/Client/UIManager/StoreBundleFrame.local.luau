@@ -14,6 +14,7 @@ local ClientMsg = require(clientScripts:WaitForChild("ClientMsg"))
 local NumberExtension = require(coreSharedScripts:WaitForChild("NumberExtension"))
 local TranslationTool = require(coreClientScripts:WaitForChild("TranslationTool"))
 local GameConfig = require(sharedScripts:WaitForChild("GameConfig"))
+local NetMsg = require(sharedScripts:WaitForChild("NetMsg"))
 local UIManager = require(clientScripts:WaitForChild("UIManager"))
 local ClientGameInfo = require(clientScripts:WaitForChild("ClientGameInfo"))
 
@@ -109,6 +110,18 @@ local function getBundleBeforeDiscountPrice(bundleConfig: GameConfig.ShopBundleC
 		return bundleConfig.beforeDiscountPrice3
 	end
 	return 0
+end
+
+local function shouldHideBundleForPaidRandomPolicy(
+	bundleData: GameConfig.ShopBundleData,
+	playerInfo: GameConfig.ClientLocalPlayerInfo
+): boolean
+	
+	if bundleData.config.arePaidRandomItemsRestricted == 0 then
+		return false
+	end
+
+	return playerInfo.playerConfigInfo.arePaidRandomItemsRestricted == true
 end
 
 local function getBundleRewardsByProductIndex(bundleData: GameConfig.ShopBundleData, productIndex: number): { GameConfig.RewardInfo }
@@ -539,24 +552,60 @@ mixBundleTemplate.Visible = false
 littleElfChestBundleTemplate.Visible = false
 singleBundleTemplate.Visible = false
 
-for index, bundleId in ipairs(GameConfig.ShopBundleList) do
-	local bundleData = GameConfig.ShopBundleById[bundleId]
-	if not bundleData then
-		continue
+local shopBundleFramesBuilt = false
+
+local function buildShopBundleFrames(): boolean
+	local playerInfo = ClientGameInfo.GetLocalPlayerInfo()
+	if not playerInfo then
+		return false
 	end
-	local bundleType = bundleData.config.type
-	if bundleType == SHOP_BUNDLE_TYPE_MIX then
-		createMixBundleFrame(bundleData, index)
-	elseif bundleType == SHOP_BUNDLE_TYPE_LITTLE_ELF_CHEST then
-		createLittleElfChestBundleFrame(bundleData, index)
-	elseif bundleType == SHOP_BUNDLE_TYPE_SINGLE then
-		createSingleBundleFrame(bundleData, index)
+	local visibleIndex = 0
+	for _, bundleId in ipairs(GameConfig.ShopBundleList) do
+		local bundleData = GameConfig.ShopBundleById[bundleId]
+		if not bundleData then
+			continue
+		end
+		if shouldHideBundleForPaidRandomPolicy(bundleData, playerInfo) then
+			continue
+		end
+		visibleIndex += 1
+		local bundleType = bundleData.config.type
+		if bundleType == SHOP_BUNDLE_TYPE_MIX then
+			createMixBundleFrame(bundleData, visibleIndex)
+		elseif bundleType == SHOP_BUNDLE_TYPE_LITTLE_ELF_CHEST then
+			createLittleElfChestBundleFrame(bundleData, visibleIndex)
+		elseif bundleType == SHOP_BUNDLE_TYPE_SINGLE then
+			createSingleBundleFrame(bundleData, visibleIndex)
+		end
 	end
+	return true
 end
 
-updateCanvas()
+local function tryFinalizeShopBundleFrames(): boolean
+	if shopBundleFramesBuilt then
+		return true
+	end
+	if not buildShopBundleFrames() then
+		return false
+	end
+	shopBundleFramesBuilt = true
+	updateCanvas()
+	updateRepurchaseMask()
+	return true
+end
 
-updateRepurchaseMask()
+if not tryFinalizeShopBundleFrames() then
+	local conn: RBXScriptConnection?
+	conn = NetMsg.ConnectNotifyPlayerInfoInit(function()
+		if conn then
+			conn:Disconnect()
+		end
+		tryFinalizeShopBundleFrames()
+	end)
+	task.defer(function()
+		tryFinalizeShopBundleFrames()
+	end)
+end
 
 ClientMsg.ConnectBrainrotQueueUpdate(function(_queue: { GameConfig.BrainrotQueueItem })
 	if isWindowClosed then

@@ -616,6 +616,8 @@ export type ShopBundleConfigurationData = {
 	name_t: string,
 	sortId: number,
 	bgIconId: string,
+	-- 非 0：受 PolicyService.ArePaidRandomItemsRestricted 约束的付费随机类 bundle
+	arePaidRandomItemsRestricted: number,
 }
 
 export type ShopBundleData = {
@@ -722,7 +724,10 @@ export type SettingInfo = {
 	decelerationOn: boolean,
 }
 --玩家配置信息
-export type PlayerConfigInfo = {}
+export type PlayerConfigInfo = {
+	-- PolicyService:GetPolicyInfoForPlayerAsync → ArePaidRandomItemsRestricted
+	arePaidRandomItemsRestricted: boolean,
+}
 
 -- [抓模型] 持久化背包信息 (存档用)
 export type PlayerInventorySaveInfo = {

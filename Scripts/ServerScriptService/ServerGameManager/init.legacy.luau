@@ -33,6 +33,7 @@ local players: Players = game:GetService("Players")
 local localizationService: LocalizationService = game:GetService("LocalizationService")
 local runService: RunService = game:GetService("RunService")
 local configService: ConfigService = game:GetService("ConfigService")
+local policyService: PolicyService = game:GetService("PolicyService")
 
 local AutoSavePlayerInfoInterval: number = 30 --自动保存玩家信息间隔时间
 local GAME_TIME_UPDATE_INTERVAL = 0.25
@@ -145,7 +146,17 @@ local function OnPlayerAdded(player: Player)
 		--老玩家不参与AB测试
 		_config = configService:GetConfigAsync()
 	end
-	local playerConfigInfo: GameConfig.PlayerConfigInfo = {}
+	-- PolicyService：付费随机物品策略；pcall 失败时视为受限（偏合规）
+	local arePaidRandomItemsRestricted = true
+	local policyOk, policyInfo = pcall(function()
+		return policyService:GetPolicyInfoForPlayerAsync(player)
+	end)
+	if policyOk and typeof(policyInfo) == "table" then
+		arePaidRandomItemsRestricted = policyInfo.ArePaidRandomItemsRestricted == true
+	end
+	local playerConfigInfo: GameConfig.PlayerConfigInfo = {
+		arePaidRandomItemsRestricted = arePaidRandomItemsRestricted,
+	}
 	ServerGameInfo.InitPlayerInfo(player, playerSaveInfo, countryRegion, playerConfigInfo)
 	--检查登录天数
 	local nowDate: DateTimeExtension.DateTimeTable = DateTimeExtension.GetNowDate()
