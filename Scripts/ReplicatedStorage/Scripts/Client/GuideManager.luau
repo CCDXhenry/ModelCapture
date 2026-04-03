@@ -399,15 +399,21 @@ local function ResolveGuideType(): number
 		return GameConfig.GuideType.None
 	end
 
+	-- 放置引导完成后：未满 50 金币即进入「收集金币」引导；满 50 后引导去升级（大厅/商店内）
 	local coin = info.currencies["1"] or 0
-	if coin >= GameConfig.GuideBricksIntroMinCoin and info.shopInfo.maxBricksLevel <= 1 then
+	local minCoin = GameConfig.GuideBricksIntroMinCoin
+	if info.shopInfo.maxBricksLevel > 1 then
+		return GameConfig.GuideType.None
+	end
+
+	if coin >= minCoin then
 		if UIManager.IsWindowShowing(UIManager.WindowId.UpgradeShop) then
 			return GameConfig.GuideType.TutorialBricksShop
 		end
 		return GameConfig.GuideType.TutorialBricksLobby
 	end
 
-	return GameConfig.GuideType.None
+	return GameConfig.GuideType.TutorialBricksLobby
 end
 
 local function RefreshGuideType()

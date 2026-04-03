@@ -54,7 +54,8 @@ local GameTexts = {
 	GuideTutorialBrainrotPickup = { key = "", source = "Pick up a brainrot on the island." },
 	GuideTutorialBrainrotPlace = { key = "", source = "Place it on your home stand." },
 	GuideTutorialBrainrotPlaceSlot = { key = "", source = "Tap the slot to equip your brainrot again." },
-	GuideTutorialBricksLobby = { key = "", source = "Open the shop to upgrade max bricks." },
+	GuideTutorialBricksLobbyCollect = { key = "GuideTutorialBricksLobbyCollect", source = "Collect Coins: {1}/{2}" },
+	GuideTutorialBricksLobby = { key = "GuideTutorialBricksLobbyOpenShop", source = "Open the shop to upgrade max bricks." },
 	GuideTutorialBricksShop = { key = "", source = "Tap here to upgrade bricks capacity." },
 	-- Sell shop (Billboard options)
 	SellShopOptionIndex = { key = "SellShopOptionIndex", source = "{1}." },
