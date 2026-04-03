@@ -19,6 +19,7 @@ local ClientMsg = require(clientScripts:FindFirstChild("ClientMsg"))
 local TranslationTool = require(core:WaitForChild("Scripts"):WaitForChild("Client"):FindFirstChild("TranslationTool"))
 local GameTexts = require(sharedScripts_game:FindFirstChild("GameTexts"))
 local userInputService = game:GetService("UserInputService")
+local tweenService: TweenService = game:GetService("TweenService")
 
 local lobbyFrame: Frame = script.Parent
 local coinFrame: Frame = lobbyFrame:FindFirstChild("CoinFrame") :: Frame
@@ -47,12 +48,68 @@ local storeBundleButton: GuiButton? = if storeBundleEntryFrame then (storeBundle
 local maxBricksAddButton: GuiButton? = maxBricksFrame:FindFirstChild("AddButton") :: any
 local walkSpeedAddButton: GuiButton? = walkSpeedFrame:FindFirstChild("AddButton") :: any
 
+local LowBricksThreshold: number = 10
+local LowBricksWarningColor = Color3.fromRGB(255, 70, 70)
+local MaxBricksWarningGrowTweenInfo: TweenInfo = TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+local MaxBricksWarningShrinkTweenInfo: TweenInfo = TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+local MaxBricksWarningPulseScale: number = 1.12
 local defaultWalkSpeedColor = walkSpeedText.TextColor3
+local defaultMaxBricksColor = maxBricksText.TextColor3
+local maxBricksTextScale: UIScale = (maxBricksText:FindFirstChildOfClass("UIScale") or Instance.new("UIScale")) :: UIScale
+if maxBricksTextScale.Parent ~= maxBricksText then
+	maxBricksTextScale.Parent = maxBricksText
+end
+maxBricksTextScale.Scale = 1
+local maxBricksWarningGrowTween: Tween? = nil
+local maxBricksWarningShrinkTween: Tween? = nil
 local localPlayer = game:GetService("Players").LocalPlayer
 local humSpeedConnection: RBXScriptConnection? = nil
 local DecelerationOnImage = GameConfig.DecelerationOnImage
 local DecelerationOffImage = GameConfig.DecelerationOffImage
 local DecelerationButtonShowSpeed = GameConfig.DecelerationButtonShowSpeed
+
+local function ResetMaxBricksWarningAnimation()
+	if maxBricksWarningGrowTween ~= nil then
+		maxBricksWarningGrowTween:Cancel()
+		maxBricksWarningGrowTween = nil
+	end
+	if maxBricksWarningShrinkTween ~= nil then
+		maxBricksWarningShrinkTween:Cancel()
+		maxBricksWarningShrinkTween = nil
+	end
+	maxBricksTextScale.Scale = 1
+end
+
+local function PlayMaxBricksWarningAnimation()
+	ResetMaxBricksWarningAnimation()
+	local growTween = tweenService:Create(maxBricksTextScale, MaxBricksWarningGrowTweenInfo, { Scale = MaxBricksWarningPulseScale })
+	local shrinkTween = tweenService:Create(maxBricksTextScale, MaxBricksWarningShrinkTweenInfo, { Scale = 1 })
+	maxBricksWarningGrowTween = growTween
+	maxBricksWarningShrinkTween = shrinkTween
+	local growConnection: RBXScriptConnection? = nil
+	local shrinkConnection: RBXScriptConnection? = nil
+	growConnection = growTween.Completed:Connect(function(playbackState: Enum.PlaybackState)
+		if growConnection ~= nil then
+			growConnection:Disconnect()
+			growConnection = nil
+		end
+		if playbackState ~= Enum.PlaybackState.Completed or maxBricksWarningGrowTween ~= growTween then
+			return
+		end
+		maxBricksWarningGrowTween = nil
+		shrinkConnection = shrinkTween.Completed:Connect(function()
+			if shrinkConnection ~= nil then
+				shrinkConnection:Disconnect()
+				shrinkConnection = nil
+			end
+			if maxBricksWarningShrinkTween == shrinkTween then
+				maxBricksWarningShrinkTween = nil
+			end
+		end)
+		shrinkTween:Play()
+	end)
+	growTween:Play()
+end
 
 -- RebirthFrame 红点（感叹号圆圈）
 local rebirthRedPoint: GuiObject? = if rebirthFrame then (rebirthFrame:FindFirstChild("RedPoint") :: GuiObject?) else nil
@@ -205,6 +262,14 @@ local function RefreshBricksDisplay()
 	local maxValueStr = NumberExtension.FormatBigNumberAA(maxValue)
 
 	TranslationTool.CustomAutoLocalizeTextLabel(maxBricksText, GameTexts.BricksCurrentMax.source, GameTexts.BricksCurrentMax.key, { bricksStr, maxValueStr })
+	local remainingBricks = bricksAmount
+	if remainingBricks <= LowBricksThreshold then
+		maxBricksText.TextColor3 = LowBricksWarningColor
+		PlayMaxBricksWarningAnimation()
+	else
+		maxBricksText.TextColor3 = defaultMaxBricksColor
+		ResetMaxBricksWarningAnimation()
+	end
 end
 
 --刷新升级数值

@@ -16,6 +16,8 @@ local GameTexts = {
 	GiftRequestBody = { key = "GiftRequestBody", source = "{1} Wants to gift you {2} [{3}]!" },
 	GiftSuccess = { key = "", source = "Gift completed!" },
 	CountdownFormat = { key = "CountdownFormat", source = "{1}s" },
+	BrainrotCountdownSecondsOnly = { key = "BrainrotCountdownSecondsOnly", source = "{1}" },
+	BrainrotCountdownMinutesSeconds = { key = "BrainrotCountdownMinutesSeconds", source = "{1}m {2}s" },
 	GiftFailedFormat = { key = "GiftFailedFormat", source = "Gift failed: {1}" },
 	GiftAction = { key = "", source = "Gift" },
 	SpeedWithNumber = { key = "SpeedWithNumber", source = "{1} Studs/s" },

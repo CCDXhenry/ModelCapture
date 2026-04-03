@@ -35,12 +35,23 @@ local uIFolder = replicatedStorage:WaitForChild("UI")
 local brainrotInfoUIParams = uIFolder:WaitForChild("BrainrotInfoUI") :: BillboardGui
 local littleElfChestInfoUIParams = uIFolder:WaitForChild("LittleElfChestInfoUI") :: BillboardGui
 local BILLBOARD_TRACKED_ATTR = "BillboardTracked"
+local COUNTDOWN_SECONDS_PER_MINUTE = 60
 
 local function EnsureBillboardTracked(gui: BillboardGui)
 	if gui:GetAttribute(BILLBOARD_TRACKED_ATTR) ~= true then
 		gui:SetAttribute(BILLBOARD_TRACKED_ATTR, true)
 	end
 	BillboardManager.Track(gui)
+end
+
+local function GetBrainrotCountdownTextData(remainingSeconds: number): (string, string, { string })
+	if remainingSeconds < COUNTDOWN_SECONDS_PER_MINUTE then
+		return GameTexts.BrainrotCountdownSecondsOnly.source, GameTexts.BrainrotCountdownSecondsOnly.key, { tostring(remainingSeconds) }
+	end
+
+	local minutes = math.floor(remainingSeconds / COUNTDOWN_SECONDS_PER_MINUTE)
+	local seconds = remainingSeconds % COUNTDOWN_SECONDS_PER_MINUTE
+	return GameTexts.BrainrotCountdownMinutesSeconds.source, GameTexts.BrainrotCountdownMinutesSeconds.key, { tostring(minutes), tostring(seconds) }
 end
 
 local AttachInfoUIToModel -- 向前声明
@@ -225,7 +236,8 @@ function AttachInfoUIToModel(targetParent: Instance, adornee: BasePart, configId
 					timerTextLabel.Visible = visible
 					timerImgLabel.Visible = visible
 					if visible then
-						timerTextLabel.Text = tostring(remaining)
+						local source, key, args = GetBrainrotCountdownTextData(remaining)
+						TranslationTool.CustomAutoLocalizeTextLabel(timerTextLabel, source, key, args)
 					end
 				end
 

@@ -53,7 +53,7 @@ local function updateCanvas()
 			end
 		end
 	end
-	scrollingFrame.CanvasSize = UDim2.new(0, 0, 0, contentHeight * 2)
+	scrollingFrame.CanvasSize = UDim2.new(0, 0, 0, contentHeight * 3)
 end
 
 local function getQualityColor(quality: number): Color3
