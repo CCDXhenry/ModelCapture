@@ -189,6 +189,37 @@ local function NotifyQueueUpdate(player: Player, queue: { GameConfig.BrainrotQue
 	NetMsg.FireNotifyBrainrotQueueUpdate(player, queue)
 end
 
+local function PickWeightedRewardEntry(rewardPool: { any }, chestConfigId: number): any?
+	local totalWeight = 0
+	for _, entry in ipairs(rewardPool) do
+		local weight = entry.weight
+		if type(weight) == "number" and weight > 0 then
+			totalWeight += weight
+		end
+	end
+
+	if totalWeight <= 0 then
+		warn("[BrainrotQueueManager] OpenChest error: invalid total weight for chest", chestConfigId)
+		return nil
+	end
+
+	local threshold = math.random() * totalWeight
+	local accumulated = 0
+	local lastValidEntry: any? = nil
+	for _, entry in ipairs(rewardPool) do
+		local weight = entry.weight
+		if type(weight) == "number" and weight > 0 then
+			accumulated += weight
+			lastValidEntry = entry
+			if threshold <= accumulated then
+				return entry
+			end
+		end
+	end
+
+	return lastValidEntry
+end
+
 -- shouldEnforceMaxCapacity:
 -- - true: 超过 MaxCapacity 则拒绝入队（岛屿“拿在手上转成队列/背包tool”的流程）
 -- - false: 允许队列突破上限（例如商店发放），UI 仍只显示前 9 个。
@@ -363,7 +394,10 @@ function BrainrotQueueManager.OpenChest(player: Player, uid: string)
 		return
 	end
 
-	local rewardEntry = rewardPool[math.random(1, #rewardPool)]
+	local rewardEntry = PickWeightedRewardEntry(rewardPool, chestItem.configId)
+	if not rewardEntry then
+		return
+	end
 	local rewardType = rewardEntry.itemType
 	local rewardId = rewardEntry.itemId
 
