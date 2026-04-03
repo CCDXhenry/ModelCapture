@@ -3,6 +3,7 @@ local GameTexts = {
 	PickUpBrainrot = { key = "", source = "Pick up" },
 	YieldPerSecond = { key = "YieldPerSecond", source = "{1}/s" },
 	LevelWithNumber = { key = "LevelWithNumber", source = "Lv.{1}" },
+	LevelWithFullWidthParentheses = { key = "LevelWithFullWidthParentheses", source = "（Lv.{1}）" },
 	InsufficientCoin = { key = "", source = "Insufficient Coins!" },
 	InsufficientBrainrot = { key = "", source = "You don't have a brainrot!" },
 	SellWithPrice = { key = "SellWithPrice", source = "Sell ({1})" },
@@ -29,6 +30,8 @@ local GameTexts = {
 	RebirthMultiplierFormat = { key = "RebirthMultiplierFormat", source = "Rebirth {1} ({2}x Coin)" },
 	RebirthCountBracket = { key = "RebirthCountBracket", source = "Rebirth [{1}]" },
 	RebirthCountPlain = { key = "RebirthCountPlain", source = "Rebirth {1}" },
+	-- LobbyFrame.RebirthFrame 红点（感叹号圆圈）占位本地化键：当前不需要在界面显示文本
+	RebirthRedPoint = { key = "ReplicatedStorage.UI.LobbyFrame.RebirthFrame.RedPoint", source = "" },
 	CoinMultiplierText = { key = "CoinMultiplierText", source = "{1}x Coin" },
 	SpeedLevelProgress = { key = "SpeedLevelProgress", source = "Speed Lv {1}/{2}" },
 	BricksLevelProgress = { key = "BricksLevelProgress", source = "Bricks Lv {1}/{2}" },

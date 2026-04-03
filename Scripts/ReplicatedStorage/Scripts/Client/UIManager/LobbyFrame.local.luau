@@ -31,8 +31,10 @@ guideTextScript.Parent = guideText
 
 local maxBricksFrame: Frame = lobbyFrame:FindFirstChild("MaxBricksFrame") :: Frame
 local maxBricksText: TextLabel = maxBricksFrame:FindFirstChild("NumberText") :: TextLabel
+local maxBricksLvText: TextLabel = maxBricksFrame:FindFirstChild("LvText") :: TextLabel
 local walkSpeedFrame: Frame = lobbyFrame:FindFirstChild("WalkSpeedFrame") :: Frame
 local walkSpeedText: TextLabel = walkSpeedFrame:FindFirstChild("NumberText") :: TextLabel
+local walkSpeedLvText: TextLabel = walkSpeedFrame:FindFirstChild("LvText") :: TextLabel
 local decelerationButton: ImageButton? = lobbyFrame:FindFirstChild("DecelerationButton") :: ImageButton?
 local decelerationButtonTextLabel: TextLabel? = if decelerationButton then (decelerationButton:FindFirstChild("TextLabel") :: TextLabel?) else nil
 local bottomButtonsFrame = lobbyFrame:FindFirstChild("BottomButtonsFrame")
@@ -51,6 +53,41 @@ local humSpeedConnection: RBXScriptConnection? = nil
 local DecelerationOnImage = GameConfig.DecelerationOnImage
 local DecelerationOffImage = GameConfig.DecelerationOffImage
 local DecelerationButtonShowSpeed = GameConfig.DecelerationButtonShowSpeed
+
+-- RebirthFrame 红点（感叹号圆圈）
+local rebirthRedPoint: GuiObject? = if rebirthFrame then (rebirthFrame:FindFirstChild("RedPoint") :: GuiObject?) else nil
+if rebirthRedPoint == nil and rebirthFrame then
+	rebirthRedPoint = rebirthFrame:FindFirstChild("RedPointFrame") :: GuiObject?
+end
+if rebirthRedPoint == nil and rebirthFrame then
+	rebirthRedPoint = rebirthFrame:FindFirstChild("RedPointCircle") :: GuiObject?
+end
+
+local DEFAULT_REBIRTH_REQUIRED_LEVEL = 1
+
+local function IsRebirthRedPointConditionMet(): boolean
+	local localPlayerInfo = ClientGameInfo.GetLocalPlayerInfo()
+	if localPlayerInfo == nil then
+		return false
+	end
+
+	local rebirthLevel = localPlayerInfo.shopInfo.rebirthLevel or 0
+	local nextRebirthData = GameConfig.RebirthMap[rebirthLevel + 1]
+	if not nextRebirthData then
+		return false
+	end
+
+	local currentSpeedLevel = localPlayerInfo.shopInfo.walkSpeedLevel or DEFAULT_REBIRTH_REQUIRED_LEVEL
+	local currentBricksLevel = localPlayerInfo.shopInfo.maxBricksLevel or DEFAULT_REBIRTH_REQUIRED_LEVEL
+	return currentSpeedLevel >= nextRebirthData.speedLv and currentBricksLevel >= nextRebirthData.brickLv
+end
+
+local function RefreshRebirthRedPointView()
+	if rebirthRedPoint == nil then
+		return
+	end
+	rebirthRedPoint.Visible = IsRebirthRedPointConditionMet()
+end
 
 local function GetIsDecelerationOn(): boolean
 	local localPlayerInfo = ClientGameInfo.GetLocalPlayerInfo()
@@ -180,8 +217,24 @@ local function RefreshUpgradeValues()
 	-- MaxBricks done in RefreshBricksDisplay
 	RefreshBricksDisplay()
 
+	-- Level text (用于显示“（Lv.10）”)
+	local maxBricksLevel = localPlayerInfo.shopInfo.maxBricksLevel or 1
+	TranslationTool.CustomAutoLocalizeTextLabel(
+		maxBricksLvText,
+		GameTexts.LevelWithFullWidthParentheses.source,
+		GameTexts.LevelWithFullWidthParentheses.key,
+		{ tostring(maxBricksLevel) }
+	)
+
 	-- WalkSpeed
 	local walkSpeedLevel = localPlayerInfo.shopInfo.walkSpeedLevel or 1
+	TranslationTool.CustomAutoLocalizeTextLabel(
+		walkSpeedLvText,
+		GameTexts.LevelWithFullWidthParentheses.source,
+		GameTexts.LevelWithFullWidthParentheses.key,
+		{ tostring(walkSpeedLevel) }
+	)
+
 	local isDecelerationOn = localPlayerInfo.settingInfo.decelerationOn == true
 	local targetWalkSpeedLevel = if isDecelerationOn then 1 else walkSpeedLevel
 	local walkSpeedConfig = GameConfig.Shop.WalkSpeed
@@ -242,6 +295,7 @@ local function OnLocalPlayerInfoInit()
 	RefreshView()
 	RefreshRebirthDisplay()
 	RefreshDecelerationButtonView()
+	RefreshRebirthRedPointView()
 end
 
 local function ConnectHumanoid(char: Model)
@@ -271,6 +325,13 @@ local function OnLocalPlayerSkillLevelChanged(skillType: number, level: number)
 	if skillType == GameConfig.SkillType.RebirthLevel then
 		RefreshRebirthDisplay()
 	end
+
+	if skillType == GameConfig.SkillType.RebirthLevel
+		or skillType == GameConfig.SkillType.WalkSpeed
+		or skillType == GameConfig.SkillType.MaxBricks
+	then
+		RefreshRebirthRedPointView()
+	end
 end
 
 UIAdapter.AddAdaptiveFrame(lobbyFrame, UIAdapter.AdaptiveType.FullScreen)
@@ -278,6 +339,7 @@ UIAdapter.AddAdaptiveFrame(lobbyFrame, UIAdapter.AdaptiveType.FullScreen)
 RefreshView()
 RefreshRebirthDisplay()
 RefreshDecelerationButtonView()
+RefreshRebirthRedPointView()
 
 ClientMsg.ConnectLocalPlayerCurrencyUpdate(OnLocalPlayerCoinCountChanged)
 ClientMsg.ConnectLocalPlayerInfoInit(OnLocalPlayerInfoInit)
