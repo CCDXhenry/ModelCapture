@@ -155,13 +155,14 @@ function ServerGameInfo.InitPlayerInfo(
 
 	NetMsg.FireNotifyPlayerInfoInit(player, clientLocalPlayerSaveInfo, clientOtherPlayerSyncInfoMap, playerConfigInfo)
 	NetMsg.FireNotifyPlayersOtherPlayerInfoInit(player.UserId, clientOtherPlayerSaveInfo)
+	NetMsg.FireNotifyPlayerCarriedUpdate(player, playerInfo.carriedInfo)
 
 	-- 应用行走速度
 	ServerGameInfo.ApplyWalkSpeed(player)
 
 	ServerMsg.FireLoadBackpackTools(player)
 
-	player.CharacterAdded:Connect(function(character)
+	local function OnCharacterReady(character: Model)
 		task.wait(0.2)
 		ServerMsg.FireLoadBackpackTools(player)
 		ServerGameInfo.SetPlayerBricksToMax(player)
@@ -175,7 +176,11 @@ function ServerGameInfo.InitPlayerInfo(
 				analyticsTool().LogPlayerDeath(player, totalBricks, remainingBricks, islandId)
 			end)
 		end
-	end)
+	end
+	player.CharacterAdded:Connect(OnCharacterReady)
+	if player.Character then
+		task.defer(OnCharacterReady, player.Character)
+	end
 
 	print("[ServerGameInfo] InitPlayerInfo complete for", player.Name)
 end

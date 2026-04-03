@@ -8,6 +8,7 @@ local runService = game:GetService("RunService")
 local scripts = replicatedStorage:WaitForChild("Scripts")
 local sharedScripts = scripts:WaitForChild("Shared")
 local NetMsg = require(sharedScripts:FindFirstChild("NetMsg"))
+local GameConfig = require(sharedScripts:FindFirstChild("GameConfig"))
 local GameTexts = require(sharedScripts:FindFirstChild("GameTexts"))
 local clientScripts = scripts:WaitForChild("Client")
 local ClientMsg = require(clientScripts:FindFirstChild("ClientMsg"))
@@ -32,7 +33,7 @@ end
 
 local function UpdateInteractionPrompts()
 	local localCharacter = localPlayer.Character
-	local hasLocalBrainrot = HasBrainrot(localCharacter)
+	local hasLocalBrainrot = if GameConfig.EnablePlayerGift then HasBrainrot(localCharacter) else false
 	
 	for _, otherPlayer in ipairs(players:GetPlayers()) do
 		if otherPlayer.Character then
@@ -43,6 +44,10 @@ local function UpdateInteractionPrompts()
 					local prompt = attachment:FindFirstChild("PlayerInteractPrompt") :: ProximityPrompt?
 					if prompt then
 						if otherPlayer.UserId == localPlayer.UserId then
+							prompt.Enabled = false
+							continue
+						end
+						if not GameConfig.EnablePlayerGift then
 							prompt.Enabled = false
 							continue
 						end
@@ -65,24 +70,22 @@ function PlayerInteractClientManager.Init()
 		UpdateInteractionPrompts()
 	end)
 
-	-- 绑定来自服务端的通知以打开本地确认弹窗
-	NetMsg.ConnectNotifyShowGiftConfirm(function(targetPlayerId: number, targetPlayerName: string, brainrotInstanceId: string, giftName: string)
-		ClientMsg.FireShowGiftConfirmPopup(targetPlayerId, targetPlayerName, brainrotInstanceId, giftName)
-	end)
-	
-	-- 收到礼品请求弹窗
-	NetMsg.ConnectNotifyReceiveGiftRequest(function(senderId: number, senderName: string, brainrotName: string, brainrotLevel: number)
-		ClientMsg.FireShowGiftRequestPopup(senderId, senderName, brainrotName, brainrotLevel)
-	end)
-	
-	-- 收到送礼结果
-	NetMsg.ConnectNotifyGiftResult(function(isSuccess: boolean, message: string?)
-		if not isSuccess then
-			-- 根据需求，失败时通过 TopTipText 显示红色报错
-			local source = string.gsub(GameTexts.GiftFailedFormat.source, "{1}", message or "error")
-			ClientMsg.FireShowTopTipText(source, FAILURE_TIPS_COLOR, FAILURE_TIPS_DURATION, {message or "error"}, GameTexts.GiftFailedFormat.key)
-		end
-	end)
+	if GameConfig.EnablePlayerGift then
+		NetMsg.ConnectNotifyShowGiftConfirm(function(targetPlayerId: number, targetPlayerName: string, brainrotInstanceId: string, giftName: string)
+			ClientMsg.FireShowGiftConfirmPopup(targetPlayerId, targetPlayerName, brainrotInstanceId, giftName)
+		end)
+
+		NetMsg.ConnectNotifyReceiveGiftRequest(function(senderId: number, senderName: string, brainrotName: string, brainrotLevel: number)
+			ClientMsg.FireShowGiftRequestPopup(senderId, senderName, brainrotName, brainrotLevel)
+		end)
+
+		NetMsg.ConnectNotifyGiftResult(function(isSuccess: boolean, message: string?)
+			if not isSuccess then
+				local source = string.gsub(GameTexts.GiftFailedFormat.source, "{1}", message or "error")
+				ClientMsg.FireShowTopTipText(source, FAILURE_TIPS_COLOR, FAILURE_TIPS_DURATION, {message or "error"}, GameTexts.GiftFailedFormat.key)
+			end
+		end)
+	end
 end
 
 return PlayerInteractClientManager

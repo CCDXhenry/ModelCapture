@@ -14,6 +14,7 @@ local ClientMsg = require(clientScripts:WaitForChild("ClientMsg"))
 local NumberExtension = require(coreSharedScripts:WaitForChild("NumberExtension"))
 local TranslationTool = require(coreClientScripts:WaitForChild("TranslationTool"))
 local GameConfig = require(sharedScripts:WaitForChild("GameConfig"))
+local GameTexts = require(sharedScripts:WaitForChild("GameTexts"))
 local NetMsg = require(sharedScripts:WaitForChild("NetMsg"))
 local UIManager = require(clientScripts:WaitForChild("UIManager"))
 local ClientGameInfo = require(clientScripts:WaitForChild("ClientGameInfo"))
@@ -504,7 +505,12 @@ local function createLittleElfChestBundleFrame(bundleData: GameConfig.ShopBundle
 
 		local numberTextLabel = button:FindFirstChild("NumberTextLabel") :: TextLabel?
 		if numberTextLabel then
-			localizeText(numberTextLabel, `{rewardCount}x Block`)
+			TranslationTool.CustomAutoLocalizeTextLabel(
+				numberTextLabel,
+				GameTexts.ShopBundleBoxCount.source,
+				GameTexts.ShopBundleBoxCount.key,
+				{ tostring(rewardCount) }
+			)
 		end
 
 		bindProductPurchase(button, productId)

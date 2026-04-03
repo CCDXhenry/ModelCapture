@@ -8,6 +8,7 @@ local core = replicatedStorage:WaitForChild("Core")
 local coreScripts = core:WaitForChild("Scripts")
 local coreClientScripts = coreScripts:WaitForChild("Client")
 
+local GameConfig = require(sharedScripts:WaitForChild("GameConfig"))
 local GameTexts = require(sharedScripts:WaitForChild("GameTexts"))
 local TranslationTool = require(coreClientScripts:WaitForChild("TranslationTool"))
 local BillboardManager = require(clientScripts:WaitForChild("BillboardManager"))
@@ -69,8 +70,32 @@ local function OnIslandDescendantAdded(desc: Instance)
 	elseif desc:IsA("ProximityPrompt") then
 		local parent = desc.Parent
 		if parent and parent.Name == "InteractionAttachment" then
-			-- Picking up brainrots from BrainrotIslandManager
-			TranslationTool.CustomAutoLocalizeProximityPrompt(desc, GameTexts.PickUpBrainrot.source, GameTexts.PickUpBrainrot.key)
+			local holder = parent.Parent
+			if holder and holder:IsA("BasePart") and (holder.Name == "IslandBrainrot" or holder.Name == "IslandChest") then
+				local configId = holder:GetAttribute("ConfigId") :: number?
+				local level = holder:GetAttribute("Level") or 1
+				local itemType = (holder:GetAttribute("ItemType") :: number?) or 1
+				local config: any = nil
+				if itemType == GameConfig.ItemType.LittleElfChest then
+					config = if configId then GameConfig.LittleElfChestIdMap[configId] else nil
+				else
+					config = if configId then GameConfig.BrainrotIdMap[configId] else nil
+				end
+				local displayName: string = if config and config.name_t then config.name_t else holder.Name
+				local levelStr = if itemType == GameConfig.ItemType.LittleElfChest then "???" else tostring(level)
+				local objectTip = GameTexts.BrainrotPickupObjectText
+				TranslationTool.CustomAutoLocalizeProximityPrompt(
+					desc,
+					GameTexts.PickUpBrainrot.source,
+					GameTexts.PickUpBrainrot.key,
+					nil,
+					objectTip.source,
+					objectTip.key,
+					{ displayName, levelStr }
+				)
+			else
+				TranslationTool.CustomAutoLocalizeProximityPrompt(desc, GameTexts.PickUpBrainrot.source, GameTexts.PickUpBrainrot.key)
+			end
 		end
 	end
 end

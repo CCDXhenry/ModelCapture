@@ -45,7 +45,7 @@ GameConfig.CoinIconImage = "rbxassetid://138756794615498"
 GameConfig.RbImage = "rbxassetid://116949418469040"
 GameConfig.DecelerationOnImage = "rbxassetid://114216336762183"
 GameConfig.DecelerationOffImage = "rbxassetid://113696020530948"
-GameConfig.DecelerationButtonShowSpeed = 80
+GameConfig.DecelerationButtonShowSpeed = 40
 
 -- Guide（仅两条：Brainrot 拾取+放置；50 金币后升砖块）
 GameConfig.GuideType = {
@@ -138,6 +138,9 @@ GameConfig.ModelGetSource = {
 	Shop = 3,
 	PlayerGift = 4,
 }
+
+-- 玩家间赠送（ProximityPrompt + Remote）；关闭时不显示提示且服务端拒绝流程
+GameConfig.EnablePlayerGift = false
 
 -- 线圈类型
 GameConfig.CoilType = {

@@ -1,6 +1,7 @@
 --!strict
 local GameTexts = {
 	PickUpBrainrot = { key = "", source = "Pick up" },
+	BrainrotPickupObjectText = { key = "BrainrotPickupObjectText", source = "{1} (Lv.{2})" },
 	YieldPerSecond = { key = "YieldPerSecond", source = "{1}/s" },
 	LevelWithNumber = { key = "LevelWithNumber", source = "Lv.{1}" },
 	LevelWithFullWidthParentheses = { key = "LevelWithFullWidthParentheses", source = "（Lv.{1}）" },
@@ -72,5 +73,6 @@ local GameTexts = {
 	SellShopBrainrotPriceTip = { key = "SellShopBrainrotPriceTip", source = "This brainrot sells for {1} coins." },
 	ShopBundleAlreadyPurchased = { key = "", source = "This bundle has already been purchased." },
 	ShopBundlePurchaseRestrictedByPolicy = { key = "", source = "This purchase is not available for your account." },
+	ShopBundleBoxCount = { key = "ShopBundleBoxCount", source = "{1}x Box" },
 }
 return GameTexts

@@ -30,11 +30,13 @@ function PlayerInteractManager.Init()
 				prompt.KeyboardKeyCode = Enum.KeyCode.G
 				prompt.RequiresLineOfSight = false
 				prompt.MaxActivationDistance = 10
-				-- 服务端开启，客户端负责基于条件本地隐藏
-				prompt.Enabled = true
+				prompt.Enabled = GameConfig.EnablePlayerGift
 				prompt.Parent = attachment
 
 				prompt.Triggered:Connect(function(triggerPlayer: Player)
+					if not GameConfig.EnablePlayerGift then
+						return
+					end
 					-- triggerPlayer 是发送方，player 是接收方
 					if triggerPlayer.UserId == player.UserId then return end
 					
@@ -71,8 +73,10 @@ function PlayerInteractManager.Init()
 		end)
 	end)
 	
-	-- 监听客户端确认送礼请求
 	NetMsg.ConnectRequestSendGift(function(player: Player, targetPlayerId: number, brainrotInstanceId: string)
+		if not GameConfig.EnablePlayerGift then
+			return
+		end
 		local targetPlayer = players:GetPlayerByUserId(targetPlayerId)
 		if not targetPlayer then return end
 		
@@ -106,8 +110,10 @@ function PlayerInteractManager.Init()
 		end
 	end)
 
-	-- 监听接收方响应请求
 	NetMsg.ConnectRequestRespondGift(function(player: Player, senderId: number, isAccepted: boolean)
+		if not GameConfig.EnablePlayerGift then
+			return
+		end
 		local sender = players:GetPlayerByUserId(senderId)
 		if not sender then return end
 		

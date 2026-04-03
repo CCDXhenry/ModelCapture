@@ -590,6 +590,9 @@ local function UpdatePlot(folder: Instance, placedData: any?, isLocalPlayer: boo
 				if slotName then
 					local state = slotStateCache[slotName]
 					if state and state.homeInfo then
+						if not state.isLocalPlayer then
+							return
+						end
 						local pIdx = tonumber(folder.Name:match("^PlaceModel(%d+)$"))
 						local targetId = 0
 						-- Find owner ID

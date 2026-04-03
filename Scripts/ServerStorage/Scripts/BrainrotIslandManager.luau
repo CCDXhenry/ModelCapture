@@ -267,7 +267,7 @@ function SetupBrainrotInteraction(randomBrainrot: Instance, island: Instance, sp
 			local name = if config then config.name_t else randomBrainrot.Name
 			prompt.ActionText = GameTexts.PickUpBrainrot.source
 			local levelStr = if itemType == GameConfig.ItemType.LittleElfChest then "???" else tostring(level)
-			prompt.ObjectText = `{name}(等级{levelStr})`
+			prompt.ObjectText = `{name} (Lv.{levelStr})`
 			prompt.RequiresLineOfSight = false
 			prompt.MaxActivationDistance = 10
 			prompt.Enabled = true

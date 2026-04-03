@@ -26,7 +26,7 @@ local islandDiscoverAccumulator = 0
 local basePlotsCount = 0
 
 local YIELD_UPDATE_INTERVAL = 1
-local YIELD_BROADCAST_INTERVAL = 2
+local YIELD_BROADCAST_INTERVAL = 1
 
 -- Initialize available slots from PlayersHome
 local function InitSlots()
