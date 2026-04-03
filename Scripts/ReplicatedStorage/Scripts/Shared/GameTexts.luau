@@ -68,5 +68,7 @@ local GameTexts = {
 	SellShopGoodbye = { key = "", source = "Goodbye." },
 	NoBrainrotToSell = { key = "", source = "No brainrot available to sell." },
 	SellShopBrainrotPriceTip = { key = "SellShopBrainrotPriceTip", source = "This brainrot sells for {1} coins." },
+	ShopBundleAlreadyPurchased = { key = "", source = "This bundle has already been purchased." },
+	ShopBundlePurchaseRestrictedByPolicy = { key = "", source = "This purchase is not available for your account." },
 }
 return GameTexts

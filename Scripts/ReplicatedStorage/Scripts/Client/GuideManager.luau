@@ -245,6 +245,82 @@ local function ResolvePlacementBoothWorldPosition(info: GameConfig.ClientLocalPl
 	return ResolveNearestEmptyPlotPosition(info)
 end
 
+-- 收集引导：已占用展台 PlaceModel*.Booth.CollectPart；优先 unclaimedYield > 0 且离 HRP 最近
+local function ResolveCollectPartWorldPosition(info: GameConfig.ClientLocalPlayerInfo): Vector3?
+	if info.homeSlot == nil or info.homeSlot == "" then
+		return nil
+	end
+	local homesFolder = workspace:FindFirstChild("PlayersHome")
+	if homesFolder == nil then
+		return nil
+	end
+	local slotModel = homesFolder:FindFirstChild(info.homeSlot)
+	if slotModel == nil then
+		return nil
+	end
+	if localPlayer == nil then
+		return nil
+	end
+	local character = localPlayer.Character
+	local hrp = if character then character:FindFirstChild("HumanoidRootPart") :: BasePart? else nil
+	local origin = if hrp then hrp.Position else nil
+
+	local path = GameConfig.GuidePlacementBoothPath
+	local collectName = path.CollectPartName
+
+	local bestWithYieldPos: Vector3? = nil
+	local bestWithYieldDist = math.huge
+	local fallbackPos: Vector3? = nil
+	local fallbackDist = math.huge
+
+	for _, floor in ipairs(slotModel:GetChildren()) do
+		if string.match(floor.Name, "^Lv%d+$") then
+			for _, plot in ipairs(floor:GetChildren()) do
+				local idxStr = string.match(plot.Name, "^PlaceModel(%d+)$")
+				if idxStr and plot:IsA("Model") then
+					local pointIndex = tonumber(idxStr)
+					if pointIndex == nil then
+						continue
+					end
+					if info.homeInfo.placedModels[tostring(pointIndex)] == nil then
+						continue
+					end
+					local boothFolder = plot:FindFirstChild(path.BoothFolderName)
+					local collectPart = if boothFolder then boothFolder:FindFirstChild(collectName) else nil
+					if collectPart == nil or not collectPart:IsA("BasePart") then
+						continue
+					end
+					local pos = collectPart.Position
+					if origin == nil then
+						if fallbackPos == nil then
+							fallbackPos = pos
+						end
+						continue
+					end
+					local modelInfo = info.homeInfo.placedModels[tostring(pointIndex)]
+					local yieldAmt = if modelInfo then (modelInfo.unclaimedYield or 0) else 0
+					local dist = (pos - origin).Magnitude
+					if yieldAmt > 0 then
+						if dist < bestWithYieldDist then
+							bestWithYieldDist = dist
+							bestWithYieldPos = pos
+						end
+					else
+						if dist < fallbackDist then
+							fallbackDist = dist
+							fallbackPos = pos
+						end
+					end
+				end
+			end
+		end
+	end
+	if bestWithYieldPos ~= nil then
+		return bestWithYieldPos
+	end
+	return fallbackPos
+end
+
 local function ResolvePickupBrainrotTarget(): Vector3?
 	if not pickupCandidatesInitialized then
 		InitPickupCandidates()
@@ -308,6 +384,14 @@ local function ResolveWorldTargetForGuide(guideType: number): Vector3?
 	elseif guideType == GameConfig.GuideType.TutorialBrainrotPickup then
 		return ResolvePickupBrainrotTarget()
 	elseif guideType == GameConfig.GuideType.TutorialBricksLobby then
+		local lobbyInfo = ClientGameInfo.GetLocalPlayerInfo()
+		if lobbyInfo == nil then
+			return nil
+		end
+		local coin = lobbyInfo.currencies["1"] or 0
+		if coin < GameConfig.GuideBricksIntroMinCoin then
+			return ResolveCollectPartWorldPosition(lobbyInfo)
+		end
 		return ResolveUpgradeShopWorldPosition()
 	end
 	return nil
@@ -366,7 +450,7 @@ local function UpdateGuideArrow()
 		return
 	end
 	local startPos = hrp.Position
-	local endPos = target + Vector3.new(0, GameConfig.GuideArrowYOffset, 0)
+	local endPos = target --+ Vector3.new(0, GameConfig.GuideArrowYOffset, 0)
 	guideArrowStartAttachment.WorldCFrame = CFrame.new(startPos)
 	guideArrowEndAttachment.WorldCFrame = CFrame.new(endPos)
 	UpdateAttachmentsRotation()

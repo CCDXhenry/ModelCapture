@@ -95,8 +95,8 @@ end
 -- 根据 ConfigId 获取线圈描述
 local function GetCoilDescription(configId: number): string
 	local coilConfig = GameConfig.CoilIdMap[configId]
-	if coilConfig and coilConfig.description and coilConfig.description ~= "" then
-		return coilConfig.description
+	if coilConfig and coilConfig.description_t and coilConfig.description_t ~= "" then
+		return coilConfig.description_t	
 	end
 	return ""
 end

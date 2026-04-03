@@ -148,6 +148,25 @@ local function SetSellButtonVisibility(
 	end
 end
 
+local function ResetPlotInteractionVisibility(placeAttachment: Attachment?, sellAttachment: Attachment?)
+	local function DisableAttachmentInteraction(attachment: Attachment?)
+		if not attachment then
+			return
+		end
+		local prompt = attachment:FindFirstChildOfClass("ProximityPrompt")
+		if prompt then
+			prompt.Enabled = false
+		end
+		local billboard = attachment:FindFirstChildOfClass("BillboardGui")
+		if billboard then
+			billboard.Enabled = false
+		end
+	end
+
+	DisableAttachmentInteraction(placeAttachment)
+	DisableAttachmentInteraction(sellAttachment)
+end
+
 local function FindPlotByPointIndex(slotModel: Instance, pointIndex: number): Instance?
 	for _, floor in ipairs(slotModel:GetChildren()) do
 		if floor.Name:match("^Lv%d+$") then
@@ -327,6 +346,8 @@ local function UpdateHomePrompts(slotName: string)
 
 					local showPlacePrompt = (not isOccupied and isLocalPlayer and isLocalHoldingBrainrot) or (isOccupied and isLocalPlayer)
 					if isLocalPlayer then
+						-- Local home interactions are focus-driven; reset first to avoid default-enabled leftovers.
+						ResetPlotInteractionVisibility(placeAttachment, sellAttachment)
 						SetPromptState(placeAttachment, showPlacePrompt, isOccupied, pointIndex, slotName, false)
 						SetSellButtonVisibility(sellAttachment, isOccupied and isLocalPlayer, pointIndex, slotName, false)
 					else
@@ -512,6 +533,10 @@ local function UpdatePlot(folder: Instance, placedData: any?, isLocalPlayer: boo
 	local showPlacePrompt = (not isOccupied and isLocalPlayer and isLocalHoldingBrainrot) or (isOccupied and isLocalPlayer)
 	local deferPromptEnabled = isLocalPlayer
 	if pointIndex then
+		if deferPromptEnabled then
+			-- Local home interactions are focus-driven; reset first to avoid default-enabled leftovers.
+			ResetPlotInteractionVisibility(placeAttachment, sellAttachment)
+		end
 		SetPromptState(placeAttachment, showPlacePrompt, isOccupied, pointIndex, slotName, not deferPromptEnabled)
 		SetSellButtonVisibility(sellAttachment, isOccupied and isLocalPlayer, pointIndex, slotName, not deferPromptEnabled)
 	end
@@ -614,9 +639,7 @@ local function UpdatePlot(folder: Instance, placedData: any?, isLocalPlayer: boo
 			if lvLabel then
 				local lvStr = tostring(placedData.level or 1)
 				TranslationTool.CustomAutoLocalizeTextLabel(lvLabel, GameTexts.LevelWithNumber.source, GameTexts.LevelWithNumber.key, { lvStr })
-				if qualityCfg then
-					lvLabel.TextColor3 = qualityCfg.textColor
-				end
+				lvLabel.TextColor3 = GameConfig.GetBrainrotLevelTierTextColor(placedData.level or 1)
 			end
 
 			-- 收益与售价逻辑 (根据等级索引列表)
@@ -846,9 +869,7 @@ local function UpdatePlot(folder: Instance, placedData: any?, isLocalPlayer: boo
 				if lvLabel then
 					local lvStr = tostring(placedData.level or 1)
 					TranslationTool.CustomAutoLocalizeTextLabel(lvLabel, GameTexts.LevelWithNumber.source, GameTexts.LevelWithNumber.key, { lvStr })
-					if qualityCfg then
-						lvLabel.TextColor3 = qualityCfg.textColor
-					end
+					lvLabel.TextColor3 = GameConfig.GetBrainrotLevelTierTextColor(placedData.level or 1)
 				end
 
 				local levelIdx = placedData.level or 1

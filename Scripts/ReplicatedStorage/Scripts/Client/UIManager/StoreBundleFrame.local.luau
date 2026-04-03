@@ -53,7 +53,7 @@ local function updateCanvas()
 			end
 		end
 	end
-	scrollingFrame.CanvasSize = UDim2.new(0, 0, 0, contentHeight + 16)
+	scrollingFrame.CanvasSize = UDim2.new(0, 0, 0, contentHeight * 2)
 end
 
 local function getQualityColor(quality: number): Color3
@@ -219,8 +219,8 @@ end
 local function getRewardDescription(reward: GameConfig.RewardInfo): string
 	if reward.rewardType == GameConfig.RewardType.Coil then
 		local coilData = GameConfig.CoilIdMap[reward.rewardId]
-		if coilData and coilData.description ~= "" then
-			return coilData.description
+		if coilData and coilData.description_t and coilData.description_t ~= "" then
+			return coilData.description_t
 		end
 	end
 	return getRewardDisplayName(reward)
@@ -554,6 +554,20 @@ singleBundleTemplate.Visible = false
 
 local shopBundleFramesBuilt = false
 
+local function detachTemplatesFromLayout()
+	-- Hidden template frames still take UIListLayout space.
+	-- Detach them after all clones are created so runtime entries are not pushed off-screen.
+	if mixBundleTemplate.Parent == scrollingFrame then
+		mixBundleTemplate.Parent = nil
+	end
+	if littleElfChestBundleTemplate.Parent == scrollingFrame then
+		littleElfChestBundleTemplate.Parent = nil
+	end
+	if singleBundleTemplate.Parent == scrollingFrame then
+		singleBundleTemplate.Parent = nil
+	end
+end
+
 local function buildShopBundleFrames(): boolean
 	local playerInfo = ClientGameInfo.GetLocalPlayerInfo()
 	if not playerInfo then
@@ -589,6 +603,7 @@ local function tryFinalizeShopBundleFrames(): boolean
 		return false
 	end
 	shopBundleFramesBuilt = true
+	detachTemplatesFromLayout()
 	updateCanvas()
 	updateRepurchaseMask()
 	return true

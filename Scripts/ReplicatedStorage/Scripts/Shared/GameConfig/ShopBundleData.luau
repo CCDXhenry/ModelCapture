@@ -20,7 +20,7 @@ return {
 		["rewardLv"] = 1,
 		["id"] = 1,
 		["rewardCount"] = 1,
-		["rewardId"] = 5,
+		["rewardId"] = 17,
 		["productIndex"] = 1,
 	},
 	[4] = {

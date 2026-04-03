@@ -18,6 +18,8 @@ local ModalTransparency = 0.9
 local ButtonHoveredScale: number = 1.1 --按钮鼠标移入放大
 local ButtonPressedScale: number = 0.9 --按钮按下缩小
 local ButtonInteractionTweenInfo: TweenInfo = TweenInfo.new(0.1) --按钮交互动画缓动信息
+local MOUSE_WHEEL_SCROLL_STEP_RATIO = 0.2
+local MOUSE_WHEEL_SCROLL_MIN_STEP = 24
 
 UIManager.WindowId = {
 	UpgradeShop = "UpgradeShopFrame",
@@ -225,6 +227,19 @@ local function ClampCanvasPosition(scrollingFrame: ScrollingFrame, targetCanvasP
 	return Vector2.new(math.clamp(targetCanvasPosition.X, 0, maxX), math.clamp(targetCanvasPosition.Y, 0, maxY))
 end
 
+local function IsMouseInsideGuiObject(guiObject: GuiObject): boolean
+	if not guiObject.Visible then
+		return false
+	end
+	local mousePosition = userInputService:GetMouseLocation()
+	local absolutePosition = guiObject.AbsolutePosition
+	local absoluteSize = guiObject.AbsoluteSize
+	return mousePosition.X >= absolutePosition.X
+		and mousePosition.X <= absolutePosition.X + absoluteSize.X
+		and mousePosition.Y >= absolutePosition.Y
+		and mousePosition.Y <= absolutePosition.Y + absoluteSize.Y
+end
+
 function UIManager.BindScrollingFrameDragScroll(scrollingFrame: ScrollingFrame)
 	if scrollingFrame:GetAttribute("DragScrollBound") then
 		return
@@ -273,6 +288,22 @@ function UIManager.BindScrollingFrameDragScroll(scrollingFrame: ScrollingFrame)
 	end)
 
 	userInputService.InputChanged:Connect(function(input: InputObject, _gameProcessedEvent: boolean)
+		if input.UserInputType == Enum.UserInputType.MouseWheel then
+			if not scrollingFrame.ScrollingEnabled or not IsMouseInsideGuiObject(scrollingFrame) then
+				return
+			end
+			local wheelDelta = input.Position.Z
+			if wheelDelta == 0 then
+				wheelDelta = input.Position.Y
+			end
+			if wheelDelta == 0 then
+				return
+			end
+			local scrollStep = math.max(MOUSE_WHEEL_SCROLL_MIN_STEP, scrollingFrame.AbsoluteWindowSize.Y * MOUSE_WHEEL_SCROLL_STEP_RATIO)
+			local targetCanvasPosition = scrollingFrame.CanvasPosition - Vector2.new(0, wheelDelta * scrollStep)
+			scrollingFrame.CanvasPosition = ClampCanvasPosition(scrollingFrame, targetCanvasPosition)
+			return
+		end
 		if not isDragging then
 			return
 		end

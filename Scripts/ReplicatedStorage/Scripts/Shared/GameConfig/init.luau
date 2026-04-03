@@ -87,6 +87,7 @@ GameConfig.GuideArrowYOffset = 4
 GameConfig.GuidePlacementBoothPath = {
 	BoothFolderName = "Booth",
 	BoothModelName = "BoothModel",
+	CollectPartName = "CollectPart",
 }
 
 --六次方群组id
@@ -288,7 +289,7 @@ export type CoilData = {
 	gravitationalValue: number,
 	modelRes: string,
 	name_t: string,
-	description: string,
+	description_t: string,
 	iconImageId: string,
 	quality: number,
 }
@@ -482,6 +483,34 @@ GameConfig.BrainrotQualityTextMap = {
 	[8] = "QualitySecret",
 	[9] = "QualityCelestial",
 }
+
+-- 等级文字颜色：以 BrainrotLevelTierSize 为步长；等级为 30 的倍数且 >=30 时升入下一档（floor(level/30)+1），颜色与 BrainrotQualityConfig 同索引对齐；超出最高档沿用最后一档
+GameConfig.BrainrotLevelTierSize = 30
+
+local brainrotQualityMaxTierForLevelColor = 0
+for tierKey in pairs(GameConfig.BrainrotQualityConfig) do
+	if type(tierKey) == "number" and tierKey > brainrotQualityMaxTierForLevelColor then
+		brainrotQualityMaxTierForLevelColor = tierKey
+	end
+end
+
+GameConfig.BrainrotLevelTierTextColors = {} :: { [number]: Color3 }
+for tier = 1, brainrotQualityMaxTierForLevelColor do
+	local qc = GameConfig.BrainrotQualityConfig[tier]
+	if qc then
+		GameConfig.BrainrotLevelTierTextColors[tier] = qc.textColor
+	end
+end
+
+function GameConfig.GetBrainrotLevelTierTextColor(level: number): Color3
+	local safeLevel = math.max(1, math.floor(level))
+	-- 1–29 档 1；30–59 档 2；…（30/60/… 整除点算升档，不用 ceil）
+	local tierIndex = math.floor(safeLevel / GameConfig.BrainrotLevelTierSize) + 1
+	tierIndex = math.min(tierIndex, brainrotQualityMaxTierForLevelColor)
+	local c = GameConfig.BrainrotLevelTierTextColors[tierIndex]
+	return if c then c else Color3.new(1, 1, 1)
+end
+
 --=========================================
 -- 抓模型 (Catch Model) 核心数值配置
 --=========================================
@@ -593,7 +622,7 @@ GameConfig.BrainrotQueue = {
 
 -- Island spawned Brainrot 的独立倒计时（秒）
 -- 倒计时结束时该 brainrot 消失并触发岛上随机补刷。
-GameConfig.BrainrotRefreshCountdownSeconds = 23
+GameConfig.BrainrotRefreshCountdownSeconds = 150
 
 -- 商店配置
 export type UpgradeShopData = {

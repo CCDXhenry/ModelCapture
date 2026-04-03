@@ -121,9 +121,7 @@ local function CreateOrUpdateInfoUI(
 	if levelText then
 		levelText.Visible = true
 		TranslationTool.CustomAutoLocalizeTextLabel(levelText, GameTexts.LevelWithNumber.source, GameTexts.LevelWithNumber.key, { tostring(level) })
-		if qualityCfg then
-			levelText.TextColor3 = qualityCfg.textColor
-		end
+		levelText.TextColor3 = GameConfig.GetBrainrotLevelTierTextColor(level)
 	end
 	if abilityText then
 		abilityText.Visible = true

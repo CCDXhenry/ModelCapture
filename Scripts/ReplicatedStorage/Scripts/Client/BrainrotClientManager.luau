@@ -197,9 +197,7 @@ function AttachInfoUIToModel(targetParent: Instance, adornee: BasePart, configId
 				TranslationTool.CustomAutoLocalizeTextLabel(levelText, GameTexts.LevelWithNumber.source, GameTexts.LevelWithNumber.key, { tostring(level) })
 			end
 
-			if qualityCfg then
-				levelText.TextColor3 = qualityCfg.textColor
-			end
+			levelText.TextColor3 = GameConfig.GetBrainrotLevelTierTextColor(level)
 		end
 		if abilityText then
 			abilityText.Visible = itemType == GameConfig.ItemType.Brainrot
