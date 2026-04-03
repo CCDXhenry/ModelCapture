@@ -18,6 +18,9 @@ local isAwaitingRescue = false
 local stationaryTime = 0
 local lastStationaryPos: Vector3? = nil
 local lastRefillTime = 0
+-- Ground 专用：与 StartTrigger 的 lastRefillTime 独立，仅用于 UI 砖数同步请求
+local lastGroundTouchRefillTime = 0
+local lastGroundPollRefillTime = 0
 
 -- 地震后“是否经过安全区”的门禁状态（用于防止空中铺砖）
 local lastEarthquakeActive = workspace:GetAttribute("EarthquakeActive") == true
@@ -153,6 +156,85 @@ end
 
 if startAttachment then
 	SEA_LEVEL = startAttachment.WorldPosition.Y
+end
+
+-- Ground：客户端请求服务端同步携带砖数（刷新 UI），与 StartTrigger 门禁/模式激活无关
+local function GetGroundFolder(): Instance?
+	return workspace:FindFirstChild("Ground") or workspace:FindFirstChild("ground")
+end
+
+local groundOnGroundOverlapParams: OverlapParams? = nil
+local function IsLocalCharacterOnGround(character: Model): boolean
+	local groundFolder = GetGroundFolder()
+	if not groundFolder then
+		return false
+	end
+	local root = character:FindFirstChild("HumanoidRootPart") :: BasePart?
+	if not root then
+		return false
+	end
+	if not groundOnGroundOverlapParams then
+		local p = OverlapParams.new()
+		p.FilterType = Enum.RaycastFilterType.Include
+		groundOnGroundOverlapParams = p
+	end
+	(groundOnGroundOverlapParams :: OverlapParams).FilterDescendantsInstances = { groundFolder }
+	local boxSize = Vector3.new(2.5, 1.2, 2.5)
+	local boxCFrame = root.CFrame * CFrame.new(0, -root.Size.Y * 0.5 - 0.3, 0)
+	local overlapping = workspace:GetPartBoundsInBox(boxCFrame, boxSize, groundOnGroundOverlapParams :: OverlapParams)
+	return #overlapping > 0
+end
+
+local groundUiTouchConns: { [BasePart]: RBXScriptConnection } = {}
+local groundUiHookedFolder: Instance? = nil
+
+local function hookGroundPartForUiTouch(part: BasePart)
+	if groundUiTouchConns[part] then
+		return
+	end
+	groundUiTouchConns[part] = part.Touched:Connect(function(otherPart)
+		local char = localPlayer.Character
+		if not char or not otherPart:IsDescendantOf(char) then
+			return
+		end
+		local t = os.clock()
+		local cd = GameConfig.Paving.GroundTouchRefillCooldown or 0.35
+		if t - lastGroundTouchRefillTime < cd then
+			return
+		end
+		NetMsg.FireRequestStartPaving()
+		lastGroundTouchRefillTime = t
+	end)
+	part.Destroying:Connect(function()
+		local c = groundUiTouchConns[part]
+		if c then
+			c:Disconnect()
+			groundUiTouchConns[part] = nil
+		end
+	end)
+end
+
+local function TryHookGroundFolderForUiSync()
+	local folder = GetGroundFolder()
+	if not folder or groundUiHookedFolder == folder then
+		return
+	end
+	groundUiHookedFolder = folder
+	for _, desc in folder:GetDescendants() do
+		if desc:IsA("BasePart") then
+			hookGroundPartForUiTouch(desc :: BasePart)
+		end
+	end
+	folder.DescendantAdded:Connect(function(desc)
+		if desc:IsA("BasePart") then
+			hookGroundPartForUiTouch(desc :: BasePart)
+		end
+	end)
+	folder.Destroying:Connect(function()
+		if groundUiHookedFolder == folder then
+			groundUiHookedFolder = nil
+		end
+	end)
 end
 
 local function GetSnappedPosition(pos: Vector3)
@@ -718,6 +800,15 @@ local function OnHeartbeat(dt: number)
 		end
 	end
 
+	-- Ground：Touch + 周期请求，用于刷新 UI 携带砖数（与 StartTrigger 门禁/补砖独立）
+	if character and rootPart and humanoid and humanoid.Health > 0 then
+		local pollInterval = GameConfig.Paving.GroundPollRefillInterval or 2
+		if IsLocalCharacterOnGround(character) and now - lastGroundPollRefillTime >= pollInterval then
+			NetMsg.FireRequestStartPaving()
+			lastGroundPollRefillTime = now
+		end
+	end
+
 	local playerInfo = ClientGameInfo.GetLocalPlayerInfo()
 
 	-- 4. Execution Guard (If still not in paving mode, stop here)
@@ -1013,4 +1104,8 @@ workspace.ChildAdded:Connect(function(child)
 	if child.Name == "PavedBricks" then
 		HookPavedBricksFolder(child)
 	end
+	if child.Name == "Ground" or child.Name == "ground" then
+		TryHookGroundFolderForUiSync()
+	end
 end)
+TryHookGroundFolderForUiSync()

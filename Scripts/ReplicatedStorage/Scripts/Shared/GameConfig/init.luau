@@ -513,6 +513,10 @@ GameConfig.Paving = {
 	RebirthProductId = 3567723594, -- 付费重生产品ID
 	-- StartTrigger 补砖请求最小间隔（防刷 Remote）；过大会导致快速经过时漏补
 	StartTriggerRefillCooldown = 0.35,
+	-- Ground：Touch 触发 FireRequestStartPaving 的最小间隔（用于 UI 砖数与服务端同步）
+	GroundTouchRefillCooldown = 0.35,
+	-- Ground：在地面站立时周期性请求补砖，刷新 UI 携带砖数（秒）
+	GroundPollRefillInterval = 2,
 }
 
 GameConfig.PavingRejectReason = {
