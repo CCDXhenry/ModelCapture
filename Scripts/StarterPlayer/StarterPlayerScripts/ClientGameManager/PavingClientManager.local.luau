@@ -18,8 +18,8 @@ local isAwaitingRescue = false
 local stationaryTime = 0
 local lastStationaryPos: Vector3? = nil
 local lastRefillTime = 0
--- Ground 专用：与 StartTrigger 的 lastRefillTime 独立，仅用于 UI 砖数同步请求
--- local lastGroundTouchRefillTime = 0
+--Ground 专用：与 StartTrigger 的 lastRefillTime 独立，仅用于 UI 砖数同步请求
+local lastGroundTouchRefillTime = 0
 local lastGroundPollRefillTime = 0
 
 -- 地震后“是否经过安全区”的门禁状态（用于防止空中铺砖）
@@ -185,58 +185,78 @@ local function IsLocalCharacterOnGround(character: Model): boolean
 	return #overlapping > 0
 end
 
---local groundUiTouchConns: { [BasePart]: RBXScriptConnection } = {}
--- local groundUiHookedFolder: Instance? = nil
+local groundUiTouchConns: { [BasePart]: RBXScriptConnection } = {}
+local groundUiHookedFolder: Instance? = nil
 
--- local function hookGroundPartForUiTouch(part: BasePart)
--- 	if groundUiTouchConns[part] then
--- 		return
--- 	end
--- 	groundUiTouchConns[part] = part.Touched:Connect(function(otherPart)
--- 		local char = localPlayer.Character
--- 		if not char or not otherPart:IsDescendantOf(char) then
--- 			return
--- 		end
--- 		local t = os.clock()
--- 		local cd = GameConfig.Paving.GroundTouchRefillCooldown or 0.35
--- 		if t - lastGroundTouchRefillTime < cd then
--- 			return
--- 		end
--- 		print("FireRequestStartPaving")
--- 		NetMsg.FireRequestStartPaving()
--- 		lastGroundTouchRefillTime = t
--- 	end)
--- 	part.Destroying:Connect(function()
--- 		local c = groundUiTouchConns[part]
--- 		if c then
--- 			c:Disconnect()
--- 			groundUiTouchConns[part] = nil
--- 		end
--- 	end)
--- end
+local function IsLocalCarriedBricksFull(): boolean
+	local playerInfo = ClientGameInfo.GetLocalPlayerInfo()
+	if not playerInfo then
+		return false
+	end
 
--- local function TryHookGroundFolderForUiSync()
--- 	local folder = GetGroundFolder()
--- 	if not folder or groundUiHookedFolder == folder then
--- 		return
--- 	end
--- 	groundUiHookedFolder = folder
--- 	for _, desc in folder:GetDescendants() do
--- 		if desc:IsA("BasePart") then
--- 			hookGroundPartForUiTouch(desc :: BasePart)
--- 		end
--- 	end
--- 	folder.DescendantAdded:Connect(function(desc)
--- 		if desc:IsA("BasePart") then
--- 			hookGroundPartForUiTouch(desc :: BasePart)
--- 		end
--- 	end)
--- 	folder.Destroying:Connect(function()
--- 		if groundUiHookedFolder == folder then
--- 			groundUiHookedFolder = nil
--- 		end
--- 	end)
--- end
+	local currentBricks = playerInfo.carriedInfo.bricks
+	local maxBricksLevel = if playerInfo.shopInfo then playerInfo.shopInfo.maxBricksLevel else 1
+
+	local maxBricks = 0
+	local maxBricksConfig = GameConfig.Shop and GameConfig.Shop.MaxBricks
+	if maxBricksConfig and maxBricksConfig.abilityList then
+		maxBricks = maxBricksConfig.abilityList[maxBricksLevel] or maxBricksConfig.abilityList[1] or 0
+	end
+
+	return currentBricks == maxBricks
+end
+
+local function hookGroundPartForUiTouch(part: BasePart)
+	if groundUiTouchConns[part] then
+		return
+	end
+	groundUiTouchConns[part] = part.Touched:Connect(function(otherPart)
+		local char = localPlayer.Character
+		if not char or not otherPart:IsDescendantOf(char) then
+			return
+		end
+		local t = os.clock()
+		local cd = GameConfig.Paving.GroundTouchRefillCooldown or 0.35
+		if t - lastGroundTouchRefillTime < cd then
+			return
+		end
+
+		if not IsLocalCarriedBricksFull() then
+			NetMsg.FireRequestStartPaving()
+			lastGroundTouchRefillTime = t
+		end
+	end)
+	part.Destroying:Connect(function()
+		local c = groundUiTouchConns[part]
+		if c then
+			c:Disconnect()
+			groundUiTouchConns[part] = nil
+		end
+	end)
+end
+
+local function TryHookGroundFolderForUiSync()
+	local folder = GetGroundFolder()
+	if not folder or groundUiHookedFolder == folder then
+		return
+	end
+	groundUiHookedFolder = folder
+	for _, desc in folder:GetDescendants() do
+		if desc:IsA("BasePart") then
+			hookGroundPartForUiTouch(desc :: BasePart)
+		end
+	end
+	folder.DescendantAdded:Connect(function(desc)
+		if desc:IsA("BasePart") then
+			hookGroundPartForUiTouch(desc :: BasePart)
+		end
+	end)
+	folder.Destroying:Connect(function()
+		if groundUiHookedFolder == folder then
+			groundUiHookedFolder = nil
+		end
+	end)
+end
 
 local function GetSnappedPosition(pos: Vector3)
 	local x = math.floor(pos.X / GRID_SIZE + 0.5) * GRID_SIZE
@@ -310,6 +330,17 @@ local function ClearLocalBricks()
 	table.clear(pendingBatchMap)
 	unresolvedRequestedCount = 0
 	print("[PavingClient] Cleared all local prediction bricks and queue")
+end
+
+local function ResetPavingRuntimeState()
+	lastPavePosition = nil
+	stationaryTime = 0
+	lastStationaryPos = nil
+	lastBatchTime = 0
+	firstBrickFallbackAt = 0
+	previousFrameInSafeZone = true
+	lastOutOfBricksSupportRequestTime = 0
+	table.clear(pendingPaveQueue)
 end
 
 -- Check if brick exists (excluding local predictions)
@@ -753,10 +784,11 @@ local function OnHeartbeat(dt: number)
 
 		if isPavingMode then
 			isPavingMode = false
-			lastPavePosition = nil
+			ResetPavingRuntimeState()
 			print("[PavingClient] Mode reset due to death/falling")
 		end
 		ClearLocalBricks()
+		ResetPavingRuntimeState()
 		return
 	end
 
@@ -805,19 +837,8 @@ local function OnHeartbeat(dt: number)
 	if character and rootPart and humanoid and humanoid.Health > 0 then
 		local pollInterval = GameConfig.Paving.GroundPollRefillInterval or 2
 		if IsLocalCharacterOnGround(character) and now - lastGroundPollRefillTime >= pollInterval then
-			-- Ground 轮询：只在“当前砖数 != 当前最大携带砖数”时请求，避免砖已满仍频繁触发（影响 UI 同步与网络开销）
-			local playerInfoForGround = ClientGameInfo.GetLocalPlayerInfo()
-			local currentBricks = if playerInfoForGround then playerInfoForGround.carriedInfo.bricks else 0
-			local maxBricksLevel = if playerInfoForGround and playerInfoForGround.shopInfo then playerInfoForGround.shopInfo.maxBricksLevel else 1
-
-			local maxBricks = 0
-			local maxBricksConfig = GameConfig.Shop and GameConfig.Shop.MaxBricks
-			if maxBricksConfig and maxBricksConfig.abilityList then
-				maxBricks = maxBricksConfig.abilityList[maxBricksLevel] or maxBricksConfig.abilityList[1] or 0
-			end
-
-			if currentBricks ~= maxBricks then
-				print("currentBricks ~= maxBricks", currentBricks, maxBricks)
+			-- Ground 轮询：仅在未满砖时请求，避免砖已满仍频繁触发（影响 UI 同步与网络开销）
+			if not IsLocalCarriedBricksFull() then
 				NetMsg.FireRequestStartPaving()
 				lastGroundPollRefillTime = now
 			end
@@ -1064,11 +1085,16 @@ NetMsg.ConnectNotifyPlaceBrickBatchResult(
 
 -- Character management
 local function OnCharacterAdded(character: Model)
+	ResetPavingRuntimeState()
+	isPavingMode = false
+	isAwaitingRescue = false
+	ClearLocalBricks()
+
 	local humanoid = character:WaitForChild("Humanoid") :: Humanoid
 	humanoid.Died:Connect(function()
 		isPavingMode = false
 		isAwaitingRescue = false
-		lastPavePosition = nil
+		ResetPavingRuntimeState()
 		ClearLocalBricks()
 	end)
 end
@@ -1094,6 +1120,8 @@ ClientMsg.ConnectResumeFalling(function()
 			-- Let the next heartbeat clean up
 		end
 	end
+	ResetPavingRuntimeState()
+	ClearLocalBricks()
 end)
 
 -- Sync with server bricks
@@ -1115,12 +1143,12 @@ local function TryHookPavedBricksFolder()
 end
 
 TryHookPavedBricksFolder()
--- workspace.ChildAdded:Connect(function(child)
--- 	if child.Name == "PavedBricks" then
--- 		HookPavedBricksFolder(child)
--- 	end
--- 	if child.Name == "Ground" or child.Name == "ground" then
--- 		TryHookGroundFolderForUiSync()
--- 	end
--- end)
--- TryHookGroundFolderForUiSync()
+workspace.ChildAdded:Connect(function(child)
+	if child.Name == "PavedBricks" then
+		HookPavedBricksFolder(child)
+	end
+	if child.Name == "Ground" or child.Name == "ground" then
+		TryHookGroundFolderForUiSync()
+	end
+end)
+TryHookGroundFolderForUiSync()

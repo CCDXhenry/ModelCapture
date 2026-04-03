@@ -29,6 +29,7 @@ local homesFolder = workspace:WaitForChild("PlayersHome")
 
 local slotStateCache: { [string]: { active: boolean, homeInfo: any?, isLocalPlayer: boolean?, rebirthLevel: number? } } = {}
 local floorModelsCache: { [string]: { [number]: Model } } = {}
+local upgradeUITemplateBackup: SurfaceGui? = nil
 local FLOOR_HEIGHT = 32.6
 local MAX_FLOOR_COUNT = 3 -- 最大楼层上限
 local function GetPlotsPerFloor(slotModel: Model): number
@@ -45,6 +46,8 @@ local function GetPlotsPerFloor(slotModel: Model): number
 	return if count > 0 then count else 6
 end
 local pendingUpdates = {}
+local localSlotRecoveryPending = false
+local localSlotRecoveryAttemptCount = 0
 local promptToPlotMap: { [ProximityPrompt]: { pointIndex: number, slotName: string } } = {}
 local isLocalHoldingBrainrot = false
 local lastFocusRefreshAt = 0
@@ -57,6 +60,8 @@ local BRAINROT_PAID_PROMPT_COOLDOWN = 2
 
 local INTERACTION_FOCUS_REFRESH_INTERVAL = 0.1
 local BILLBOARD_TRACKED_ATTR = "BillboardTracked"
+local LOCAL_SLOT_RECOVERY_DELAY = 0.25
+local LOCAL_SLOT_RECOVERY_MAX_ATTEMPTS = 24
 
 local function EnsureBillboardTracked(gui: BillboardGui)
 	if gui:GetAttribute(BILLBOARD_TRACKED_ATTR) ~= true then
@@ -378,6 +383,53 @@ local function ScheduleSlotUpdate(slotName: string)
 	end)
 end
 
+local function ApplyLocalSlotVisualsIfReady(): boolean
+	local localInfo: any = ClientGameInfo.GetLocalPlayerInfo()
+	if not localInfo or not localInfo.homeSlot or localInfo.homeSlot == "" or not localInfo.homeInfo then
+		return false
+	end
+
+	local slotName = localInfo.homeSlot
+	slotStateCache[slotName] = {
+		active = true,
+		homeInfo = localInfo.homeInfo,
+		isLocalPlayer = true,
+		rebirthLevel = if localInfo.shopInfo then localInfo.shopInfo.rebirthLevel else 0,
+	}
+	ApplySlotVisuals(slotName)
+
+	-- Streaming 场景下槽位模型可能晚到，补一次延迟刷新。
+	if not homesFolder:FindFirstChild(slotName) then
+		ScheduleSlotUpdate(slotName)
+	end
+
+	localSlotRecoveryAttemptCount = 0
+	return true
+end
+
+local function ScheduleLocalSlotRecovery(resetAttempts: boolean?)
+	if resetAttempts then
+		localSlotRecoveryAttemptCount = 0
+	end
+
+	if ApplyLocalSlotVisualsIfReady() then
+		return
+	end
+
+	if localSlotRecoveryPending or localSlotRecoveryAttemptCount >= LOCAL_SLOT_RECOVERY_MAX_ATTEMPTS then
+		return
+	end
+
+	localSlotRecoveryPending = true
+	localSlotRecoveryAttemptCount += 1
+	task.delay(LOCAL_SLOT_RECOVERY_DELAY, function()
+		localSlotRecoveryPending = false
+		if not ApplyLocalSlotVisualsIfReady() then
+			ScheduleLocalSlotRecovery(false)
+		end
+	end)
+end
+
 -- Helper to set visibility/collision for various instance types
 local function SetVisuals(inst: Instance, visible: boolean, isPlaceholder: boolean?)
 	if inst.Name == "SpawnLocation" then
@@ -420,6 +472,14 @@ local function SetupBillboardAdaptation(gui: BillboardGui)
 	end
 
 	EnsureBillboardTracked(gui)
+end
+
+local function CaptureUpgradeUITemplateBackup(sourceUI: SurfaceGui)
+	if upgradeUITemplateBackup then
+		return
+	end
+	local backup = sourceUI:Clone()
+	upgradeUITemplateBackup = backup
 end
 
 -- Handles model placement for a single plot
@@ -479,6 +539,7 @@ local function UpdatePlot(folder: Instance, placedData: any?, isLocalPlayer: boo
 	if upgradePart then
 		upgradeUI = upgradePart:FindFirstChild("UpgradeUI") :: SurfaceGui?
 		if upgradeUI then
+			CaptureUpgradeUITemplateBackup(upgradeUI)
 			upgradeUI.Adornee = upgradePart
 			upgradeUI.Parent = players.LocalPlayer:WaitForChild("PlayerGui")
 			upgradePart.Destroying:Connect(function()
@@ -829,6 +890,8 @@ local function UpdatePlot(folder: Instance, placedData: any?, isLocalPlayer: boo
 				end
 
 				newVisual.Parent = folder
+				-- Keep local reference in sync so this frame can immediately refresh BrainrotInfoUI.
+				visualModel = newVisual
 			elseif brainrotData and actualModels then
 				warn(
 					"[HomeClientManager] Placed brainrot source model not found:",
@@ -936,6 +999,46 @@ local function UpdateRebirthMultiplierUI(slotName: string, homeInfo: any, isLoca
 
 	local rebirthMultiplierPart = publicModel:FindFirstChild("RebirthMultiplierPart") :: BasePart?
 	local rebirthInfoUI: BillboardGui? = rebirthMultiplierPart and rebirthMultiplierPart:FindFirstChild("InfoUI") :: BillboardGui?
+
+	-- PlayerInfoPart 上的头像/名称 UI
+	local playerInfoPart = publicModel:FindFirstChild("PlayerInfoPart") :: Part?
+	local playerInfoUI: BillboardGui? = playerInfoPart and playerInfoPart:FindFirstChild("InfoUI") :: BillboardGui?
+	local playerControllerFrame: Frame? = playerInfoUI and playerInfoUI:FindFirstChild("ControllerFrame") :: Frame?
+	local playerIconImg: ImageLabel? = playerControllerFrame and playerControllerFrame:FindFirstChild("PlayerIconImg") :: ImageLabel?
+	local playerNameLabel: TextLabel? = playerControllerFrame and playerControllerFrame:FindFirstChild("PlayerNameLabel") :: TextLabel?
+	local ownerPlayer = GetHomeOwnerPlayer(slotName, isLocalPlayer)
+	if not ownerPlayer then
+		if playerInfoUI then
+			playerInfoUI.Enabled = false
+		end
+		if rebirthInfoUI then
+			rebirthInfoUI.Enabled = false
+		end
+		return
+	end
+
+	if playerInfoUI then
+		playerInfoUI.Enabled = true
+		playerInfoUI.AlwaysOnTop = false
+		playerInfoUI.MaxDistance = 100
+	end
+	if playerNameLabel then
+		playerNameLabel.Text = if ownerPlayer.DisplayName ~= "" then ownerPlayer.DisplayName else ownerPlayer.Name
+	end
+
+	if playerIconImg then
+		local ok, image = pcall(function()
+			return players:GetUserThumbnailAsync(
+				ownerPlayer.UserId,
+				Enum.ThumbnailType.HeadShot,
+				Enum.ThumbnailSize.Size150x150
+			)
+		end)
+		if ok and type(image) == "string" then
+			playerIconImg.Image = image
+		end
+	end
+
 	if not rebirthInfoUI then
 		return
 	end
@@ -947,37 +1050,6 @@ local function UpdateRebirthMultiplierUI(slotName: string, homeInfo: any, isLoca
 	local controllerFrame: Frame? = rebirthInfoUI:FindFirstChild("ControllerFrame") :: Frame?
 	if not controllerFrame then
 		return
-	end
-
-	-- PlayerInfoPart 上的头像/名称 UI
-	local playerInfoPart = publicModel:FindFirstChild("PlayerInfoPart") :: Part?
-	local playerInfoUI: BillboardGui? = playerInfoPart and playerInfoPart:FindFirstChild("InfoUI") :: BillboardGui?
-	local playerControllerFrame: Frame? = playerInfoUI and playerInfoUI:FindFirstChild("ControllerFrame") :: Frame?
-	local playerIconImg: ImageLabel? = playerControllerFrame and playerControllerFrame:FindFirstChild("PlayerIconImg") :: ImageLabel?
-	local playerNameLabel: TextLabel? = playerControllerFrame and playerControllerFrame:FindFirstChild("PlayerNameLabel") :: TextLabel?
-	local ownerPlayer = GetHomeOwnerPlayer(slotName, isLocalPlayer)
-	if ownerPlayer then
-		if playerInfoUI then
-			playerInfoUI.Enabled = true
-			playerInfoUI.AlwaysOnTop = false
-			playerInfoUI.MaxDistance = 100
-		end
-		if playerNameLabel then
-			playerNameLabel.Text = if ownerPlayer.DisplayName ~= "" then ownerPlayer.DisplayName else ownerPlayer.Name
-		end
-
-		if playerIconImg then
-			local ok, image = pcall(function()
-				return players:GetUserThumbnailAsync(
-					ownerPlayer.UserId,
-					Enum.ThumbnailType.HeadShot,
-					Enum.ThumbnailSize.Size150x150
-				)
-			end)
-			if ok and type(image) == "string" then
-				playerIconImg.Image = image
-			end
-		end
 	end
 
 	-- 确保 UI 追踪自适应
@@ -1137,6 +1209,21 @@ function UpdateHomeVisuals(slotName: string, homeInfo: any, isLocalPlayer: boole
 		return
 	end
 
+	-- Capture one UpgradeUI template before any later floor clone uses it.
+	if not upgradeUITemplateBackup then
+		for _, place in ipairs(lv1:GetChildren()) do
+			if place.Name:match("^PlaceModel%d+$") then
+				local booth = place:FindFirstChild("Booth")
+				local upgradePart = booth and booth:FindFirstChild("UpgradePart")
+				local templateUI = upgradePart and upgradePart:FindFirstChild("UpgradeUI")
+				if templateUI and templateUI:IsA("SurfaceGui") then
+					CaptureUpgradeUITemplateBackup(templateUI)
+					break
+				end
+			end
+		end
+	end
+
 	-- 1. Manage floor clones in cache
 	local clones = floorModelsCache[slotName]
 	if not clones then
@@ -1162,6 +1249,15 @@ function UpdateHomeVisuals(slotName: string, homeInfo: any, isLocalPlayer: boole
 					local pIdx = tonumber(child.Name:match("^PlaceModel(%d+)$"))
 					if pIdx then
 						child.Name = "PlaceModel" .. tostring((i - 1) * plotsPerFloor + pIdx)
+					end
+					if upgradeUITemplateBackup then
+						local booth = child:FindFirstChild("Booth")
+						local clonedUpgradePart = booth and booth:FindFirstChild("UpgradePart")
+						local clonedUpgradeUI = clonedUpgradePart and clonedUpgradePart:FindFirstChild("UpgradeUI")
+						if clonedUpgradePart and not clonedUpgradeUI then
+							local backupUI = upgradeUITemplateBackup:Clone()
+							backupUI.Parent = clonedUpgradePart
+						end
 					end
 					-- Important: clear TouchBound so touch events are re-bound for the clone
 					for _, desc in ipairs(child:GetDescendants()) do
@@ -1358,6 +1454,16 @@ end
 
 -- Refresh all online players' homes (syncs state)
 local function RefreshAllHomes()
+	local previousLocalSlotName: string? = nil
+	local previousLocalState: { active: boolean, homeInfo: any?, isLocalPlayer: boolean?, rebirthLevel: number? }? = nil
+	for slotName, state in pairs(slotStateCache) do
+		if state and state.isLocalPlayer then
+			previousLocalSlotName = slotName
+			previousLocalState = state
+			break
+		end
+	end
+
 	-- Pre-fill all with inactive
 	for _, child in ipairs(homesFolder:GetChildren()) do
 		if child.Name:match("^Player%d+$") then
@@ -1366,13 +1472,24 @@ local function RefreshAllHomes()
 	end
 
 	local localInfo: any = ClientGameInfo.GetLocalPlayerInfo()
-	if localInfo and localInfo.homeSlot and localInfo.homeSlot ~= "" then
+	if localInfo and localInfo.homeSlot and localInfo.homeSlot ~= "" and localInfo.homeInfo then
 		slotStateCache[localInfo.homeSlot] = {
 			active = true,
 			homeInfo = localInfo.homeInfo,
 			isLocalPlayer = true,
 			rebirthLevel = if localInfo.shopInfo then localInfo.shopInfo.rebirthLevel else 0,
 		}
+		localSlotRecoveryAttemptCount = 0
+	elseif previousLocalSlotName and previousLocalState and previousLocalState.active then
+		slotStateCache[previousLocalSlotName] = {
+			active = true,
+			homeInfo = previousLocalState.homeInfo,
+			isLocalPlayer = true,
+			rebirthLevel = previousLocalState.rebirthLevel or 0,
+		}
+		ScheduleLocalSlotRecovery(true)
+	else
+		ScheduleLocalSlotRecovery(true)
 	end
 
 	for _, player in ipairs(players:GetPlayers()) do
@@ -1547,6 +1664,7 @@ function HomeClientManager.Init()
 	end
 
 	RefreshAllHomes()
+	ScheduleLocalSlotRecovery(true)
 	runService.RenderStepped:Connect(RefreshLocalHomeInteractionFocus)
 	proximityPromptService.PromptTriggered:Connect(OnPromptTriggered)
 
@@ -1574,6 +1692,7 @@ function HomeClientManager.Init()
 
 	NetMsg.ConnectNotifyPlayerInfoInit(function()
 		RefreshAllHomes()
+		ScheduleLocalSlotRecovery(true)
 	end)
 
 	NetMsg.ConnectNotifyPlayersOtherPlayerInfoInit(function(playerId)
@@ -1592,6 +1711,22 @@ function HomeClientManager.Init()
 
 	ClientMsg.ConnectPlayerHomeInfoUpdate(function(playerId, homeSlot, homeInfo, rebirthLevel)
 		local isLocal = (playerId == players.LocalPlayer.UserId)
+		if isLocal and ((not homeSlot) or homeSlot == "" or homeInfo == nil) then
+			ScheduleLocalSlotRecovery(true)
+			return
+		end
+		if (not homeSlot) or homeSlot == "" then
+			return
+		end
+		if not isLocal then
+			local ownerPlayer = players:GetPlayerByUserId(playerId)
+			local otherInfo = ClientGameInfo.GetOtherPlayerInfo(playerId)
+			if ownerPlayer == nil or otherInfo == nil then
+				slotStateCache[homeSlot] = { active = false }
+				ApplySlotVisuals(homeSlot)
+				return
+			end
+		end
 		local currentState = slotStateCache[homeSlot]
 		local resolvedRebirthLevel = rebirthLevel
 		if resolvedRebirthLevel == nil then
@@ -1609,6 +1744,9 @@ function HomeClientManager.Init()
 			rebirthLevel = resolvedRebirthLevel,
 		}
 		ApplySlotVisuals(homeSlot)
+		if isLocal and not homesFolder:FindFirstChild(homeSlot) then
+			ScheduleSlotUpdate(homeSlot)
+		end
 	end)
 
 	ClientMsg.ConnectLocalPlayerSkillLevelUpdate(function(skillType, level)
