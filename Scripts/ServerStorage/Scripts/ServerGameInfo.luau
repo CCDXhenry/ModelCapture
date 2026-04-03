@@ -19,6 +19,10 @@ local workspace = game:GetService("Workspace")
 local playerInfoMap: { [number]: GameConfig.PlayerInfo } = {}
 local lastBroadcastModelYieldMap: { [number]: { [string]: number } } = {}
 
+-- 付费 Brainrot 升级的挂起记录：按玩家缓存一次性升级信息，由收据回调消费
+type PendingBrainrotPaidUpgrade = { pointIndex: number, levelAdd: number, createdAt: number }
+local pendingBrainrotPaidUpgradeByUserId: { [number]: PendingBrainrotPaidUpgrade } = {}
+
 local analyticsToolModule: any = nil
 local function analyticsTool(): any
 	if analyticsToolModule == nil then
@@ -588,6 +592,91 @@ function ServerGameInfo.UpgradePlacedModel(player: Player, pointIndex: number)
 		NetMsg.FireNotifyPlayerHomeInfoUpdate(player.UserId, playerInfo.homeSlot, playerInfo.homeInfo)
 		print("[ServerGameInfo] UpgradePlacedModel for", player.Name, "at point", pointIndex, "to level", model.level)
 	end
+end
+
+-- 一次性将展台模型等级提升指定层数（不扣币，供付费路径使用）
+function ServerGameInfo.UpgradePlacedModelByLevelAdd(player: Player, pointIndex: number, levelAdd: number)
+	local playerInfo: GameConfig.PlayerInfo = playerInfoMap[player.UserId]
+	if playerInfo == nil then
+		warn("[ServerGameInfo] UpgradePlacedModelByLevelAdd failed: playerInfo not found for", player.Name)
+		return
+	end
+
+	if levelAdd <= 0 then
+		return
+	end
+
+	local model = playerInfo.homeInfo.placedModels[tostring(pointIndex)]
+	if not model then
+		warn("[ServerGameInfo] UpgradePlacedModelByLevelAdd failed: no model at point", pointIndex)
+		return
+	end
+
+	model.level += levelAdd
+	playerInfo.playerInfoChanged = true
+
+	NetMsg.FireNotifyPlayerHomeInfoUpdate(player.UserId, playerInfo.homeSlot, playerInfo.homeInfo)
+
+	-- 记录一次最终等级的升级埋点
+	local brainrotData = GameConfig.BrainrotIdMap[model.configId]
+	if brainrotData then
+		analyticsTool().LogModelUpgrade(player, model.configId, model.level)
+	end
+
+	print(
+		"[ServerGameInfo] UpgradePlacedModelByLevelAdd for",
+		player.Name,
+		"at point",
+		pointIndex,
+		"levelAdd",
+		levelAdd,
+		"to level",
+		model.level
+	)
+end
+
+-- 标记一次待处理的付费 Brainrot 升级（由 HomeManager 写入，由收据回调消费）
+function ServerGameInfo.SetPendingBrainrotPaidUpgrade(player: Player, pointIndex: number, levelAdd: number)
+	local userId = player.UserId
+	if levelAdd <= 0 then
+		levelAdd = 1
+	end
+
+	pendingBrainrotPaidUpgradeByUserId[userId] = {
+		pointIndex = pointIndex,
+		levelAdd = levelAdd,
+		createdAt = os.clock(),
+	}
+
+	print(
+		"[ServerGameInfo] SetPendingBrainrotPaidUpgrade for",
+		player.Name,
+		"pointIndex",
+		pointIndex,
+		"levelAdd",
+		levelAdd
+	)
+end
+
+-- 在收据回调中尝试消费付费 Brainrot 升级挂起记录
+function ServerGameInfo.TryConsumeBrainrotPaidUpgrade(player: Player): boolean
+	local userId = player.UserId
+	local pending = pendingBrainrotPaidUpgradeByUserId[userId]
+	if not pending then
+		return false
+	end
+
+	-- 简单过期校验，防止极端情况下长时间挂起
+	if os.clock() - pending.createdAt > 300 then
+		warn("[ServerGameInfo] PendingBrainrotPaidUpgrade expired for userId", userId)
+		pendingBrainrotPaidUpgradeByUserId[userId] = nil
+		return false
+	end
+
+	-- 消费并清理
+	pendingBrainrotPaidUpgradeByUserId[userId] = nil
+	ServerGameInfo.UpgradePlacedModelByLevelAdd(player, pending.pointIndex, pending.levelAdd)
+	return true
 end
 
 --应用行走速度比例到角色

@@ -197,11 +197,11 @@ function NetMsg.ConnectRequestPlaceHomeModel(callback: (player: Player, instance
 end
 
 -- 客户端请求升级家园展台模型
-function NetMsg.FireRequestUpgradeModel(pointIndex: number)
-	print("[NetMsg] FireRequestUpgradeModel at pointIndex", pointIndex)
-	requestUpgradeModelEvent:FireServer(pointIndex)
+function NetMsg.FireRequestUpgradeModel(pointIndex: number, levelAdd: number?, isPaidIntent: boolean?)
+	print("[NetMsg] FireRequestUpgradeModel at pointIndex", pointIndex, "levelAdd", levelAdd, "isPaidIntent", isPaidIntent)
+	requestUpgradeModelEvent:FireServer(pointIndex, levelAdd, isPaidIntent)
 end
-function NetMsg.ConnectRequestUpgradeModel(callback: (player: Player, pointIndex: number) -> ())
+function NetMsg.ConnectRequestUpgradeModel(callback: (player: Player, pointIndex: number, levelAdd: number?, isPaidIntent: boolean?) -> ())
 	requestUpgradeModelEvent.OnServerEvent:Connect(callback)
 end
 

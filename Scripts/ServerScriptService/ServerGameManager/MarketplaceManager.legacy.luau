@@ -206,6 +206,15 @@ local function ProcessReceipt(receiptInfo: GameConfig.ReceiptInfo): Enum.Product
 		ServerGameInfo.UpgradeAbilityPaid(player, "MaxBricks", 10)
 		AnalyticsTool.AddProductPurchaseEvent(player, receiptInfo)
 		return Enum.ProductPurchaseDecision.PurchaseGranted
+	elseif receiptInfo.ProductId == GameConfig.ShopPaid.BrainrotUpgrade3ProductId then
+		-- 支付完成后一次性将目标 Brainrot 等级提升若干级（默认 +3），具体点位由 HomeManager 事先记录
+		local upgraded = ServerGameInfo.TryConsumeBrainrotPaidUpgrade(player)
+		if upgraded then
+			AnalyticsTool.AddProductPurchaseEvent(player, receiptInfo)
+			return Enum.ProductPurchaseDecision.PurchaseGranted
+		end
+		-- 若当前没有挂起记录，则交由 NotProcessedYet 让 Roblox 重试或走兜底逻辑
+		return Enum.ProductPurchaseDecision.NotProcessedYet
 	else
 		local ok, denied, policyDenied = GrantShopBundleByProductId(player, receiptInfo)
 		if ok then

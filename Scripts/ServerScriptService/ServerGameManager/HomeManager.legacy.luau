@@ -171,7 +171,7 @@ local function OnRequestPlaceHomeModel(player: Player, instanceId: string, point
 	end
 end
 
-local function OnRequestUpgradeModel(player: Player, pointIndex: number)
+local function OnRequestUpgradeModel(player: Player, pointIndex: number, levelAdd: number?, isPaidIntent: boolean?)
 	local playerInfo: GameConfig.PlayerInfo? = ServerGameInfo.GetPlayerInfo(player)
 	if not playerInfo then
 		warn("[HomeManager] OnRequestUpgradeModel failed: playerInfo not found for", player.Name)
@@ -191,10 +191,27 @@ local function OnRequestUpgradeModel(player: Player, pointIndex: number)
 
 	local cost = GameConfig.GetBrainrotUpgradeCost(brainrotData.baseAbility, model.level)
 	local currentGold = playerInfo.currencies["1"] or 0
+
+	-- 付费意图：记录 pending，由收据回调处理真正升级
+	if isPaidIntent == true then
+		if currentGold >= cost then
+			-- 理论上客户端应只在金币不足时走付费逻辑，这里做一层保护：金币足够则直接按普通升级处理
+		else
+			ServerGameInfo.SetPendingBrainrotPaidUpgrade(player, pointIndex, levelAdd or 3)
+			print("[HomeManager] Recorded pending paid brainrot upgrade for", player.Name, "at point", pointIndex, "levelAdd", levelAdd or 3)
+			return
+		end
+	end
+
 	if currentGold >= cost then
 		local configIdBefore = model.configId
 		-- 统一管理金币消耗
-		ServerGameInfo.UpdatePlayerCurrency(player, GameConfig.CurrencyType.Coin, -cost, GameConfig.ItemCountChangeReason.SpendOnUpgradeBrainrot)
+		ServerGameInfo.UpdatePlayerCurrency(
+			player,
+			GameConfig.CurrencyType.Coin,
+			-cost,
+			GameConfig.ItemCountChangeReason.SpendOnUpgradeBrainrot
+		)
 
 		-- 统一管理模型升级，会自动通知客户端
 		ServerGameInfo.UpgradePlacedModel(player, pointIndex)

@@ -687,15 +687,17 @@ for _, rewardEntry in pairs(ShopBundleDataModule) do
 	end
 end
 
--- 商店付费配置（内购商品ID：后续由你替换真实数值）
+-- 商店付费配置（内购商品ID）
 export type ShopPaidConfig = {
 	WalkSpeed10ProductId: number,
 	MaxBricks10ProductId: number,
+	BrainrotUpgrade3ProductId: number,
 }
 
 GameConfig.ShopPaid = {
 	WalkSpeed10ProductId = 3567697343,
 	MaxBricks10ProductId = 3567697394,
+	BrainrotUpgrade3ProductId = 3568879048,
 } :: ShopPaidConfig
 
 -- 实体模型信息
