@@ -68,8 +68,6 @@ local TOP_TIP_DEFAULT_COLOR = Color3.fromRGB(255, 255, 255) -- 白色
 local TOP_TIP_SUCCESS_COLOR = Color3.fromRGB(0, 255, 0)     -- 绿色
 local _TOP_TIP_FAILURE_COLOR = Color3.fromRGB(255, 0, 0)     -- 红色
 
-local rescueDeathRescuePromptActive = false
-
 local GIFT_POPUP_COUNTDOWN_TIME = 10
 local GIFT_TOP_TIP_DURATION = 5
 local TOP_TIP_FADE_DURATION = 0.5
@@ -414,7 +412,6 @@ local function OnShowRescuePopup()
 	TranslationTool.CustomAutoLocalizeTextLabel(rescueFlightTipInfoLabel, GameTexts.RescueFlightBody.source, GameTexts.RescueFlightBody.key)
 	
 	activePopUpConnectionYes = rescueFlightYesButton.MouseButton1Click:Connect(function()
-		rescueDeathRescuePromptActive = true
 		marketplaceService:PromptProductPurchase(players.LocalPlayer, GameConfig.Paving.DeathRescueProductId)
 		HidePopUpTipFrame()
 	end)
@@ -504,17 +501,14 @@ end
 
 UIAdapter.AddAdaptiveFrame(gameTipFrame, UIAdapter.AdaptiveType.FullScreen)
 
-marketplaceService.PromptProductPurchaseFinished:Connect(function(player, productId, isPurchased)
-	if player ~= players.LocalPlayer then
+marketplaceService.PromptProductPurchaseFinished:Connect(function(playerId, productId, isPurchased)
+	if playerId ~= players.LocalPlayer.UserId then
 		return
 	end
 	if productId ~= GameConfig.Paving.DeathRescueProductId then
 		return
 	end
-	if not rescueDeathRescuePromptActive then
-		return
-	end
-	rescueDeathRescuePromptActive = false
+	-- 点「是」后关闭/取消付款界面：与首屏点「否」一致，恢复坠落（ConnectResumeFalling 内会校验 isAwaitingRescue）
 	if not isPurchased then
 		ClientMsg.FireResumeFalling()
 	end

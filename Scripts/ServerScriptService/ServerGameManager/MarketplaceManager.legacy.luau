@@ -192,6 +192,7 @@ local function ProcessReceipt(receiptInfo: GameConfig.ReceiptInfo): Enum.Product
 	end
 
 	if receiptInfo.ProductId == GameConfig.Paving.DeathRescueProductId then
+		-- 取消付款无收据，不会进入此处；客户端 GameTipFrame 中 PromptProductPurchaseFinished 会触发坠落恢复
 		NetMsg.FireNotifyRescueStart(player)
 		return Enum.ProductPurchaseDecision.PurchaseGranted
 	elseif receiptInfo.ProductId == GameConfig.Paving.RebirthProductId then
