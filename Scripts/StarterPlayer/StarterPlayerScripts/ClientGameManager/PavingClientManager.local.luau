@@ -18,9 +18,8 @@ local isAwaitingRescue = false
 local stationaryTime = 0
 local lastStationaryPos: Vector3? = nil
 local lastRefillTime = 0
---Ground 专用：与 StartTrigger 的 lastRefillTime 独立，仅用于 UI 砖数同步请求
-local lastGroundTouchRefillTime = 0
-local lastGroundPollRefillTime = 0
+-- 区域补砖（Ground/Islands）共享全局节流，避免同帧重复发送。
+local lastZoneRefillTime = 0
 
 -- 跟踪地震状态切换，用于在地震结束瞬间做运行态清理。
 local lastEarthquakeActive = workspace:GetAttribute("EarthquakeActive") == true
@@ -159,31 +158,6 @@ local function GetGroundFolder(): Instance?
 	return workspace:FindFirstChild("Ground") or workspace:FindFirstChild("ground")
 end
 
-local groundOnGroundOverlapParams: OverlapParams? = nil
-local function IsLocalCharacterOnGround(character: Model): boolean
-	local groundFolder = GetGroundFolder()
-	if not groundFolder then
-		return false
-	end
-	local root = character:FindFirstChild("HumanoidRootPart") :: BasePart?
-	if not root then
-		return false
-	end
-	if not groundOnGroundOverlapParams then
-		local p = OverlapParams.new()
-		p.FilterType = Enum.RaycastFilterType.Include
-		groundOnGroundOverlapParams = p
-	end
-	(groundOnGroundOverlapParams :: OverlapParams).FilterDescendantsInstances = { groundFolder }
-	local boxSize = Vector3.new(2.5, 1.2, 2.5)
-	local boxCFrame = root.CFrame * CFrame.new(0, -root.Size.Y * 0.5 - 0.3, 0)
-	local overlapping = workspace:GetPartBoundsInBox(boxCFrame, boxSize, groundOnGroundOverlapParams :: OverlapParams)
-	return #overlapping > 0
-end
-
-local groundUiTouchConns: { [BasePart]: RBXScriptConnection } = {}
-local groundUiHookedFolder: Instance? = nil
-
 local function IsLocalCarriedBricksFull(): boolean
 	local playerInfo = ClientGameInfo.GetLocalPlayerInfo()
 	if not playerInfo then
@@ -202,56 +176,166 @@ local function IsLocalCarriedBricksFull(): boolean
 	return currentBricks == maxBricks
 end
 
-local function hookGroundPartForUiTouch(part: BasePart)
-	if groundUiTouchConns[part] then
+local function GetIslandsFolder(): Instance?
+	return workspace:FindFirstChild("Islands")
+end
+
+type RefillZoneState = {
+	name: string,
+	folderResolver: () -> Instance?,
+	touchConns: { [BasePart]: RBXScriptConnection },
+	hookedFolder: Instance?,
+	overlapParams: OverlapParams?,
+	lastTouchRefillTime: number,
+	lastPollRefillTime: number,
+	wasInZoneLastFrame: boolean,
+}
+
+local refillZoneStates: { RefillZoneState } = {
+	{
+		name = "Ground",
+		folderResolver = GetGroundFolder,
+		touchConns = {},
+		hookedFolder = nil,
+		overlapParams = nil,
+		lastTouchRefillTime = 0,
+		lastPollRefillTime = 0,
+		wasInZoneLastFrame = false,
+	},
+	{
+		name = "Islands",
+		folderResolver = GetIslandsFolder,
+		touchConns = {},
+		hookedFolder = nil,
+		overlapParams = nil,
+		lastTouchRefillTime = 0,
+		lastPollRefillTime = 0,
+		wasInZoneLastFrame = false,
+	},
+}
+
+local function IsLocalCharacterOnRefillZone(character: Model, zoneState: RefillZoneState): boolean
+	local folder = zoneState.folderResolver()
+	if not folder then
+		return false
+	end
+	local root = character:FindFirstChild("HumanoidRootPart") :: BasePart?
+	if not root then
+		return false
+	end
+	if not zoneState.overlapParams then
+		local p = OverlapParams.new()
+		p.FilterType = Enum.RaycastFilterType.Include
+		zoneState.overlapParams = p
+	end
+	(zoneState.overlapParams :: OverlapParams).FilterDescendantsInstances = { folder }
+	local boxSize = Vector3.new(2.5, 1.2, 2.5)
+	local boxCFrame = root.CFrame * CFrame.new(0, -root.Size.Y * 0.5 - 0.3, 0)
+	local overlapping = workspace:GetPartBoundsInBox(boxCFrame, boxSize, zoneState.overlapParams :: OverlapParams)
+	if #overlapping > 0 then
+		return true
+	end
+
+	-- 兜底：部分岛屿网格较薄/形状不规则时，盒体可能漏检，增加向下射线判定。
+	local raycastParams = RaycastParams.new()
+	raycastParams.FilterType = Enum.RaycastFilterType.Include
+	raycastParams.FilterDescendantsInstances = { folder }
+	local rayOrigin = root.Position + Vector3.new(0, 4, 0)
+	local rayDirection = Vector3.new(0, -12, 0)
+	return workspace:Raycast(rayOrigin, rayDirection, raycastParams) ~= nil
+end
+
+local function IsRefillDebugEnabled(): boolean
+	return workspace:GetAttribute("PavingDebugRefillTrigger") == true
+end
+
+-- Touch/Poll/进入区域共享入口，统一做满砖检查与节流。
+local function TryRequestRefill(reason: string, zoneState: RefillZoneState, now: number): boolean
+	if IsLocalCarriedBricksFull() then
+		return false
+	end
+
+	local touchCooldown = GameConfig.Paving.GroundTouchRefillCooldown
+	local globalCooldown = touchCooldown
+	if now - lastZoneRefillTime < globalCooldown then
+		return false
+	end
+
+	if reason == "poll" then
+		local pollInterval = math.max(GameConfig.Paving.GroundPollRefillInterval or 2, 1.5)
+		if now - zoneState.lastPollRefillTime < pollInterval then
+			return false
+		end
+		zoneState.lastPollRefillTime = now
+	else
+		if now - zoneState.lastTouchRefillTime < touchCooldown then
+			return false
+		end
+		zoneState.lastTouchRefillTime = now
+	end
+
+	lastZoneRefillTime = now
+	NetMsg.FireRequestStartPaving()
+	if IsRefillDebugEnabled() then
+		print(string.format("[PavingClient][Refill] reason=%s zone=%s", reason, zoneState.name))
+	end
+	return true
+end
+
+local function HookZonePartForUiTouch(part: BasePart, zoneState: RefillZoneState)
+	if zoneState.touchConns[part] then
 		return
 	end
-	groundUiTouchConns[part] = part.Touched:Connect(function(otherPart)
+	zoneState.touchConns[part] = part.Touched:Connect(function(otherPart)
 		local char = localPlayer.Character
 		if not char or not otherPart:IsDescendantOf(char) then
 			return
 		end
-		local t = os.clock()
-		local cd = GameConfig.Paving.GroundTouchRefillCooldown or 0.35
-		if t - lastGroundTouchRefillTime < cd then
-			return
-		end
-
-		if not IsLocalCarriedBricksFull() then
-			NetMsg.FireRequestStartPaving()
-			lastGroundTouchRefillTime = t
-		end
+		TryRequestRefill("touch", zoneState, os.clock())
 	end)
 	part.Destroying:Connect(function()
-		local c = groundUiTouchConns[part]
+		local c = zoneState.touchConns[part]
 		if c then
 			c:Disconnect()
-			groundUiTouchConns[part] = nil
+			zoneState.touchConns[part] = nil
 		end
 	end)
 end
 
-local function TryHookGroundFolderForUiSync()
-	local folder = GetGroundFolder()
-	if not folder or groundUiHookedFolder == folder then
+local function TryHookZoneFolderForUiSync(zoneState: RefillZoneState)
+	local folder = zoneState.folderResolver()
+	if not folder or zoneState.hookedFolder == folder then
 		return
 	end
-	groundUiHookedFolder = folder
+	zoneState.hookedFolder = folder
 	for _, desc in folder:GetDescendants() do
 		if desc:IsA("BasePart") then
-			hookGroundPartForUiTouch(desc :: BasePart)
+			HookZonePartForUiTouch(desc :: BasePart, zoneState)
 		end
 	end
 	folder.DescendantAdded:Connect(function(desc)
 		if desc:IsA("BasePart") then
-			hookGroundPartForUiTouch(desc :: BasePart)
+			HookZonePartForUiTouch(desc :: BasePart, zoneState)
 		end
 	end)
 	folder.Destroying:Connect(function()
-		if groundUiHookedFolder == folder then
-			groundUiHookedFolder = nil
+		if zoneState.hookedFolder == folder then
+			zoneState.hookedFolder = nil
 		end
 	end)
+end
+
+local function TryHookAllRefillZonesForUiSync()
+	for _, zoneState in ipairs(refillZoneStates) do
+		TryHookZoneFolderForUiSync(zoneState)
+	end
+end
+
+local function ResetRefillZoneRuntimeState()
+	for _, zoneState in ipairs(refillZoneStates) do
+		zoneState.wasInZoneLastFrame = false
+	end
+	lastZoneRefillTime = 0
 end
 
 local function GetSnappedPosition(pos: Vector3)
@@ -812,15 +896,19 @@ local function OnHeartbeat(dt: number)
 		end
 	end
 
-	-- Ground：Touch + 周期请求，用于刷新 UI 携带砖数（与 StartTrigger 门禁/补砖独立）
+	-- Ground / Islands：统一补砖触发，Touch 优先，轮询兜底。
 	if character and rootPart and humanoid and humanoid.Health > 0 then
-		local pollInterval = GameConfig.Paving.GroundPollRefillInterval or 2
-		if IsLocalCharacterOnGround(character) and now - lastGroundPollRefillTime >= pollInterval then
-			-- Ground 轮询：仅在未满砖时请求，避免砖已满仍频繁触发（影响 UI 同步与网络开销）
-			if not IsLocalCarriedBricksFull() then
-				NetMsg.FireRequestStartPaving()
-				lastGroundPollRefillTime = now
+		local pollInterval = math.max(GameConfig.Paving.GroundPollRefillInterval or 2, 1.5)
+		for _, zoneState in ipairs(refillZoneStates) do
+			local inZone = IsLocalCharacterOnRefillZone(character, zoneState)
+			if inZone and not zoneState.wasInZoneLastFrame then
+				-- 进入补砖区时立刻尝试，减少仅靠触碰导致的漏补。
+				TryRequestRefill("enter", zoneState, now)
 			end
+			if inZone and now - zoneState.lastPollRefillTime >= pollInterval then
+				TryRequestRefill("poll", zoneState, now)
+			end
+			zoneState.wasInZoneLastFrame = inZone
 		end
 	end
 
@@ -1035,6 +1123,7 @@ NetMsg.ConnectNotifyPlaceBrickBatchResult(
 -- Character management
 local function OnCharacterAdded(character: Model)
 	ResetPavingRuntimeState()
+	ResetRefillZoneRuntimeState()
 	isPavingMode = false
 	isAwaitingRescue = false
 	ClearLocalBricks()
@@ -1096,8 +1185,8 @@ workspace.ChildAdded:Connect(function(child)
 	if child.Name == "PavedBricks" then
 		HookPavedBricksFolder(child)
 	end
-	if child.Name == "Ground" or child.Name == "ground" then
-		TryHookGroundFolderForUiSync()
+	if child.Name == "Ground" or child.Name == "ground" or child.Name == "Islands" then
+		TryHookAllRefillZonesForUiSync()
 	end
 end)
-TryHookGroundFolderForUiSync()
+TryHookAllRefillZonesForUiSync()

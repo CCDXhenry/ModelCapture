@@ -620,6 +620,74 @@ local function _IsPlayerOverlappingStartTrigger(player: Player): boolean
 	return #overlapping > 0
 end
 
+local characterRefillOverlapParams: OverlapParams? = nil
+-- 返回脚下探测命中的 BasePart（盒体重叠优先，否则向下射线），用于区域判定与岛屿命名。
+local function GetCharacterRefillSurfaceHit(player: Player, folder: Instance): BasePart?
+	local character = player.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
+	if not root then
+		return nil
+	end
+	if not characterRefillOverlapParams then
+		local p = OverlapParams.new()
+		p.FilterType = Enum.RaycastFilterType.Include
+		characterRefillOverlapParams = p
+	end
+	(characterRefillOverlapParams :: OverlapParams).FilterDescendantsInstances = { folder }
+	local boxSize = Vector3.new(2.5, 1.2, 2.5)
+	local boxCFrame = root.CFrame * CFrame.new(0, -root.Size.Y * 0.5 - 0.3, 0)
+	local overlapping = workspace:GetPartBoundsInBox(boxCFrame, boxSize, characterRefillOverlapParams :: OverlapParams)
+	for _, inst in overlapping do
+		if inst:IsA("BasePart") then
+			return inst
+		end
+	end
+
+	local raycastParams = RaycastParams.new()
+	raycastParams.FilterType = Enum.RaycastFilterType.Include
+	raycastParams.FilterDescendantsInstances = { folder }
+	local rayOrigin = root.Position + Vector3.new(0, 4, 0)
+	local rayDirection = Vector3.new(0, -12, 0)
+	local rayResult = workspace:Raycast(rayOrigin, rayDirection, raycastParams)
+	local hit = rayResult and rayResult.Instance
+	if hit and hit:IsA("BasePart") then
+		return hit
+	end
+	return nil
+end
+
+-- Islands 下用于日志展示的名称：取命中部件在 Islands 下的第一层祖先（通常为单岛 Model/Folder 名）。
+local function GetIslandSubRootNameForLog(hit: BasePart, islandsFolder: Instance): string
+	local current: Instance? = hit
+	while current and current ~= islandsFolder do
+		if current.Parent == islandsFolder then
+			return current.Name
+		end
+		current = current.Parent
+	end
+	return islandsFolder.Name
+end
+
+-- 补砖合法区域（与客户端 Ground/Islands/起点 对齐）；用于校验 Remote 与日志地点名
+local function ResolveRefillLocation(player: Player): string?
+	if _IsPlayerOverlappingStartTrigger(player) then
+		return "起点"
+	end
+	local groundFolder = workspace:FindFirstChild("Ground") or workspace:FindFirstChild("ground")
+	if groundFolder and GetCharacterRefillSurfaceHit(player, groundFolder) ~= nil then
+		return "Ground"
+	end
+	local islandsFolder = workspace:FindFirstChild("Islands")
+	if islandsFolder then
+		local islandHit = GetCharacterRefillSurfaceHit(player, islandsFolder)
+		if islandHit then
+			local subName = GetIslandSubRootNameForLog(islandHit, islandsFolder)
+			return "岛屿:" .. subName
+		end
+	end
+	return nil
+end
+
 local function OnHeartbeat(deltaTime: number)
 	local now = os.clock()
 	for brick, data in pairs(activeBricks) do
@@ -638,7 +706,20 @@ local function OnHeartbeat(deltaTime: number)
 end
 
 local function OnRequestStartPaving(player: Player)
+	local location = ResolveRefillLocation(player)
+	if location == nil then
+		warn("[PavingManager] 拒绝补砖: 未在合法区域", player.Name)
+		return
+	end
+	local before = ServerGameInfo.GetPlayerCarriedBricks(player)
+	local maxBricks = ServerGameInfo.GetPlayerMaxBricks(player)
+	if before >= maxBricks then
+		print("[PavingManager] 补砖", player.Name, "携带砖已满 地点", location, "当前", before)
+		return
+	end
 	ServerGameInfo.SetPlayerBricksToMax(player)
+	local added = maxBricks - before
+	print("[PavingManager] 补砖", player.Name, "增加砖块", added, "地点", location)
 end
 
 workspace:GetAttributeChangedSignal("EarthquakeActive"):Connect(function()
