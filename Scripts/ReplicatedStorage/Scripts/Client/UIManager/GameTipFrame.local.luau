@@ -133,6 +133,11 @@ if rescueFlightPopUpTipFrame then
 	end
 end
 
+local maskImage: ImageLabel? = gameTipFrame:FindFirstChild("MaskImage") :: ImageLabel
+if maskImage then
+	maskImage.Visible = false
+end
+
 --TopTipText
 local topTipText: TextLabel? = gameTipFrame:FindFirstChild("TopTipText") :: TextLabel
 local topTipFadeCoroutine: thread?
@@ -327,6 +332,12 @@ local function OnShowGameTip(tipContentSource: string, tweenType: number, tipCon
 	ShowGameTip(tipContentSource, tweenType, tipContentKey, tipContentArgs, textColor)
 end
 
+local function SetMaskVisible(isVisible: boolean)
+	if maskImage then
+		maskImage.Visible = isVisible
+	end
+end
+
 local function HidePopUpTipFrame()
 	if popUpTipFrame then
 		popUpTipFrame.Visible = false
@@ -334,6 +345,7 @@ local function HidePopUpTipFrame()
 	if rescueFlightPopUpTipFrame then
 		rescueFlightPopUpTipFrame.Visible = false
 	end
+	SetMaskVisible(false)
 	if activePopUpConnectionYes then
 		activePopUpConnectionYes:Disconnect()
 		activePopUpConnectionYes = nil
@@ -409,6 +421,7 @@ local function OnShowRescuePopup()
 	if not rescueFlightPopUpTipFrame or not rescueFlightYesButton or not rescueFlightNoButton or not rescueFlightTipInfoLabel then return end
 	HidePopUpTipFrame()
 	rescueFlightPopUpTipFrame.Visible = true
+	SetMaskVisible(true)
 	TranslationTool.CustomAutoLocalizeTextLabel(rescueFlightTipInfoLabel, GameTexts.RescueFlightBody.source, GameTexts.RescueFlightBody.key)
 	
 	activePopUpConnectionYes = rescueFlightYesButton.MouseButton1Click:Connect(function()
