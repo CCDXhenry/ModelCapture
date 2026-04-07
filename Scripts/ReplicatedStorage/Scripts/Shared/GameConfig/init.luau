@@ -183,26 +183,30 @@ export type BrainrotData = {
 	baseAbility: number,
 }
 
---第 n 级每秒收益（纯 n 计算）
+local RECOVERY = 0.8
+local MAX_PAYBACK = 60 -- ← 唯一速节奏参数（秒）
+local COST_RATE = 1.3
+
+-- 第 n 级每秒收益（纯 n，严格递增）
 function GameConfig.GetBrainrotAbility(baseAbility: number, level: number): number
 	local linear = level + baseAbility - 1
 	local expo = math.ceil(baseAbility * (1.2 ^ (level - 1)))
 	return math.max(linear, expo)
 end
 
--- 从第 n 级升到 n+1 级的费用
+-- 从 n 级升到 n+1 级的费用（回本 ≤ T 秒）
 function GameConfig.GetBrainrotUpgradeCost(baseAbility: number, level: number): number
-	local raw = baseAbility * math.pow(1.3, level - 1)
-	local cap = 10 * GameConfig.GetBrainrotAbility(baseAbility, level + 1)
+	local raw = baseAbility * (COST_RATE ^ (level - 1))
+	local cap = MAX_PAYBACK * GameConfig.GetBrainrotAbility(baseAbility, level + 1)
 	return math.ceil(math.min(raw, cap))
 end
 
--- 第 n 级的出售价格
+-- 第 n 级的出售价格（等比级数闭合式 + 安全封顶）
 function GameConfig.GetBrainrotSellPrice(baseAbility: number, level: number): number
-	local geoSum = baseAbility * (math.pow(1.3, level - 1) - 1) / (1.3 - 1)
-	local capSum = 10 * GameConfig.GetBrainrotAbility(baseAbility, level) * 2
-	local recovery = 0.8
-	return math.ceil(baseAbility * 10 + recovery * math.min(geoSum, capSum))
+	local geoSum = baseAbility * (COST_RATE ^ (level - 1) - 1) / (COST_RATE - 1)
+	local capSum = MAX_PAYBACK * GameConfig.GetBrainrotAbility(baseAbility, level) * 2
+	local sellBase = baseAbility * 10
+	return math.ceil(sellBase + RECOVERY * math.min(geoSum, capSum))
 end
 
 -- 背包队列条目 (存盘)
