@@ -143,6 +143,29 @@ local function RefreshMarkedParts()
 	end
 end
 
+-- 地震摇晃结束、掉落动画尚未开始时：去掉水平抖动（复位 CFrame）；仍带掉落标记的块保持标记色，避免先闪回本体色再等掉落包重新上色。
+local function RestoreAllMarkedPhaseVisuals()
+	local snapshot: { [BasePart]: MarkedVisualState } = {}
+	for part, state in pairs(markedPartMap) do
+		snapshot[part] = state
+	end
+	for part, state in pairs(snapshot) do
+		if part.Parent ~= nil then
+			part.CFrame = state.baseCFrame
+			if part:GetAttribute("EarthquakeMarkedForDrop") == true then
+				local kind = part:GetAttribute("EarthquakeMarkedKind")
+				part.BrickColor = markedBrickColorValue
+				part.Transparency = GetMarkedTransparencyForKind(kind)
+			else
+				part.BrickColor = state.originalBrickColor
+				part.Material = state.originalMaterial
+				part.Transparency = state.originalTransparency
+			end
+		end
+		markedPartMap[part] = nil
+	end
+end
+
 local function UpdateMarkedJitter(now: number)
 	if not earthquakeActive then
 		return
@@ -214,10 +237,28 @@ local function TrackDescendantParts(root: Instance)
 	end
 end
 
+-- 铺砖 Part 的地震标记依赖复制属性；ChildAdded 时属性可能尚未到达，需监听变化以免依赖 0.2s 全量补扫。
+local pavedBrickEarthquakeHooked: { [BasePart]: true } = {}
+
+local function HookPavedBrickEarthquakeReplication(part: BasePart)
+	if pavedBrickEarthquakeHooked[part] then
+		return
+	end
+	pavedBrickEarthquakeHooked[part] = true
+	part:GetAttributeChangedSignal("EarthquakeMarkedForDrop"):Connect(function()
+		TryMarkPart(part)
+	end)
+	part:GetAttributeChangedSignal("EarthquakeMarkedKind"):Connect(function()
+		TryMarkPart(part)
+	end)
+end
+
 local function OnPavedBrickAdded(child: Instance)
 	if child:IsA("BasePart") then
-		TrackPart(child)
-		TryMarkPart(child)
+		local brick = child :: BasePart
+		HookPavedBrickEarthquakeReplication(brick)
+		TrackPart(brick)
+		TryMarkPart(brick)
 	end
 end
 
@@ -229,6 +270,7 @@ local function HookPavedBricksFolder(folder: Folder)
 	folder.ChildAdded:Connect(OnPavedBrickAdded)
 	folder.ChildRemoved:Connect(function(child)
 		if child:IsA("BasePart") then
+			pavedBrickEarthquakeHooked[child :: BasePart] = nil
 			UntrackPart(child)
 		end
 	end)
@@ -483,9 +525,8 @@ function EarthquakeClientManager.Init()
 
 	NetMsg.ConnectNotifyEarthquakeState(function(earthquakeId: number, isStart: boolean, duration: number, _judgeCount: number)
 		earthquakeActive = isStart
-		-- 标记阶段外观需要在每次状态变化时同步一次（包含：地震结束后随机间隙掉落前）
-		RefreshMarkedParts()
 		if isStart then
+			RefreshMarkedParts()
 			warningUiToken += 1
 			earthquakeActiveUiToken += 1
 			local token = earthquakeActiveUiToken
@@ -504,6 +545,7 @@ function EarthquakeClientManager.Init()
 				end
 			end)
 		else
+			RestoreAllMarkedPhaseVisuals()
 			earthquakeActiveUiToken += 1
 			ClientMsg.FireEarthquakeUiUpdate("hide", nil)
 		end

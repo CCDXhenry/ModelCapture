@@ -27,6 +27,30 @@ local lastEarthquakeActive = workspace:GetAttribute("EarthquakeActive") == true
 -- Local prediction config
 local LOCAL_PREDICT_TTL = GameConfig.Paving.LocalPredictTTL
 local LOCAL_PREDICT_BATCH_INTERVAL = GameConfig.Paving.BatchInterval
+local function IsEarthquakePavingHighThroughput(): boolean
+	return workspace:GetAttribute("EarthquakeActive") == true
+		or workspace:GetAttribute("EarthquakeMarkPavingActive") == true
+		or workspace:GetAttribute("EarthquakeRescuePaving") == true
+end
+
+local function GetEffectiveMaxPendingBatches(): number
+	local base = GameConfig.Paving.MaxPendingBatches or 4
+	if IsEarthquakePavingHighThroughput() then
+		return math.max(base, GameConfig.Paving.MaxPendingBatchesDuringEarthquake or 8)
+	end
+	return base
+end
+
+local function GetEffectiveBatchInterval(): number
+	if IsEarthquakePavingHighThroughput() then
+		local q = GameConfig.Paving.BatchIntervalDuringEarthquake
+		if type(q) == "number" and q > 0 then
+			return q
+		end
+	end
+	return LOCAL_PREDICT_BATCH_INTERVAL
+end
+
 local MAX_INTERPOLATION_STEPS = GameConfig.Paving.MaxInterpolationSteps
 local LOCAL_PREDICT_SUPPORT_GRACE = 0.6
 local MAX_LOCAL_PREDICT_SUPPORT_TIME = LOCAL_PREDICT_TTL + LOCAL_PREDICT_SUPPORT_GRACE
@@ -67,7 +91,6 @@ local nextBatchId = 1
 local unresolvedRequestedCount = 0
 local firstBrickFallbackAt = 0
 local previousFrameInSafeZone = true
-local MAX_PENDING_BATCHES = GameConfig.Paving.MaxPendingBatches or 4
 local BATCH_ACK_TIMEOUT = GameConfig.Paving.BatchAckTimeout or 0.9
 local FIRST_BRICK_FORCE_QUEUE_COOLDOWN = GameConfig.Paving.FirstBrickForceQueueCooldown or 0.12
 
@@ -662,13 +685,14 @@ local function SendAllPendingPaveBatches()
 	for _ in pairs(pendingBatchMap) do
 		pendingCount += 1
 	end
-	if pendingCount >= MAX_PENDING_BATCHES then
+	local maxPending = GetEffectiveMaxPendingBatches()
+	if pendingCount >= maxPending then
 		return
 	end
 	local maxBatchSize = GameConfig.Paving.MaxBatchSize
 	local queueIndex = 1
 	local originalCount = #pendingPaveQueue
-	while queueIndex <= originalCount and pendingCount < MAX_PENDING_BATCHES do
+	while queueIndex <= originalCount and pendingCount < maxPending do
 		local endIndex = math.min(queueIndex + maxBatchSize - 1, originalCount)
 		local batchChunk = table.move(pendingPaveQueue, queueIndex, endIndex, 1, {})
 		local batchId = nextBatchId
@@ -1052,7 +1076,7 @@ local function OnHeartbeat(dt: number)
 	previousFrameInSafeZone = currentFrameInSafeZone
 
 	-- [优化] Batch transmission (防止卡顿导致包过大被服务器拒收)
-	if #pendingPaveQueue > 0 and (now - lastBatchTime >= LOCAL_PREDICT_BATCH_INTERVAL) then
+	if #pendingPaveQueue > 0 and (now - lastBatchTime >= GetEffectiveBatchInterval()) then
 		SendAllPendingPaveBatches()
 		lastBatchTime = now
 	end

@@ -366,6 +366,44 @@ local function VisualizeFloatBlockRaysForBrickCenter(center: Vector3)
 	end
 end
 
+-- 批末统一写入地震铺砖标记，避免单批内多块砖交替 SetAttribute 导致复制乱序、客户端短时间出现多块「尾砖」无标。
+local function GetServerMaxPendingBatches(): number
+	local base = math.max(1, GameConfig.Paving.MaxPendingBatches or 4)
+	if
+		workspace:GetAttribute("EarthquakeActive") == true
+		or workspace:GetAttribute("EarthquakeMarkPavingActive") == true
+		or workspace:GetAttribute("EarthquakeRescuePaving") == true
+	then
+		return math.max(base, GameConfig.Paving.MaxPendingBatchesDuringEarthquake or 8)
+	end
+	return base
+end
+
+local function SyncEarthquakePavedBrickMarksForPlayer(player: Player)
+	if workspace:GetAttribute("EarthquakeMarkPavingActive") ~= true then
+		return
+	end
+	local tail = playerLastPlacedBrickMap[player.UserId]
+	if tail == nil or tail.Parent == nil then
+		return
+	end
+	for brick, data in pairs(activeBricks) do
+		if data.Owner ~= player or brick.Parent == nil then
+			continue
+		end
+		if brick:GetAttribute("EarthquakeDropped") == true then
+			continue
+		end
+		if brick == tail then
+			brick:SetAttribute("EarthquakeMarkedForDrop", nil)
+			brick:SetAttribute("EarthquakeMarkedKind", nil)
+		else
+			brick:SetAttribute("EarthquakeMarkedForDrop", true)
+			brick:SetAttribute("EarthquakeMarkedKind", "PavedBrick")
+		end
+	end
+end
+
 local function OnRequestPlaceBrickBatch(player: Player, positions: any, batchId: number?, clientSentAt: number?)
 	local rejectReason = GameConfig.PavingRejectReason
 	local acceptedIndexes: { number } = {}
@@ -380,7 +418,7 @@ local function OnRequestPlaceBrickBatch(player: Player, positions: any, batchId:
 	local playerId = player.UserId
 	local requestBatchId = if typeof(batchId) == "number" then batchId else 0
 	local now = os.clock()
-	local maxPending = math.max(1, GameConfig.Paving.MaxPendingBatches or 4)
+	local maxPending = GetServerMaxPendingBatches()
 	local inFlightCount = playerInFlightBatchMap[playerId] or 0
 	if inFlightCount >= maxPending then
 		metrics.totalBatches += 1
@@ -442,6 +480,7 @@ local function OnRequestPlaceBrickBatch(player: Player, positions: any, batchId:
 	end
 
 	local showFloatBlockRays = workspace:GetAttribute(DEBUG_FLOATBLOCK_RAYS_ATTR) == true
+	local placedNewEarthquakePavingBrick = false
 	local consumedBricks = 0
 	local remainingBricks = playerInfo.carriedInfo.bricks
 	local playerOnDangerousFloatBlock = IsPlayerOnDangerousFloatBlock(rootPart.Position)
@@ -556,14 +595,8 @@ local function OnRequestPlaceBrickBatch(player: Player, positions: any, batchId:
 		UpdateBrickVisual(brick, false)
 		brick:SetAttribute("PavingOwnerUserId", player.UserId)
 		if workspace:GetAttribute("EarthquakeMarkPavingActive") == true then
-			local previousLastBrick = playerLastPlacedBrickMap[player.UserId]
-			if previousLastBrick and previousLastBrick.Parent ~= nil and previousLastBrick:GetAttribute("EarthquakeDropped") ~= true then
-				previousLastBrick:SetAttribute("EarthquakeMarkedForDrop", true)
-				previousLastBrick:SetAttribute("EarthquakeMarkedKind", "PavedBrick")
-			end
-			-- 地震期间“当前最后一块砖”保持正常铺砖外观，不参与地震标记动画。
-			brick:SetAttribute("EarthquakeMarkedForDrop", nil)
-			brick:SetAttribute("EarthquakeMarkedKind", nil)
+			-- 属性在批末 SyncEarthquakePavedBrickMarksForPlayer 统一写入，此处只维护尾砖引用。
+			placedNewEarthquakePavingBrick = true
 			playerLastPlacedBrickMap[player.UserId] = brick
 		end
 		brick.Parent = pavedBricksFolder
@@ -577,6 +610,10 @@ local function OnRequestPlaceBrickBatch(player: Player, positions: any, batchId:
 			IsGhost = false,
 		}
 		table.insert(acceptedIndexes, index)
+	end
+
+	if workspace:GetAttribute("EarthquakeMarkPavingActive") == true and placedNewEarthquakePavingBrick then
+		SyncEarthquakePavedBrickMarksForPlayer(player)
 	end
 
 	if consumedBricks > 0 then
@@ -772,11 +809,20 @@ local function GetEarthquakeProtectedPavedBricks(): { [Part]: true }
 	return result
 end
 
+local function ForEachActivePavedBrickForEarthquake(callback: (Part) -> ())
+	for brick, _ in pairs(activeBricks) do
+		if brick.Parent ~= nil then
+			callback(brick)
+		end
+	end
+end
+
 local PavingEarthquakeBridge = require(serverScripts:WaitForChild("PavingEarthquakeBridge")) :: any
 PavingEarthquakeBridge.RegisterReleasePavedBrickAfterEarthquake(ReleaseBrickAfterEarthquake)
 PavingEarthquakeBridge.RegisterOnEarthquakeDropBrick(OnEarthquakeDropBrick)
 PavingEarthquakeBridge.RegisterGetEarthquakeProtectedPavedBricks(GetEarthquakeProtectedPavedBricks)
 PavingEarthquakeBridge.RegisterRefreshProtectedPavedBrickAfterEarthquake(RefreshProtectedPavedBrickAfterEarthquake)
+PavingEarthquakeBridge.RegisterForEachActivePavedBrickForEarthquake(ForEachActivePavedBrickForEarthquake)
 
 players.PlayerRemoving:Connect(function(player)
 	playerLastBatchTimeMap[player.UserId] = nil

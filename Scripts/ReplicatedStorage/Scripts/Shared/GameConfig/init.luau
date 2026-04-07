@@ -554,6 +554,9 @@ GameConfig.Paving = {
 	MaxBatchSize = 15, -- 单次包最大砖块数
 	LocalPredictTTL = 1.5, -- 本地预测砖块存在时间
 	BatchInterval = 0.1, -- 客户端打包发送间隔（10Hz）
+	-- 地震摇晃/铺砖标记阶段：提高在途批上限、略加快发送，减轻背压拒收与队列堆积导致的漏铺感
+	MaxPendingBatchesDuringEarthquake = 8,
+	BatchIntervalDuringEarthquake = 0.06,
 	MaxInterpolationSteps = 5, -- 最大插值步数，防止长距离瞬移导致卡顿
 	MaxInterpolationStepsAtHighSpeed = 10, -- 高速下提高插值步数上限
 	HighSpeedLookaheadMaxFactor = 2.2, -- 高速下前瞻倍率上限

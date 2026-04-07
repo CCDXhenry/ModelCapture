@@ -282,6 +282,26 @@ local function ScheduleNextEarthquake(now: number)
 	warningIssued = false
 end
 
+-- 铺砖以 PavingManager.activeBricks 为权威；桥未注册时兜底扫 Workspace.PavedBricks（脚本顺序容错）。
+local function ForEachManagedPavedBrickPart(callback: (BasePart) -> ())
+	local function onBrick(brick: Part)
+		if brick:IsA("BasePart") then
+			callback(brick :: BasePart)
+		end
+	end
+	if PavingEarthquakeBridge.ForEachActivePavedBrickForEarthquake(onBrick) then
+		return
+	end
+	local pavedFolder = workspace:FindFirstChild("PavedBricks") :: Folder?
+	if pavedFolder and pavedFolder:IsA("Folder") then
+		for _, child in ipairs(pavedFolder:GetChildren()) do
+			if child:IsA("BasePart") then
+				callback(child :: BasePart)
+			end
+		end
+	end
+end
+
 local function StartEarthquake(now: number)
 	warningIssued = false
 	earthquakeId += 1
@@ -326,19 +346,13 @@ local function StartEarthquake(now: number)
 		end
 	end
 
-	-- 2) 标记已经铺好的 PavedBrick：地震开始时全标记
-	local pavedFolder = workspace:FindFirstChild("PavedBricks") :: Folder?
-	if pavedFolder and pavedFolder:IsA("Folder") then
-		for _, child in ipairs(pavedFolder:GetChildren()) do
-			if child:IsA("BasePart") then
-				-- 若该砖仍处于上一轮掉落中，则跳过避免重复标记
-				if child:GetAttribute("EarthquakeDropped") ~= true then
-					child:SetAttribute("EarthquakeMarkedForDrop", true)
-					child:SetAttribute("EarthquakeMarkedKind", "PavedBrick")
-				end
-			end
+	-- 2) 标记已经铺好的 PavedBrick：走铺砖模块登记的 activeBricks，不全量扫 PavedBricks 文件夹
+	ForEachManagedPavedBrickPart(function(child: BasePart)
+		if child:GetAttribute("EarthquakeDropped") ~= true then
+			child:SetAttribute("EarthquakeMarkedForDrop", true)
+			child:SetAttribute("EarthquakeMarkedKind", "PavedBrick")
 		end
-	end
+	end)
 
 	NetMsg.FireNotifyEarthquakeState(earthquakeId, true, GameConfig.Earthquake.Duration, 1)
 	DebugLog("Earthquake start id=", earthquakeId, "duration=", GameConfig.Earthquake.Duration)
@@ -375,29 +389,22 @@ local function TickEarthquake(now: number)
 				markedFloatRecoverDelayMap[k] = nil
 			end
 
-			-- PavedBrick（地震期间新铺的砖也会被 PavingManager 打标）
+			-- PavedBrick：同样以铺砖登记列表为准构建掉落队列（属性仍由 PavingManager 同步）
 			local protectedPavedBrickMap = PavingEarthquakeBridge.GetEarthquakeProtectedPavedBricks()
-			local pavedFolder = workspace:FindFirstChild("PavedBricks") :: Folder?
-			if pavedFolder and pavedFolder:IsA("Folder") then
-				for _, child in ipairs(pavedFolder:GetChildren()) do
-					if child:IsA("BasePart") then
-						if child:GetAttribute("EarthquakeMarkedForDrop") == true and child:GetAttribute("EarthquakeMarkedKind") == "PavedBrick" then
-							if protectedPavedBrickMap[child :: Part] then
-								-- 每位玩家地震期最后铺的一块砖保留，不进入掉落执行队列。
-								child:SetAttribute("EarthquakeMarkedForDrop", nil)
-								child:SetAttribute("EarthquakeMarkedKind", nil)
-								-- 保留砖在地震结算时重置为完整寿命，避免踩上去立刻进幽灵/回收窗口。
-								PavingEarthquakeBridge.RefreshProtectedPavedBrickAfterEarthquake(child :: Part)
-							else
-								table.insert(executeQueue, {
-									kind = "PavedBrick" :: DropKind,
-									part = child,
-								})
-							end
-						end
+			ForEachManagedPavedBrickPart(function(child: BasePart)
+				if child:GetAttribute("EarthquakeMarkedForDrop") == true and child:GetAttribute("EarthquakeMarkedKind") == "PavedBrick" then
+					if protectedPavedBrickMap[child :: Part] then
+						child:SetAttribute("EarthquakeMarkedForDrop", nil)
+						child:SetAttribute("EarthquakeMarkedKind", nil)
+						PavingEarthquakeBridge.RefreshProtectedPavedBrickAfterEarthquake(child :: Part)
+					else
+						table.insert(executeQueue, {
+							kind = "PavedBrick" :: DropKind,
+							part = child,
+						})
 					end
 				end
-			end
+			end)
 
 			-- 保留随机顺序，但执行时机改为“固定总时窗内全部完成”
 			ShuffleList(executeQueue)

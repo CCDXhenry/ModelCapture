@@ -6,6 +6,8 @@ local releasePavedBrickAfterEarthquake: ((Part) -> ())? = nil
 local onEarthquakeDropBrick: ((Part) -> ())? = nil
 local getEarthquakeProtectedPavedBricks: (() -> { [Part]: true })? = nil
 local refreshProtectedPavedBrickAfterEarthquake: ((Part) -> ())? = nil
+-- 由 PavingManager 注册：遍历其 activeBricks 登记在册的铺砖 Part（地震标记/掉落队列用，避免扫 Workspace.PavedBricks）
+local forEachActivePavedBrickForEarthquake: ((callback: (Part) -> ()) -> ())? = nil
 
 local M = {}
 
@@ -48,6 +50,19 @@ function M.RefreshProtectedPavedBrickAfterEarthquake(brick: Part)
 	if refreshProtectedPavedBrickAfterEarthquake then
 		refreshProtectedPavedBrickAfterEarthquake(brick)
 	end
+end
+
+function M.RegisterForEachActivePavedBrickForEarthquake(handler: (callback: (Part) -> ()) -> ())
+	forEachActivePavedBrickForEarthquake = handler
+end
+
+-- 若铺砖模块已注册，返回 true；否则返回 false（调用方可兜底扫文件夹）。
+function M.ForEachActivePavedBrickForEarthquake(callback: (Part) -> ()): boolean
+	if forEachActivePavedBrickForEarthquake then
+		forEachActivePavedBrickForEarthquake(callback)
+		return true
+	end
+	return false
 end
 
 return M
