@@ -4,6 +4,8 @@
 
 local releasePavedBrickAfterEarthquake: ((Part) -> ())? = nil
 local onEarthquakeDropBrick: ((Part) -> ())? = nil
+local getEarthquakeProtectedPavedBricks: (() -> { [Part]: true })? = nil
+local refreshProtectedPavedBrickAfterEarthquake: ((Part) -> ())? = nil
 
 local M = {}
 
@@ -24,6 +26,27 @@ end
 function M.OnEarthquakeDropBrick(brick: Part)
 	if onEarthquakeDropBrick then
 		onEarthquakeDropBrick(brick)
+	end
+end
+
+function M.RegisterGetEarthquakeProtectedPavedBricks(handler: () -> { [Part]: true })
+	getEarthquakeProtectedPavedBricks = handler
+end
+
+function M.GetEarthquakeProtectedPavedBricks(): { [Part]: true }
+	if getEarthquakeProtectedPavedBricks then
+		return getEarthquakeProtectedPavedBricks()
+	end
+	return {}
+end
+
+function M.RegisterRefreshProtectedPavedBrickAfterEarthquake(handler: (Part) -> ())
+	refreshProtectedPavedBrickAfterEarthquake = handler
+end
+
+function M.RefreshProtectedPavedBrickAfterEarthquake(brick: Part)
+	if refreshProtectedPavedBrickAfterEarthquake then
+		refreshProtectedPavedBrickAfterEarthquake(brick)
 	end
 end
 

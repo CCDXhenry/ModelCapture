@@ -72,7 +72,7 @@ end
 local brickPool: { Part } = {}
 local SEA_LEVEL = 0
 local lastEarthquakeActive = workspace:GetAttribute("EarthquakeActive") == true
-local hasEarthquakeEndedAtLeastOnce = false
+local playerLastPlacedBrickMap: { [number]: Part } = {}
 
 -- 动态获取海平面高度 (与客户端逻辑对齐)
 local startPointFolder = workspace:FindFirstChild("StartPoint")
@@ -172,6 +172,10 @@ local function GetBrickFromPool(): Part
 	end
 
 	local part = brick :: Part
+	-- 对象池复用兜底：确保每次取出的砖都有可站立的物理属性。
+	part.Anchored = true
+	part.CanCollide = true
+	part.CanQuery = true
 	part.CastShadow = false --性能优化
 	return part
 end
@@ -182,12 +186,21 @@ local function ReturnBrickToPool(brick: Part)
 	if activeBricksGrid[key] == brick then
 		activeBricksGrid[key] = nil
 	end
+	local ownerUserId = brick:GetAttribute("PavingOwnerUserId")
+	if type(ownerUserId) == "number" and playerLastPlacedBrickMap[ownerUserId] == brick then
+		playerLastPlacedBrickMap[ownerUserId] = nil
+	end
 	activeBricks[brick] = nil
 	brick.Parent = nil
+	-- 防止地震掉落流程将碰撞关闭后带入对象池，影响后续新铺砖可站立性。
+	brick.Anchored = true
+	brick.CanCollide = true
+	brick.CanQuery = true
 	brick:SetAttribute("IsGhost", nil)
 	brick:SetAttribute("EarthquakeDropped", nil)
 	brick:SetAttribute("EarthquakeMarkedForDrop", nil)
 	brick:SetAttribute("EarthquakeMarkedKind", nil)
+	brick:SetAttribute("PavingOwnerUserId", nil)
 	table.insert(brickPool, brick)
 end
 
@@ -241,7 +254,7 @@ local function IsPointOverSafeZone(samplePos: Vector3): boolean
 	return workspace:Raycast(rayOrigin, rayDirection, raycastParams) ~= nil
 end
 
-local function GetSnappedPositionForPaving(pos: Vector3): Vector3
+local function _GetSnappedPositionForPaving(pos: Vector3): Vector3
 	local grid = brickTemplate.Size.X
 	local x = math.floor(pos.X / grid + 0.5) * grid
 	local z = math.floor(pos.Z / grid + 0.5) * grid
@@ -293,7 +306,7 @@ local function GetBrickFootprintCornerPositions(center: Vector3): { Vector3 }
 	}
 end
 
-local function IsEntireBrickFootprintOverPavingSafeZone(center: Vector3): boolean
+local function _IsEntireBrickFootprintOverPavingSafeZone(center: Vector3): boolean
 	for _, p in GetBrickFootprintCornerPositions(center) do
 		if not IsPointOverPavingSafeZone(p) then
 			return false
@@ -309,6 +322,22 @@ local function IsEntireBrickFootprintOverFloatBlock(center: Vector3): boolean
 		end
 	end
 	return true
+end
+
+local function IsDangerousFloatBlock(part: BasePart?): boolean
+	return part ~= nil and (part:GetAttribute("EarthquakeMarkedForDrop") == true or part:GetAttribute("EarthquakeDropped") == true)
+end
+
+local function IsPlayerOnDangerousFloatBlock(rootPos: Vector3): boolean
+	local hit = RaycastFloatBlockAtPoint(rootPos)
+	if hit == nil then
+		return false
+	end
+	local inst = hit.Instance
+	if not inst:IsA("BasePart") then
+		return false
+	end
+	return IsDangerousFloatBlock(inst)
 end
 
 local function IsEntireBrickFootprintOverSafeZone(center: Vector3): boolean
@@ -391,7 +420,7 @@ local function OnRequestPlaceBrickBatch(player: Player, positions: any, batchId:
 		return
 	end
 
-	local playerInfo: GameConfig.PlayerInfo? = ServerGameInfo.GetPlayerInfo(player)
+	local playerInfo = ServerGameInfo.GetPlayerInfo(player) :: any
 	if playerInfo == nil then
 		AddRejected(1, rejectReason.InvalidPayload)
 		metrics.totalRejected += 1
@@ -415,8 +444,11 @@ local function OnRequestPlaceBrickBatch(player: Player, positions: any, batchId:
 	local showFloatBlockRays = workspace:GetAttribute(DEBUG_FLOATBLOCK_RAYS_ATTR) == true
 	local consumedBricks = 0
 	local remainingBricks = playerInfo.carriedInfo.bricks
-	local outOfBricksSupportTime = GameConfig.Paving.OutOfBricksSupportTime or 1.2
-	local outOfBricksSupportRenewThreshold = GameConfig.Paving.OutOfBricksSupportRenewThreshold or 0.35
+	local playerOnDangerousFloatBlock = IsPlayerOnDangerousFloatBlock(rootPart.Position)
+	-- 续期窗口采用“双阈值”：比例阈值 + 绝对秒数上限，避免回踩旧路时大面积过早续期。
+	local stationaryRenewalThresholdByRatio = GameConfig.Paving.BaseCollapseTime * GameConfig.Paving.StationaryRenewalThreshold
+	local stationaryRenewalMaxRemainingTime = GameConfig.Paving.StationaryRenewalMaxRemainingTime or 1
+	local stationaryRenewalRemainingThreshold = math.min(stationaryRenewalThresholdByRatio, stationaryRenewalMaxRemainingTime)
 
 	for index, position in ipairs(positions) do
 		if typeof(position) ~= "Vector3" then
@@ -425,39 +457,8 @@ local function OnRequestPlaceBrickBatch(player: Player, positions: any, batchId:
 			continue
 		end
 
-		if showFloatBlockRays then
-			VisualizeFloatBlockRaysForBrickCenter(position)
-		end
-
-		-- 若整块砖 footprint 完全位于安全区（Ground/Islands/PlayersHome），则禁铺
-		if IsEntireBrickFootprintOverSafeZone(position) then
-			AddRejected(index, rejectReason.SafeZoneBlocked)
-			metrics.totalRejected += 1
-			continue
-		end
-
-		-- 仅当砖块底面四角均落在 FloatBlock 上方时才禁铺（预警～地震结束期间允许在 FloatBlock 上铺砖自救）
-		if workspace:GetAttribute("EarthquakeRescuePaving") ~= true and IsEntireBrickFootprintOverFloatBlock(position) then
-			AddRejected(index, rejectReason.FloatBlockBlocked)
-			metrics.totalRejected += 1
-			continue
-		end
-
-		-- 1. Anti-cheat: Height check (使用动态 SEA_LEVEL)
-		if math.abs(position.Y - SEA_LEVEL) > 2 then
-			AddRejected(index, rejectReason.HeightMismatch)
-			metrics.totalRejected += 1
-			continue
-		end
-
-		-- 2. Anti-cheat: Distance check
-		if (position - rootPart.Position).Magnitude > GameConfig.Paving.PavingDistanceLimit then
-			AddRejected(index, rejectReason.DistanceLimit)
-			metrics.totalRejected += 1
-			continue
-		end
-
 		-- [优化] 瞬间查找取代遍历 (O(1) 复杂度)
+		-- 放在禁铺判定之前：已有砖续命/续期不应被 FloatBlock/SafeZone 禁铺规则误拦截。
 		local key = GetPosKey(position)
 		local existingBrick = activeBricksGrid[key]
 
@@ -466,11 +467,7 @@ local function OnRequestPlaceBrickBatch(player: Player, positions: any, batchId:
 			if data and data.Owner == player then
 				local remainingTime = data.ExpireTime - now
 				if remainingBricks <= 0 then
-					if data.IsGhost or remainingTime < GameConfig.Paving.BaseCollapseTime * outOfBricksSupportRenewThreshold then
-						data.IsGhost = false
-						data.ExpireTime = now + outOfBricksSupportTime
-						UpdateBrickVisual(existingBrick, false)
-					end
+					-- 无砖时不再做“续命延寿”；是否可站立只取决于砖是否已消失。
 					table.insert(acceptedIndexes, index)
 					continue
 				end
@@ -485,7 +482,7 @@ local function OnRequestPlaceBrickBatch(player: Player, positions: any, batchId:
 					table.insert(acceptedIndexes, index)
 				else
 					-- 防止网络延迟导致的短时间内重复续期扣砖
-					if remainingTime < GameConfig.Paving.BaseCollapseTime * GameConfig.Paving.StationaryRenewalThreshold then
+					if remainingTime < stationaryRenewalRemainingThreshold then
 						data.ExpireTime = now + GameConfig.Paving.BaseCollapseTime
 						UpdateBrickVisual(existingBrick, false)
 						consumedBricks += 1
@@ -506,6 +503,42 @@ local function OnRequestPlaceBrickBatch(player: Player, positions: any, batchId:
 			continue
 		end
 
+		if showFloatBlockRays then
+			VisualizeFloatBlockRaysForBrickCenter(position)
+		end
+
+		-- 若整块砖 footprint 完全位于安全区（Ground/Islands/PlayersHome），则禁铺
+		if IsEntireBrickFootprintOverSafeZone(position) then
+			AddRejected(index, rejectReason.SafeZoneBlocked)
+			metrics.totalRejected += 1
+			continue
+		end
+
+		-- 仅当砖块底面四角均落在 FloatBlock 上方时才禁铺（预警～地震结束期间允许在 FloatBlock 上铺砖自救）
+		if workspace:GetAttribute("EarthquakeRescuePaving") ~= true and IsEntireBrickFootprintOverFloatBlock(position) then
+			-- 紧急自救：玩家当前脚下是“危险浮块”且仍有砖时，允许补脚下砖避免直接掉落。
+			local allowEmergencyPaving = remainingBricks > 0 and playerOnDangerousFloatBlock
+			if not allowEmergencyPaving then
+				AddRejected(index, rejectReason.FloatBlockBlocked)
+				metrics.totalRejected += 1
+				continue
+			end
+		end
+
+		-- 1. Anti-cheat: Height check (使用动态 SEA_LEVEL)
+		if math.abs(position.Y - SEA_LEVEL) > 2 then
+			AddRejected(index, rejectReason.HeightMismatch)
+			metrics.totalRejected += 1
+			continue
+		end
+
+		-- 2. Anti-cheat: Distance check
+		if (position - rootPart.Position).Magnitude > GameConfig.Paving.PavingDistanceLimit then
+			AddRejected(index, rejectReason.DistanceLimit)
+			metrics.totalRejected += 1
+			continue
+		end
+
 		-- 3. Inventory check（仅在“无现存砖可续命”时限制）
 		if remainingBricks <= 0 then
 			AddRejected(index, rejectReason.OutOfBricks)
@@ -520,9 +553,17 @@ local function OnRequestPlaceBrickBatch(player: Player, positions: any, batchId:
 		local brick = GetBrickFromPool()
 		brick.Position = position
 		UpdateBrickVisual(brick, false)
+		brick:SetAttribute("PavingOwnerUserId", player.UserId)
 		if workspace:GetAttribute("EarthquakeMarkPavingActive") == true then
-			brick:SetAttribute("EarthquakeMarkedForDrop", true)
-			brick:SetAttribute("EarthquakeMarkedKind", "PavedBrick")
+			local previousLastBrick = playerLastPlacedBrickMap[player.UserId]
+			if previousLastBrick and previousLastBrick.Parent ~= nil and previousLastBrick:GetAttribute("EarthquakeDropped") ~= true then
+				previousLastBrick:SetAttribute("EarthquakeMarkedForDrop", true)
+				previousLastBrick:SetAttribute("EarthquakeMarkedKind", "PavedBrick")
+			end
+			-- 地震期间“当前最后一块砖”保持正常铺砖外观，不参与地震标记动画。
+			brick:SetAttribute("EarthquakeMarkedForDrop", nil)
+			brick:SetAttribute("EarthquakeMarkedKind", nil)
+			playerLastPlacedBrickMap[player.UserId] = brick
 		end
 		brick.Parent = pavedBricksFolder
 
@@ -561,7 +602,7 @@ local function OnRequestPlaceBrickBatch(player: Player, positions: any, batchId:
 end
 
 local startTriggerOverlapParams: OverlapParams? = nil
-local function IsPlayerOverlappingStartTrigger(player: Player): boolean
+local function _IsPlayerOverlappingStartTrigger(player: Player): boolean
 	if not startTrigger or not startTrigger:IsA("BasePart") then
 		return false
 	end
@@ -597,30 +638,13 @@ local function OnHeartbeat(deltaTime: number)
 end
 
 local function OnRequestStartPaving(player: Player)
-	local needSafeZoneGate = hasEarthquakeEndedAtLeastOnce
-		and workspace:GetAttribute("EarthquakeActive") ~= true
-		and workspace:GetAttribute("EarthquakeRescuePaving") ~= true
-	if needSafeZoneGate then
-		local character = player.Character
-		local rootPart = character and character:FindFirstChild("HumanoidRootPart") :: BasePart
-		if not rootPart then
-			return
-		end
-		local feetCenter = GetSnappedPositionForPaving(rootPart.Position)
-		-- 与客户端一致：人在 StartTrigger 内即允许补砖，不要求整砖四角都在安全区（避免边缘漏判）
-		local footprintOk = IsEntireBrickFootprintOverPavingSafeZone(feetCenter)
-		local onStartTrigger = IsPlayerOverlappingStartTrigger(player)
-		if not footprintOk and not onStartTrigger then
-			return
-		end
-	end
 	ServerGameInfo.SetPlayerBricksToMax(player)
 end
 
 workspace:GetAttributeChangedSignal("EarthquakeActive"):Connect(function()
 	local earthquakeActiveNow = workspace:GetAttribute("EarthquakeActive") == true
-	if lastEarthquakeActive and not earthquakeActiveNow then
-		hasEarthquakeEndedAtLeastOnce = true
+	if not lastEarthquakeActive and earthquakeActiveNow then
+		table.clear(playerLastPlacedBrickMap)
 	end
 	lastEarthquakeActive = earthquakeActiveNow
 end)
@@ -634,6 +658,10 @@ local function OnEarthquakeDropBrick(brick: Part)
 	if activeBricksGrid[key] == brick then
 		activeBricksGrid[key] = nil
 	end
+	local ownerUserId = brick:GetAttribute("PavingOwnerUserId")
+	if type(ownerUserId) == "number" and playerLastPlacedBrickMap[ownerUserId] == brick then
+		playerLastPlacedBrickMap[ownerUserId] = nil
+	end
 	activeBricks[brick] = nil
 end
 
@@ -641,11 +669,34 @@ local function ReleaseBrickAfterEarthquake(brick: Part)
 	ReturnBrickToPool(brick)
 end
 
-local PavingEarthquakeBridge = require(serverScripts:WaitForChild("PavingEarthquakeBridge"))
+local function RefreshProtectedPavedBrickAfterEarthquake(brick: Part)
+	local data = activeBricks[brick]
+	if data == nil then
+		return
+	end
+	data.IsGhost = false
+	data.ExpireTime = os.clock() + GameConfig.Paving.BaseCollapseTime
+	UpdateBrickVisual(brick, false)
+end
+
+local function GetEarthquakeProtectedPavedBricks(): { [Part]: true }
+	local result: { [Part]: true } = {}
+	for _, brick in pairs(playerLastPlacedBrickMap) do
+		if brick.Parent ~= nil then
+			result[brick] = true
+		end
+	end
+	return result
+end
+
+local PavingEarthquakeBridge = require(serverScripts:WaitForChild("PavingEarthquakeBridge")) :: any
 PavingEarthquakeBridge.RegisterReleasePavedBrickAfterEarthquake(ReleaseBrickAfterEarthquake)
 PavingEarthquakeBridge.RegisterOnEarthquakeDropBrick(OnEarthquakeDropBrick)
+PavingEarthquakeBridge.RegisterGetEarthquakeProtectedPavedBricks(GetEarthquakeProtectedPavedBricks)
+PavingEarthquakeBridge.RegisterRefreshProtectedPavedBrickAfterEarthquake(RefreshProtectedPavedBrickAfterEarthquake)
 
 players.PlayerRemoving:Connect(function(player)
 	playerLastBatchTimeMap[player.UserId] = nil
 	playerInFlightBatchMap[player.UserId] = nil
+	playerLastPlacedBrickMap[player.UserId] = nil
 end)

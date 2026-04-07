@@ -165,6 +165,11 @@ local function UpdateMarkedJitter(now: number)
 
 		-- 标记属性仍存在才抖动；服务器在真正掉落前会清除标记属性
 		if part:GetAttribute("EarthquakeMarkedForDrop") ~= true then
+			-- 被服务端取消标记且并未进入掉落动画：恢复正常外观（用于“保留的最后一块砖”）。
+			part.BrickColor = state.originalBrickColor
+			part.Material = state.originalMaterial
+			part.Transparency = state.originalTransparency
+			markedPartMap[part] = nil
 			continue
 		end
 

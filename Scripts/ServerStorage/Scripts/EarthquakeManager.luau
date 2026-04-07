@@ -10,7 +10,7 @@ local sharedScripts = scripts:WaitForChild("Shared")
 local GameConfig = require(sharedScripts:FindFirstChild("GameConfig"))
 local NetMsg = require(sharedScripts:FindFirstChild("NetMsg"))
 local serverScripts = ServerStorage:WaitForChild("Scripts")
-local PavingEarthquakeBridge = require(serverScripts:WaitForChild("PavingEarthquakeBridge"))
+local PavingEarthquakeBridge = require(serverScripts:WaitForChild("PavingEarthquakeBridge")) :: any
 
 local EarthquakeManager = {}
 
@@ -376,15 +376,24 @@ local function TickEarthquake(now: number)
 			end
 
 			-- PavedBrick（地震期间新铺的砖也会被 PavingManager 打标）
+			local protectedPavedBrickMap = PavingEarthquakeBridge.GetEarthquakeProtectedPavedBricks()
 			local pavedFolder = workspace:FindFirstChild("PavedBricks") :: Folder?
 			if pavedFolder and pavedFolder:IsA("Folder") then
 				for _, child in ipairs(pavedFolder:GetChildren()) do
 					if child:IsA("BasePart") then
 						if child:GetAttribute("EarthquakeMarkedForDrop") == true and child:GetAttribute("EarthquakeMarkedKind") == "PavedBrick" then
-							table.insert(executeQueue, {
-								kind = "PavedBrick" :: DropKind,
-								part = child,
-							})
+							if protectedPavedBrickMap[child :: Part] then
+								-- 每位玩家地震期最后铺的一块砖保留，不进入掉落执行队列。
+								child:SetAttribute("EarthquakeMarkedForDrop", nil)
+								child:SetAttribute("EarthquakeMarkedKind", nil)
+								-- 保留砖在地震结算时重置为完整寿命，避免踩上去立刻进幽灵/回收窗口。
+								PavingEarthquakeBridge.RefreshProtectedPavedBrickAfterEarthquake(child :: Part)
+							else
+								table.insert(executeQueue, {
+									kind = "PavedBrick" :: DropKind,
+									part = child,
+								})
+							end
 						end
 					end
 				end

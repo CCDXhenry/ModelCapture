@@ -22,10 +22,8 @@ local lastRefillTime = 0
 local lastGroundTouchRefillTime = 0
 local lastGroundPollRefillTime = 0
 
--- 地震后“是否经过安全区”的门禁状态（用于防止空中铺砖）
+-- 跟踪地震状态切换，用于在地震结束瞬间做运行态清理。
 local lastEarthquakeActive = workspace:GetAttribute("EarthquakeActive") == true
-local hasEarthquakeEndedAtLeastOnce = false
-local hasPassedSafeZoneAfterEarthquakeEnd = false
 
 -- Local prediction config
 local LOCAL_PREDICT_TTL = GameConfig.Paving.LocalPredictTTL
@@ -73,8 +71,6 @@ local previousFrameInSafeZone = true
 local MAX_PENDING_BATCHES = GameConfig.Paving.MaxPendingBatches or 4
 local BATCH_ACK_TIMEOUT = GameConfig.Paving.BatchAckTimeout or 0.9
 local FIRST_BRICK_FORCE_QUEUE_COOLDOWN = GameConfig.Paving.FirstBrickForceQueueCooldown or 0.12
-local OUT_OF_BRICKS_SUPPORT_REQUEST_INTERVAL = GameConfig.Paving.OutOfBricksSupportRequestInterval or 0.12
-local lastOutOfBricksSupportRequestTime = 0
 
 local function IsLocalPredictVisible(): boolean
 	local attr = workspace:GetAttribute(SHOW_LOCAL_PREDICT_ATTR)
@@ -339,7 +335,6 @@ local function ResetPavingRuntimeState()
 	lastBatchTime = 0
 	firstBrickFallbackAt = 0
 	previousFrameInSafeZone = true
-	lastOutOfBricksSupportRequestTime = 0
 	table.clear(pendingPaveQueue)
 end
 
@@ -748,17 +743,8 @@ local function OnHeartbeat(dt: number)
 	local requireTouchTrigger = IsHoldingExtraJumpCoil(character)
 	local earthquakeActiveNow = workspace:GetAttribute("EarthquakeActive") == true
 	if lastEarthquakeActive and not earthquakeActiveNow then
-		hasEarthquakeEndedAtLeastOnce = true
-		hasPassedSafeZoneAfterEarthquakeEnd = false
-		if pos and rootPart then
-			if not IsEntireBrickFootprintOverSafeZone(GetSnappedPosition(pos)) then
-				if isPavingMode then
-					isPavingMode = false
-					lastPavePosition = nil
-					ClearLocalBricks()
-				end
-			end
-		end
+		-- 地震结束后不再因“当前不在安全区”强制关闭铺砖模式。
+		-- 是否可落砖继续由后续位置合法性与服务端校验控制。
 	end
 	lastEarthquakeActive = earthquakeActiveNow
 	-- 调整死亡判定阈值：使用统一配置
@@ -792,15 +778,8 @@ local function OnHeartbeat(dt: number)
 		return
 	end
 
-	local needSafeZoneToActivatePaving = hasEarthquakeEndedAtLeastOnce and not earthquakeActiveNow and workspace:GetAttribute("EarthquakeRescuePaving") ~= true
-	-- 触碰 StartTrigger 时也应允许激活：仅用「整砖四角在安全区」会与触发器边缘/网格对齐冲突，导致漏补砖
-	local allowPavingActivationByEarthquakeGate = not needSafeZoneToActivatePaving
-		or IsEntireBrickFootprintOverSafeZone(GetSnappedPosition(pos))
-		or (character ~= nil and IsLocalCharacterTouchingStartTrigger(character))
-
 	-- 2. Mode Activation Check (Start Trigger or Safe Zone)
-	-- 地震结束后须先处于真实安全区，才允许重新激活铺砖与补砖
-	if pos and allowPavingActivationByEarthquakeGate and character then
+	if pos and character then
 		local inStartRange = IsLocalCharacterTouchingStartTrigger(character)
 		local inSafeZone = false
 		if not inStartRange then
@@ -856,20 +835,6 @@ local function OnHeartbeat(dt: number)
 		return
 	end
 
-	-- 地震结束后：若玩家尚未“经过安全区”，则禁止铺砖触发（避免空中重建）
-	if hasEarthquakeEndedAtLeastOnce and not earthquakeActiveNow and (workspace:GetAttribute("EarthquakeRescuePaving") ~= true) then
-		local gateFeetPos = GetSnappedPosition(pos)
-		if IsEntireBrickFootprintOverSafeZone(gateFeetPos) then
-			hasPassedSafeZoneAfterEarthquakeEnd = true
-		end
-		if not hasPassedSafeZoneAfterEarthquakeEnd then
-			lastPavePosition = nil
-			ClearLocalBricks()
-			table.clear(pendingPaveQueue)
-			return
-		end
-	end
-
 	local serverBricks = if playerInfo then playerInfo.carriedInfo.bricks else 0
 	local isOutOfBricks = serverBricks <= 0
 	local feetPosForState = GetSnappedPosition(pos)
@@ -879,18 +844,15 @@ local function OnHeartbeat(dt: number)
 		-- 4a. Feet Guard: 检测脚下是否有有效地面，无地面时立即铺砖
 		local feetPos = feetPosForState
 		local feetFloatBlock = GetFloatBlockAtPoint(feetPos)
-		-- 已标记/已掉落的浮块上方禁止触发铺砖（避免地震后在危险浮块上跳跃仍可补砖）
+		local onDangerousFloatBlock = false
 		if feetFloatBlock ~= nil then
-			if feetFloatBlock:GetAttribute("EarthquakeMarkedForDrop") == true or feetFloatBlock:GetAttribute("EarthquakeDropped") == true then
-				lastPavePosition = nil
-				ClearLocalBricks()
-				table.clear(pendingPaveQueue)
-				return
-			end
+			onDangerousFloatBlock = feetFloatBlock:GetAttribute("EarthquakeMarkedForDrop") == true
+				or feetFloatBlock:GetAttribute("EarthquakeDropped") == true
 		end
 		local noGroundUnderFeet = not HasSolidGroundAt(pos)
+		local allowEmergencyPaving = onDangerousFloatBlock and serverBricks > 0
 		if noGroundUnderFeet then
-			if not CheckBrickExists(feetPos) and not IsFloatBlockBlockingPaving(feetPos) then
+			if not CheckBrickExists(feetPos) and (allowEmergencyPaving or not IsFloatBlockBlockingPaving(feetPos)) then
 				-- 空中脚下无地时，强制请求脚下砖，避免跳跃与安全区边缘漏首块/尾块
 				RequestPlaceBrick(feetPos, requireTouchTrigger, true)
 				FlushPendingPaveQueue()
@@ -993,20 +955,7 @@ local function OnHeartbeat(dt: number)
 			end
 		end
 	else
-		-- 无砖时仍允许对脚下已存在的服务器砖发送“保底续命请求”，避免临界寿命下直接穿模掉落
-		if (now - lastOutOfBricksSupportRequestTime) >= OUT_OF_BRICKS_SUPPORT_REQUEST_INTERVAL then
-			local supportPos = feetPosForState
-			if CheckBrickExists(supportPos) then
-				lastOutOfBricksSupportRequestTime = now
-				RequestPlaceBrick(supportPos, false, true)
-				FlushPendingPaveQueue()
-			end
-		end
-		-- 获取不到足够的砖块时停止主动铺砖预测，等待本地现有预测同步完成再关闭模式
-		if next(localBrickMap) == nil then
-			isPavingMode = false
-			lastPavePosition = nil
-		end
+		-- 无砖时不再发送续砖请求；是否可站立由砖本身是否已消失决定。
 	end
 	previousFrameInSafeZone = currentFrameInSafeZone
 
