@@ -38,6 +38,8 @@ end)
 
 local UpgradeSuccessTipColor = Color3.fromRGB(80, 255, 120)
 
+local warnedMissingAbilityList: { [string]: boolean } = {}
+
 local function showUpgradeTip(skillType: number, level: number)
 	if skillType == GameConfig.SkillType.WalkSpeed then
 		ClientMsg.FireShowGameTip(
@@ -97,7 +99,17 @@ local function refreshFrame(frame: Frame, skillType: number, levelAdd: number)
 
 	local shopData = GameConfig.Shop[abilityName]
 
-	local currentValue = shopData.abilityList[currentLevel] or shopData.abilityList[#shopData.abilityList]
+	local maxLevel = shopData.maxLevel
+	if typeof(currentLevel) ~= "number" or currentLevel ~= currentLevel then
+		currentLevel = 1
+	else
+		currentLevel = math.clamp(math.floor(currentLevel), 1, maxLevel)
+	end
+
+	local currentValue = shopData.abilityList[currentLevel]
+	if currentValue == nil then
+		currentValue = shopData.abilityList[maxLevel] or shopData.abilityList[1]
+	end
 	local currentValueStr = NumberExtension.FormatBigNumberAA(currentValue)
 
 	if abilityName == "WalkSpeed" then
@@ -107,8 +119,8 @@ local function refreshFrame(frame: Frame, skillType: number, levelAdd: number)
 	end
 
 	local canUpgrade, totalCost, targetLevel = getCostAndLimit(abilityName, currentLevel, levelAdd)
-	if canUpgrade then
-		local nextValue = shopData.abilityList[targetLevel]
+	local nextValue = if canUpgrade then shopData.abilityList[targetLevel] else nil
+	if canUpgrade and nextValue ~= nil then
 		local nextValueStr = NumberExtension.FormatBigNumberAA(nextValue)
 
 		if abilityName == "WalkSpeed" then
@@ -127,6 +139,13 @@ local function refreshFrame(frame: Frame, skillType: number, levelAdd: number)
 			imageButton.BackgroundColor3 = Color3.fromRGB(200, 200, 200)
 		end
 	else
+		if canUpgrade and nextValue == nil then
+			local warnKey = abilityName .. "_" .. tostring(targetLevel)
+			if not warnedMissingAbilityList[warnKey] then
+				warnedMissingAbilityList[warnKey] = true
+				warn("[UpgradeShopFrame] abilityList missing for upgrade preview:", abilityName, "targetLevel", targetLevel)
+			end
+		end
 		TranslationTool.CustomAutoLocalizeTextLabel(newNumberLabel, GameTexts.MaxLevel.source, GameTexts.MaxLevel.key)
 		TranslationTool.CustomAutoLocalizeTextLabel(textLabel, GameTexts.MaxLevel.source, GameTexts.MaxLevel.key)
 		imageButton.BackgroundColor3 = Color3.fromRGB(150, 150, 150)

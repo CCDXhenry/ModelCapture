@@ -1,0 +1,56 @@
+1.
+Client	ReplicatedStorage.Core.Scripts.Shared.NumberExtension:39: attempt to compare nil < number
+Script 'ReplicatedStorage.Core.Scripts.Shared.NumberExtension', Line 39 - function FormatBigNumberAA
+Script 'Players.<Player>.PlayerGui.GameScreenGui.UpgradeShopFrame.UpgradeShopFrame', Line 112 - function refreshFrame
+Script 'Players.<Player>.PlayerGui.GameScreenGui.UpgradeShopFrame.UpgradeShopFrame', Line 140 - function refreshAll
+Script 'Players.<Player>.PlayerGui.GameScreenGui.UpgradeShopFrame.UpgradeShopFrame', Line 244
+
+2.
+Client	Failed to play animation. AnimationTrack limit of 64 tracks exceeded, new animations will not be played.	
+http://www.roblox.com/asset/?id=507766388,<Player>
+http://www.roblox.com/asset/?id=913376220,<Player>
+
+3.
+Client	ReplicatedStorage.Core.Scripts.Shared.NumberExtension:39: attempt to compare nil < number	
+Script 'ReplicatedStorage.Core.Scripts.Shared.NumberExtension', Line 39 - function FormatBigNumberAA
+Script 'Players.<Player>.PlayerGui.GameScreenGui.UpgradeShopFrame.UpgradeShopFrame', Line 112 - function refreshFrame
+Script 'Players.<Player>.PlayerGui.GameScreenGui.UpgradeShopFrame.UpgradeShopFrame', Line 138 - function refreshAll
+Script 'Players.<Player>.PlayerGui.GameScreenGui.UpgradeShopFrame.UpgradeShopFrame', Line 244
+
+4.
+Client	ReplicatedStorage.Core.Scripts.Shared.NumberExtension:39: attempt to compare nil < number	
+Script 'ReplicatedStorage.Core.Scripts.Shared.NumberExtension', Line 39 - function FormatBigNumberAA
+Script 'Players.<Player>.PlayerGui.GameScreenGui.UpgradeShopFrame.UpgradeShopFrame', Line 112 - function refreshFrame
+Script 'Players.<Player>.PlayerGui.GameScreenGui.UpgradeShopFrame.UpgradeShopFrame', Line 139 - function refreshAll
+Script 'Players.<Player>.PlayerGui.GameScreenGui.UpgradeShopFrame.UpgradeShopFrame', Line 251
+
+5.
+Client	Remote event invocation discarded event; did you forget to implement OnClientEvent? (events dropped)	
+RobloxReplicatedStorage.SendLikelySpeakingUsers
+
+6.
+Client	ReplicatedStorage.Core.Scripts.Shared.NumberExtension:39: attempt to compare nil < number	
+Script 'ReplicatedStorage.Core.Scripts.Shared.NumberExtension', Line 39 - function FormatBigNumberAA
+Script 'Players.<Player>.PlayerGui.GameScreenGui.UpgradeShopFrame.UpgradeShopFrame', Line 112 - function refreshFrame
+Script 'Players.<Player>.PlayerGui.GameScreenGui.UpgradeShopFrame.UpgradeShopFrame', Line 137 - function refreshAll
+Script 'Players.<Player>.PlayerGui.GameScreenGui.UpgradeShopFrame.UpgradeShopFrame', Line 251
+
+7.
+Server	DataStore request was added to queue. If request queue fills, further requests will be dropped. Try sending fewer requests.	
+Key = <PlayerId>
+Key = 10554078141
+Key = 3477753538
+Key = 3552637484
+Key = 7703429996
+Key = 8342154918
+Key = 8749501375
+Key = 8943595169
+Key = 9987648011
+
+8.
+Client	[BackpackInputManager] No Tool found for uid bq_255126962_57241 at index 1	
+Client	[BackpackInputManager] No Tool found for uid bq_57210343_62379 at index 1	
+Client	[BackpackInputManager] No Tool found for uid bq_1091221829_36490 at index 1	
+Client	[BackpackInputManager] No Tool found for uid bq_1266111495_22631 at index 1	
+Client	[BackpackInputManager] No Tool found for uid bq_1779762564_10305 at index 1
+

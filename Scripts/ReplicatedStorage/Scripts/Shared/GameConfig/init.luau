@@ -705,6 +705,14 @@ for _, entry in pairs(UpgradeShopDataModule) do
 	target.maxLevel = math.max(target.maxLevel, entry.lv)
 end
 
+-- upgradeCostList[L] 表示从 L 级升到 L+1 的消耗；最高等级行上的 upgradeCost 不应存在，
+-- 否则服务端会认为还能升到 L+1，而 abilityList[L+1] 不存在，表现为满级属性读成 1 级或其它回退值。
+for _, target in pairs(transformedShopData) do
+	if target.maxLevel > 0 then
+		target.upgradeCostList[target.maxLevel] = nil
+	end
+end
+
 GameConfig.Shop = {
 	WalkSpeed = transformedShopData[GameConfig.SkillType.WalkSpeed],
 	MaxBricks = transformedShopData[GameConfig.SkillType.MaxBricks],

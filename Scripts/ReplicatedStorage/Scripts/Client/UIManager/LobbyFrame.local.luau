@@ -257,7 +257,9 @@ local function RefreshBricksDisplay()
 	local maxBricksConfig = GameConfig.Shop.MaxBricks
 	local maxValue = 0
 	if maxBricksConfig then
-		maxValue = maxBricksConfig.abilityList[maxBricksLevel] or maxBricksConfig.abilityList[1]
+		maxValue = maxBricksConfig.abilityList[maxBricksLevel]
+			or maxBricksConfig.abilityList[maxBricksConfig.maxLevel]
+			or maxBricksConfig.abilityList[1]
 	end
 	local maxValueStr = NumberExtension.FormatBigNumberAA(maxValue)
 
@@ -306,8 +308,12 @@ local function RefreshUpgradeValues()
 	local levelSpeed = 16
 	local baseSpeed = 16
 	if walkSpeedConfig then
-		levelSpeed = walkSpeedConfig.abilityList[walkSpeedLevel] or walkSpeedConfig.abilityList[1]
-		baseSpeed = walkSpeedConfig.abilityList[targetWalkSpeedLevel] or walkSpeedConfig.abilityList[1]
+		levelSpeed = walkSpeedConfig.abilityList[walkSpeedLevel]
+			or walkSpeedConfig.abilityList[walkSpeedConfig.maxLevel]
+			or walkSpeedConfig.abilityList[1]
+		baseSpeed = walkSpeedConfig.abilityList[targetWalkSpeedLevel]
+			or walkSpeedConfig.abilityList[walkSpeedConfig.maxLevel]
+			or walkSpeedConfig.abilityList[1]
 	end
 
 	local char = localPlayer.Character

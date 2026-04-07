@@ -14,6 +14,12 @@ local ClientGameInfo = require(clientScripts:WaitForChild("ClientGameInfo"))
 
 local localPlayer = players.LocalPlayer
 
+-- 设为 true 时在找不到 Tool 时输出 warn（复制延迟等导致的短暂缺失为预期情况）
+local DebugLogMissingTool = false
+
+local ToolLookupRetryCount = 4
+local ToolLookupRetryDelaySec = 0.05
+
 -- 数字键映射
 local KeyIndexMap: { [Enum.KeyCode]: number } = {
 	[Enum.KeyCode.One] = 1,
@@ -30,7 +36,9 @@ local KeyIndexMap: { [Enum.KeyCode]: number } = {
 -- 获取当前装备的 Tool
 local function GetEquippedTool(): Tool?
 	local character = localPlayer.Character
-	if not character then return nil end
+	if not character then
+		return nil
+	end
 	for _, obj in ipairs(character:GetChildren()) do
 		if obj:IsA("Tool") then
 			return obj :: Tool
@@ -39,35 +47,63 @@ local function GetEquippedTool(): Tool?
 	return nil
 end
 
+local function FindToolByUid(uid: string, backpack: Backpack, character: Model): Tool?
+	for _, container in ipairs({ backpack, character }) do
+		for _, obj in ipairs(container:GetChildren()) do
+			if obj:IsA("Tool") and obj:GetAttribute("BrainrotUID") == uid then
+				return obj :: Tool
+			end
+		end
+	end
+	return nil
+end
+
+local function IsCarryingUid(character: Model, uid: string): boolean
+	local carrying = character:FindFirstChild("CarryingBrainrot")
+	return carrying ~= nil and carrying:GetAttribute("BrainrotUID") == uid
+end
+
 -- 切换指定索引的 Tool
 function BackpackInputManager.ToggleTool(index: number)
 	local character = localPlayer.Character
-	if not character then return end
+	if not character then
+		return
+	end
 	local humanoid = character:FindFirstChildOfClass("Humanoid") :: Humanoid?
-	if not humanoid or humanoid.Health <= 0 then return end
+	if not humanoid or humanoid.Health <= 0 then
+		return
+	end
 
 	local queue = ClientGameInfo.GetBrainrotQueue()
-	if not queue or not queue[index] then return end
+	if not queue or not queue[index] then
+		return
+	end
 
 	local targetItem = queue[index]
-	local backpack = localPlayer:FindFirstChildOfClass("Backpack")
-	if not backpack then return end
+	if IsCarryingUid(character, targetItem.uid) then
+		return
+	end
 
-	-- 在 Backpack 或 Character 中找对应 UID 的 Tool
+	local backpack = localPlayer:FindFirstChildOfClass("Backpack")
+	if not backpack then
+		return
+	end
+
 	local targetTool: Tool? = nil
-	local searchTargets = { backpack, character }
-	for _, container in ipairs(searchTargets) do
-		if targetTool then break end
-		for _, obj in ipairs(container:GetChildren()) do
-			if obj:IsA("Tool") and obj:GetAttribute("BrainrotUID") == targetItem.uid then
-				targetTool = obj :: Tool
-				break
-			end
+	for attempt = 1, ToolLookupRetryCount do
+		targetTool = FindToolByUid(targetItem.uid, backpack, character)
+		if targetTool then
+			break
+		end
+		if attempt < ToolLookupRetryCount then
+			task.wait(ToolLookupRetryDelaySec)
 		end
 	end
 
 	if not targetTool then
-		warn("[BackpackInputManager] No Tool found for uid", targetItem.uid, "at index", index)
+		if DebugLogMissingTool then
+			warn("[BackpackInputManager] No Tool found for uid", targetItem.uid, "at index", index)
+		end
 		return
 	end
 
@@ -98,13 +134,17 @@ function BackpackInputManager.Init()
 	end)
 
 	userInputService.InputBegan:Connect(function(input: InputObject, gameProcessed: boolean)
-		if gameProcessed then return end
+		if gameProcessed then
+			return
+		end
 		local index = KeyIndexMap[input.KeyCode]
 		if index then
 			local now = tick()
-			if now - lastInputTime < inputDebounceTime then return end
+			if now - lastInputTime < inputDebounceTime then
+				return
+			end
 			lastInputTime = now
-			
+
 			BackpackInputManager.ToggleTool(index)
 		end
 	end)

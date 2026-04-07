@@ -170,7 +170,10 @@ local function IsLocalCarriedBricksFull(): boolean
 	local maxBricks = 0
 	local maxBricksConfig = GameConfig.Shop and GameConfig.Shop.MaxBricks
 	if maxBricksConfig and maxBricksConfig.abilityList then
-		maxBricks = maxBricksConfig.abilityList[maxBricksLevel] or maxBricksConfig.abilityList[1] or 0
+		maxBricks = maxBricksConfig.abilityList[maxBricksLevel]
+			or maxBricksConfig.abilityList[maxBricksConfig.maxLevel]
+			or maxBricksConfig.abilityList[1]
+			or 0
 	end
 
 	return currentBricks == maxBricks

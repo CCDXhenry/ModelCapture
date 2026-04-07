@@ -19,6 +19,46 @@ local workspace = game:GetService("Workspace")
 local playerInfoMap: { [number]: GameConfig.PlayerInfo } = {}
 local lastBroadcastModelYieldMap: { [number]: { [string]: number } } = {}
 
+-- 存档或历史 bug 可能导致等级 > maxLevel；夹紧并写回，避免 abilityList 取空后回退到 1 级
+type ShopLevelsClampTarget = {
+	walkSpeedLevel: number,
+	maxBricksLevel: number,
+	rebirthLevel: number,
+}
+
+type HomeLevelClampTarget = {
+	level: number,
+}
+
+local function ClampShopAndHomeLevelsFromConfig(shopInfo: ShopLevelsClampTarget, homeInfo: HomeLevelClampTarget): boolean
+	local changed = false
+	local walkShop = GameConfig.Shop.WalkSpeed
+	if walkShop and walkShop.maxLevel > 0 then
+		local v = math.clamp(math.floor(shopInfo.walkSpeedLevel + 0.5), 1, walkShop.maxLevel)
+		if v ~= shopInfo.walkSpeedLevel then
+			shopInfo.walkSpeedLevel = v
+			changed = true
+		end
+	end
+	local bricksShop = GameConfig.Shop.MaxBricks
+	if bricksShop and bricksShop.maxLevel > 0 then
+		local v = math.clamp(math.floor(shopInfo.maxBricksLevel + 0.5), 1, bricksShop.maxLevel)
+		if v ~= shopInfo.maxBricksLevel then
+			shopInfo.maxBricksLevel = v
+			changed = true
+		end
+	end
+	local homeShop = GameConfig.Shop.HomeLevel
+	if homeShop and homeShop.maxLevel > 0 then
+		local v = math.clamp(math.floor(homeInfo.level + 0.5), 1, homeShop.maxLevel)
+		if v ~= homeInfo.level then
+			homeInfo.level = v
+			changed = true
+		end
+	end
+	return changed
+end
+
 -- 付费 Brainrot 升级的挂起记录：按玩家缓存一次性升级信息，由收据回调消费
 type PendingBrainrotPaidUpgrade = { pointIndex: number, levelAdd: number, createdAt: number }
 local pendingBrainrotPaidUpgradeByUserId: { [number]: PendingBrainrotPaidUpgrade } = {}
@@ -114,6 +154,9 @@ function ServerGameInfo.InitPlayerInfo(
 	}
 	for ownedGamePassIndex: number, ownedGamePassId: number in playerInfo.ownedGamePassList do
 		playerInfo.ownedGamePassMap[ownedGamePassId] = true
+	end
+	if ClampShopAndHomeLevelsFromConfig(playerInfo.shopInfo, playerInfo.homeInfo) then
+		playerInfo.playerInfoChanged = true
 	end
 	playerInfoMap[player.UserId] = playerInfo
 	ServerMsg.FirePlayerInfoInit(player)
@@ -695,7 +738,7 @@ function ServerGameInfo.ApplyWalkSpeed(player: Player)
 	local isDecelerationOn = playerInfo.settingInfo.decelerationOn == true
 	local config = GameConfig.Shop.WalkSpeed
 	local targetLevel = if isDecelerationOn then 1 else walkSpeedLevel
-	local targetSpeed = config.abilityList[targetLevel] or config.abilityList[1]
+	local targetSpeed = config.abilityList[targetLevel] or config.abilityList[config.maxLevel] or config.abilityList[1]
 
 	local character = player.Character
 	if character then
@@ -955,9 +998,9 @@ function ServerGameInfo.GetPlayerMaxBricks(player: Player): number
 	local playerInfo: GameConfig.PlayerInfo = playerInfoMap[player.UserId]
 	local config = GameConfig.Shop.MaxBricks
 	if playerInfo == nil then
-		return config.abilityList[1]
+		return config.abilityList[config.maxLevel] or config.abilityList[1]
 	end
-	return config.abilityList[playerInfo.shopInfo.maxBricksLevel] or config.abilityList[1]
+	return config.abilityList[playerInfo.shopInfo.maxBricksLevel] or config.abilityList[config.maxLevel] or config.abilityList[1]
 end
 
 --将玩家砖头补满 (瞬态)
