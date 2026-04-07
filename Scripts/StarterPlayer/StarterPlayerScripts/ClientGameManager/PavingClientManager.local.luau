@@ -239,12 +239,13 @@ local function IsLocalCharacterOnRefillZone(character: Model, zoneState: RefillZ
 		return true
 	end
 
-	-- 兜底：部分岛屿网格较薄/形状不规则时，盒体可能漏检，增加向下射线判定。
+	-- 兜底：部分岛屿网格较薄/形状不规则时，盒体可能漏检，增加向下射线判定（长度与服务端补砖校验一致）。
 	local raycastParams = RaycastParams.new()
 	raycastParams.FilterType = Enum.RaycastFilterType.Include
 	raycastParams.FilterDescendantsInstances = { folder }
 	local rayOrigin = root.Position + Vector3.new(0, 4, 0)
-	local rayDirection = Vector3.new(0, -12, 0)
+	local rayLen = math.max(12, GameConfig.Paving.RefillSurfaceRayLength or 80)
+	local rayDirection = Vector3.new(0, -rayLen, 0)
 	return workspace:Raycast(rayOrigin, rayDirection, raycastParams) ~= nil
 end
 

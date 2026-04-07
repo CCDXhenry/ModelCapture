@@ -532,8 +532,9 @@ local function OnRequestPlaceBrickBatch(player: Player, positions: any, batchId:
 			continue
 		end
 
-		-- 2. Anti-cheat: Distance check
-		if (position - rootPart.Position).Magnitude > GameConfig.Paving.PavingDistanceLimit then
+		-- 2. Anti-cheat: Distance check（水平 XZ；砖位 Y 固定为海平面，全 3D 会在跳跃时误拒）
+		local horizDelta = Vector3.new(position.X - rootPart.Position.X, 0, position.Z - rootPart.Position.Z)
+		if horizDelta.Magnitude > GameConfig.Paving.PavingDistanceLimit then
 			AddRejected(index, rejectReason.DistanceLimit)
 			metrics.totalRejected += 1
 			continue
@@ -647,7 +648,8 @@ local function GetCharacterRefillSurfaceHit(player: Player, folder: Instance): B
 	raycastParams.FilterType = Enum.RaycastFilterType.Include
 	raycastParams.FilterDescendantsInstances = { folder }
 	local rayOrigin = root.Position + Vector3.new(0, 4, 0)
-	local rayDirection = Vector3.new(0, -12, 0)
+	local rayLen = math.max(12, GameConfig.Paving.RefillSurfaceRayLength or 80)
+	local rayDirection = Vector3.new(0, -rayLen, 0)
 	local rayResult = workspace:Raycast(rayOrigin, rayDirection, raycastParams)
 	local hit = rayResult and rayResult.Instance
 	if hit and hit:IsA("BasePart") then
@@ -708,7 +710,7 @@ end
 local function OnRequestStartPaving(player: Player)
 	local location = ResolveRefillLocation(player)
 	if location == nil then
-		warn("[PavingManager] 拒绝补砖: 未在合法区域", player.Name)
+		--warn("[PavingManager] 拒绝补砖: 未在合法区域", player.Name)
 		return
 	end
 	local before = ServerGameInfo.GetPlayerCarriedBricks(player)
