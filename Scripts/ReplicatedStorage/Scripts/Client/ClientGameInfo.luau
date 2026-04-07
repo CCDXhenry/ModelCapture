@@ -183,7 +183,10 @@ function ClientGameInfo.UpdatePlayerHomeInfo(playerId: number, homeSlot: string,
 	elseif otherPlayerInfoMap[playerId] ~= nil then
 		otherPlayerInfoMap[playerId].homeSlot = homeSlot
 		otherPlayerInfoMap[playerId].homeInfo = homeInfo
-		otherPlayerInfoMap[playerId].rebirthLevel = rebirthLevel
+		-- rebirthLevel 可能因旧路径缺参而为 nil，避免把已有缓存覆盖为空
+		if rebirthLevel ~= nil then
+			otherPlayerInfoMap[playerId].rebirthLevel = rebirthLevel
+		end
 		print("[ClientGameInfo] UpdatePlayerHomeInfo for OtherPlayer", playerId)
 	end
 	ClientMsg.FirePlayerHomeInfoUpdate(playerId, homeSlot, homeInfo, rebirthLevel)

@@ -271,8 +271,8 @@ NetMsg.ConnectNotifyPlayerSkillLevelUpdate(function(skillType, level)
 end)
 
 -- 监听家园信息更新
-NetMsg.ConnectNotifyPlayerHomeInfoUpdate(function(playerId: number, homeSlot: string, homeInfo: any)
-	ClientGameInfo.UpdatePlayerHomeInfo(playerId, homeSlot, homeInfo)
+NetMsg.ConnectNotifyPlayerHomeInfoUpdate(function(playerId: number, homeSlot: string, homeInfo: any, rebirthLevel: number?)
+	ClientGameInfo.UpdatePlayerHomeInfo(playerId, homeSlot, homeInfo, rebirthLevel)
 end)
 
 -- 监听模型收益更新
