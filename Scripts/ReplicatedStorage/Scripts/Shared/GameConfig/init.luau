@@ -544,7 +544,8 @@ GameConfig.Paving = {
 	DeathThreshold = -10, -- 死亡触发高度阈值 (相对于 SEA_LEVEL)
 	DeathRescueProductId = 3567697241, -- 翅膀援助购买产品ID
 	PavingDistanceLimit = 30, -- 距离玩家超过此距离则不让铺
-	StationaryRenewalThreshold = 0.7, -- 剩余寿命低于 70% 时才允许原地续期
+	StationaryRenewalThreshold = 0.9, -- 剩余寿命低于 70% 时才允许原地续期
+	StationaryRenewalMaxRemainingTime = 1, -- 原地续期最大剩余时间
 	StationaryRenewalInterval = 0.2, -- 原地续期检测间隔 (加快响应)
 	RebirthProductId = 3567723594, -- 付费重生产品ID
 	-- StartTrigger 补砖请求最小间隔（防刷 Remote）；过大会导致快速经过时漏补
