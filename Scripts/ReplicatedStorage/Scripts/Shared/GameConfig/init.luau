@@ -196,8 +196,30 @@ end
 
 -- 从 n 级升到 n+1 级的费用（回本 ≤ T 秒）
 function GameConfig.GetBrainrotUpgradeCost(baseAbility: number, level: number): number
-	local raw = baseAbility * (COST_RATE ^ (level - 1))
-	local cap = MAX_PAYBACK * GameConfig.GetBrainrotAbility(baseAbility, level + 1)
+	local basePaybackTime = 5
+	local maxPaybackTime = 300
+	-- 1. 动态回本封顶时间 T(n) = min(5 + 2 * n, 300)
+	local paybackTime = math.min(basePaybackTime + 2 * level, maxPaybackTime)
+
+	-- 2. 系统期望重生次数 kexp(n) = n / 20 (向下取整)
+	local expectedRebirthCount = math.floor(level / 20)
+
+	-- 3. 系统期望倍率 Mexp(n) = RebirthMult(kexp(n))
+	local expectedMultiplier = 1
+	if expectedRebirthCount > 0 then
+		local maxRebirthId = if GameConfig.Rebirth then #GameConfig.Rebirth else 0
+		local index = math.min(expectedRebirthCount, maxRebirthId)
+		local rebirthConfig = GameConfig.RebirthMap[index]
+		if rebirthConfig then
+			expectedMultiplier = rebirthConfig.collectMultiple
+		end
+	end
+
+	-- 4. 最终升级价格 UpgradeCost(n) = min(BASE_INCOME * 5 * 1.3^(n-1), BaseIncome(target_lv) * Mexp(n) * T(n))
+	local raw = baseAbility * basePaybackTime * (COST_RATE ^ (level - 1))
+	local nextIncome = GameConfig.GetBrainrotAbility(baseAbility, level + 1)
+	local cap = nextIncome * expectedMultiplier * paybackTime
+
 	return math.ceil(math.min(raw, cap))
 end
 
@@ -590,7 +612,7 @@ GameConfig.Earthquake = {
 	WarningSeconds = 0, -- 地震来临前预警时长（秒）
 	-- 玩家砖震落后销毁延迟（应与客户端强抖+下落总时长接近）
 	PavedBrickDestroyDelayAfterDrop = 1.15,
-	
+
 	-- 标记表现（地震开始时将要掉落的块染色&抖动）
 	MarkedBrickColor = Color3.fromRGB(255, 0, 25),
 	-- 标记阶段透明度（0～1，客户端）；浮块与铺砖可分别配置
@@ -600,18 +622,17 @@ GameConfig.Earthquake = {
 	MarkedShakeFrequency = 48, -- FloatBlock 标记抖动频率（客户端）
 	MarkedPavedShakeAmplitude = 0.22, -- 砖块标记抖动振幅（客户端，单独更缓）
 	MarkedPavedShakeFrequency = 13, -- 砖块标记抖动频率（客户端，单独更缓）
-	
+
 	-- 地震结束后执行掉落总时窗（全部块在该时长内执行完）
 	DropExecuteWindowSeconds = 1.0,
-	
+
 	-- 纯表现断裂（客户端碎片颗粒/假碎片）
 	FractureShardLifeTime = 0.5, -- 假碎片持续时间（秒）
 	FractureShardPerBlock = 5, -- 每个块生成假碎片数量（小型视觉开销）
-	
+
 	-- 地震时本地镜头抖动（CameraOffset，避免移动锚固平台导致与服务器物理不同步穿模）
 	ScreenShakeAmplitude = 0,
 	ScreenShakeFrequency = 0,
-
 }
 
 -- 2. 模型与收益逻辑 (已废弃 GameConfig.Models，现在由 BrainrotData.json 驱动)
