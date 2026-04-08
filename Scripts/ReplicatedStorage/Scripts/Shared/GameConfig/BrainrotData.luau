@@ -1,7 +1,7 @@
 return {
 	[1] = {
 		["resourceName"] = "Avocadini Guffo",
-		["baseAbility"] = 2,
+		["baseAbility"] = 20,
 		["id"] = 1,
 		["iconImageId"] = "rbxassetid://105542226647265",
 		["name_t"] = "Avocadini Guffo",
@@ -9,7 +9,7 @@ return {
 	},
 	[2] = {
 		["resourceName"] = "Strawberrelli Flamingelli",
-		["baseAbility"] = 4,
+		["baseAbility"] = 23,
 		["id"] = 2,
 		["iconImageId"] = "rbxassetid://92296659536309",
 		["name_t"] = "Strawberrelli Flamingelli",
@@ -17,7 +17,7 @@ return {
 	},
 	[3] = {
 		["resourceName"] = "Bombardiro_Crocodilo",
-		["baseAbility"] = 6,
+		["baseAbility"] = 25,
 		["id"] = 3,
 		["iconImageId"] = "rbxassetid://99840936033640",
 		["name_t"] = "Bombardiro Crocodilo",
@@ -25,7 +25,7 @@ return {
 	},
 	[4] = {
 		["resourceName"] = "Bambini_Crostini",
-		["baseAbility"] = 7,
+		["baseAbility"] = 28,
 		["id"] = 4,
 		["iconImageId"] = "rbxassetid://138341140811667",
 		["name_t"] = "Bambini Crostini",
@@ -33,7 +33,7 @@ return {
 	},
 	[5] = {
 		["resourceName"] = "Bananita_Dolphinita",
-		["baseAbility"] = 9,
+		["baseAbility"] = 38,
 		["id"] = 5,
 		["iconImageId"] = "rbxassetid://88301967814972",
 		["name_t"] = "Bananita Dolphinita",
@@ -41,7 +41,7 @@ return {
 	},
 	[6] = {
 		["resourceName"] = "Bandito_Bobritto",
-		["baseAbility"] = 16,
+		["baseAbility"] = 40,
 		["id"] = 6,
 		["iconImageId"] = "rbxassetid://136159850247950",
 		["name_t"] = "Bandito Bobritto",
@@ -49,7 +49,7 @@ return {
 	},
 	[7] = {
 		["resourceName"] = "Brr_Brr_Patapim",
-		["baseAbility"] = 24,
+		["baseAbility"] = 45,
 		["id"] = 7,
 		["iconImageId"] = "rbxassetid://119126217958063",
 		["name_t"] = "Brr Brr Patapim",
@@ -57,7 +57,7 @@ return {
 	},
 	[8] = {
 		["resourceName"] = "Ballerino Lololo",
-		["baseAbility"] = 53,
+		["baseAbility"] = 50,
 		["id"] = 8,
 		["iconImageId"] = "rbxassetid://92772304063746",
 		["name_t"] = "Ballerino Lololo",
@@ -65,7 +65,7 @@ return {
 	},
 	[9] = {
 		["resourceName"] = "Bombombini_Gusini",
-		["baseAbility"] = 67,
+		["baseAbility"] = 55.00000000000001,
 		["id"] = 9,
 		["iconImageId"] = "rbxassetid://82201909392829",
 		["name_t"] = "Bombombini Gusini",
@@ -73,7 +73,7 @@ return {
 	},
 	[10] = {
 		["resourceName"] = "Torrtuginni Dragonfrutini",
-		["baseAbility"] = 99,
+		["baseAbility"] = 75,
 		["id"] = 10,
 		["iconImageId"] = "rbxassetid://89107692660060",
 		["name_t"] = "Torrtuginni Dragonfrutini",
@@ -81,7 +81,7 @@ return {
 	},
 	[11] = {
 		["resourceName"] = "Blueberrinni_Octopusini",
-		["baseAbility"] = 198,
+		["baseAbility"] = 80,
 		["id"] = 11,
 		["iconImageId"] = "rbxassetid://75808386188638",
 		["name_t"] = "Blueberrinni Octopusini",
@@ -89,7 +89,7 @@ return {
 	},
 	[12] = {
 		["resourceName"] = "Cacto Hipopotamo",
-		["baseAbility"] = 321,
+		["baseAbility"] = 90,
 		["id"] = 12,
 		["iconImageId"] = "rbxassetid://132803971512390",
 		["name_t"] = "Cacto Hipopotamo",
@@ -97,7 +97,7 @@ return {
 	},
 	[13] = {
 		["resourceName"] = "Cappuccino_Assassino",
-		["baseAbility"] = 414,
+		["baseAbility"] = 100,
 		["id"] = 13,
 		["iconImageId"] = "rbxassetid://135189545121729",
 		["name_t"] = "Cappuccino Assassino",
@@ -105,7 +105,7 @@ return {
 	},
 	[14] = {
 		["resourceName"] = "Burbaloni_Loliloli",
-		["baseAbility"] = 642,
+		["baseAbility"] = 110.00000000000001,
 		["id"] = 14,
 		["iconImageId"] = "rbxassetid://89229140270062",
 		["name_t"] = "Burbaloni Loliloli",
@@ -113,7 +113,7 @@ return {
 	},
 	[15] = {
 		["resourceName"] = "Brri_Brri_Bicus_Dicus_Bombicus",
-		["baseAbility"] = 932,
+		["baseAbility"] = 150,
 		["id"] = 15,
 		["iconImageId"] = "rbxassetid://76238704350110",
 		["name_t"] = "Brri Brri Bicus Dicus Bombicus",
@@ -121,7 +121,7 @@ return {
 	},
 	[16] = {
 		["resourceName"] = "Cavallo_Virtuoso",
-		["baseAbility"] = 1870,
+		["baseAbility"] = 160,
 		["id"] = 16,
 		["iconImageId"] = "rbxassetid://88522499521983",
 		["name_t"] = "Cavallo Virtuoso",
@@ -129,7 +129,7 @@ return {
 	},
 	[17] = {
 		["resourceName"] = "Chef_Crabracadabra",
-		["baseAbility"] = 3620,
+		["baseAbility"] = 180,
 		["id"] = 17,
 		["iconImageId"] = "rbxassetid://70617195708783",
 		["name_t"] = "Chef Crabracadabra",
@@ -137,7 +137,7 @@ return {
 	},
 	[18] = {
 		["resourceName"] = "Espresso Signora",
-		["baseAbility"] = 5360,
+		["baseAbility"] = 200,
 		["id"] = 18,
 		["iconImageId"] = "rbxassetid://103112502843573",
 		["name_t"] = "Espresso Signora",
@@ -145,7 +145,7 @@ return {
 	},
 	[19] = {
 		["resourceName"] = "Spioniro Golubiro",
-		["baseAbility"] = 6670,
+		["baseAbility"] = 220.00000000000003,
 		["id"] = 19,
 		["iconImageId"] = "rbxassetid://123656074567888",
 		["name_t"] = "Spioniro Golubiro",
@@ -153,7 +153,7 @@ return {
 	},
 	[20] = {
 		["resourceName"] = "Graipuss_Medussi",
-		["baseAbility"] = 8830,
+		["baseAbility"] = 300,
 		["id"] = 20,
 		["iconImageId"] = "rbxassetid://112850563298987",
 		["name_t"] = "Graipuss Medussi",
@@ -161,7 +161,7 @@ return {
 	},
 	[21] = {
 		["resourceName"] = "Chimpanzini Spiderini",
-		["baseAbility"] = 15000,
+		["baseAbility"] = 320,
 		["id"] = 21,
 		["iconImageId"] = "rbxassetid://98395234412553",
 		["name_t"] = "Chimpanzini Spiderini",
@@ -169,7 +169,7 @@ return {
 	},
 	[22] = {
 		["resourceName"] = "Fluri_flura",
-		["baseAbility"] = 34000,
+		["baseAbility"] = 360,
 		["id"] = 22,
 		["iconImageId"] = "rbxassetid://108750246076858",
 		["name_t"] = "Fluri flura",
@@ -177,7 +177,7 @@ return {
 	},
 	[23] = {
 		["resourceName"] = "Gangster_Footera",
-		["baseAbility"] = 52500,
+		["baseAbility"] = 400,
 		["id"] = 23,
 		["iconImageId"] = "rbxassetid://75376273369403",
 		["name_t"] = "Gangster Footera",
@@ -185,7 +185,7 @@ return {
 	},
 	[24] = {
 		["resourceName"] = "Gattatino_Nyanino",
-		["baseAbility"] = 73900,
+		["baseAbility"] = 440.00000000000006,
 		["id"] = 24,
 		["iconImageId"] = "rbxassetid://82220978318382",
 		["name_t"] = "Gattatino Nyanino",
@@ -193,7 +193,7 @@ return {
 	},
 	[25] = {
 		["resourceName"] = "Girafa_Celestre",
-		["baseAbility"] = 85800,
+		["baseAbility"] = 600,
 		["id"] = 25,
 		["iconImageId"] = "rbxassetid://99700189193228",
 		["name_t"] = "Girafa Celestre",
@@ -201,7 +201,7 @@ return {
 	},
 	[26] = {
 		["resourceName"] = "Glorbo_Fruttodrillo",
-		["baseAbility"] = 186000,
+		["baseAbility"] = 640,
 		["id"] = 26,
 		["iconImageId"] = "rbxassetid://118685963729238",
 		["name_t"] = "Glorbo Fruttodrillo",
@@ -209,7 +209,7 @@ return {
 	},
 	[27] = {
 		["resourceName"] = "Gorillo Watermelondrillo",
-		["baseAbility"] = 360000,
+		["baseAbility"] = 720,
 		["id"] = 27,
 		["iconImageId"] = "rbxassetid://119842050311182",
 		["name_t"] = "Gorillo Watermelondrillo",
@@ -217,7 +217,7 @@ return {
 	},
 	[28] = {
 		["resourceName"] = "Cocofanto_Elefanto",
-		["baseAbility"] = 687000,
+		["baseAbility"] = 800,
 		["id"] = 28,
 		["iconImageId"] = "rbxassetid://107314578875896",
 		["name_t"] = "Cocofanto Elefanto",
@@ -225,7 +225,7 @@ return {
 	},
 	[29] = {
 		["resourceName"] = "Lionel_Cactuseli",
-		["baseAbility"] = 791000,
+		["baseAbility"] = 880.0000000000001,
 		["id"] = 29,
 		["iconImageId"] = "rbxassetid://88416398838251",
 		["name_t"] = "Lionel Cactuseli",
@@ -233,7 +233,7 @@ return {
 	},
 	[30] = {
 		["resourceName"] = "La_Vacca_Saturno_Saturnita",
-		["baseAbility"] = 880000,
+		["baseAbility"] = 1200,
 		["id"] = 30,
 		["iconImageId"] = "rbxassetid://116533419226831",
 		["name_t"] = "La Vacca Saturno Saturnita",
@@ -241,7 +241,7 @@ return {
 	},
 	[31] = {
 		["resourceName"] = "Lirilì_Larilà",
-		["baseAbility"] = 1020000,
+		["baseAbility"] = 1280,
 		["id"] = 31,
 		["iconImageId"] = "rbxassetid://102022080240700",
 		["name_t"] = "Lirilì Larilà",
@@ -249,7 +249,7 @@ return {
 	},
 	[32] = {
 		["resourceName"] = "Mat_teo",
-		["baseAbility"] = 3230000,
+		["baseAbility"] = 1440,
 		["id"] = 32,
 		["iconImageId"] = "rbxassetid://109901816242991",
 		["name_t"] = "Mat teo",
@@ -257,7 +257,7 @@ return {
 	},
 	[33] = {
 		["resourceName"] = "Nuclearo Dinossauro",
-		["baseAbility"] = 6630000,
+		["baseAbility"] = 1600,
 		["id"] = 33,
 		["iconImageId"] = "rbxassetid://98525994309754",
 		["name_t"] = "Nuclearo Dinossauro",
@@ -265,7 +265,7 @@ return {
 	},
 	[34] = {
 		["resourceName"] = "Orcalero Orcala",
-		["baseAbility"] = 8190000,
+		["baseAbility"] = 1760.0000000000002,
 		["id"] = 34,
 		["iconImageId"] = "rbxassetid://138437143806015",
 		["name_t"] = "Orcalero Orcala",
@@ -273,7 +273,7 @@ return {
 	},
 	[35] = {
 		["resourceName"] = "Salamino Penguino",
-		["baseAbility"] = 9350000,
+		["baseAbility"] = 2400,
 		["id"] = 35,
 		["iconImageId"] = "rbxassetid://120835820008701",
 		["name_t"] = "Salamino Penguino",
@@ -281,7 +281,7 @@ return {
 	},
 	[36] = {
 		["resourceName"] = "Odin_Din_Din_Dun",
-		["baseAbility"] = 10800000,
+		["baseAbility"] = 2560,
 		["id"] = 36,
 		["iconImageId"] = "rbxassetid://95044556154848",
 		["name_t"] = "Odin Din Din Dun",
@@ -289,7 +289,7 @@ return {
 	},
 	[37] = {
 		["resourceName"] = "Pandaccini Bananini",
-		["baseAbility"] = 38800000,
+		["baseAbility"] = 2880,
 		["id"] = 37,
 		["iconImageId"] = "rbxassetid://103867610806640",
 		["name_t"] = "Pandaccini Bananini",
@@ -297,7 +297,7 @@ return {
 	},
 	[38] = {
 		["resourceName"] = "Pipi_Kiwi",
-		["baseAbility"] = 68500000,
+		["baseAbility"] = 3200,
 		["id"] = 38,
 		["iconImageId"] = "rbxassetid://136562342854829",
 		["name_t"] = "Pipi Kiwi",
@@ -305,7 +305,7 @@ return {
 	},
 	[39] = {
 		["resourceName"] = "Piccione Macchina",
-		["baseAbility"] = 77300000,
+		["baseAbility"] = 3520.0000000000005,
 		["id"] = 39,
 		["iconImageId"] = "rbxassetid://85264906231797",
 		["name_t"] = "Piccione Macchina",
@@ -313,7 +313,7 @@ return {
 	},
 	[40] = {
 		["resourceName"] = "Perochello_Lemonchello",
-		["baseAbility"] = 89200000,
+		["baseAbility"] = 4800,
 		["id"] = 40,
 		["iconImageId"] = "rbxassetid://100107832382420",
 		["name_t"] = "Perochello Lemonchello",
@@ -321,7 +321,7 @@ return {
 	},
 	[41] = {
 		["resourceName"] = "Pot Hotspot",
-		["baseAbility"] = 189000000,
+		["baseAbility"] = 5120,
 		["id"] = 41,
 		["iconImageId"] = "rbxassetid://111723863498690",
 		["name_t"] = "Pot Hotspot",
@@ -329,7 +329,7 @@ return {
 	},
 	[42] = {
 		["resourceName"] = "Orangutini_Ananassini",
-		["baseAbility"] = 291000000,
+		["baseAbility"] = 5760,
 		["id"] = 42,
 		["iconImageId"] = "rbxassetid://122949352772604",
 		["name_t"] = "Orangutini Ananassini",
@@ -337,7 +337,7 @@ return {
 	},
 	[43] = {
 		["resourceName"] = "Sammyni_Spyderini",
-		["baseAbility"] = 416000000,
+		["baseAbility"] = 6400,
 		["id"] = 43,
 		["iconImageId"] = "rbxassetid://138579797806591",
 		["name_t"] = "Sammyni Spyderini",
@@ -345,7 +345,7 @@ return {
 	},
 	[44] = {
 		["resourceName"] = "Chimpanzini_Bananini",
-		["baseAbility"] = 602000000,
+		["baseAbility"] = 7040.000000000001,
 		["id"] = 44,
 		["iconImageId"] = "rbxassetid://72633994812265",
 		["name_t"] = "Chimpanzini Bananini",
@@ -353,7 +353,7 @@ return {
 	},
 	[45] = {
 		["resourceName"] = "Statutino Libertino",
-		["baseAbility"] = 807000000,
+		["baseAbility"] = 9600,
 		["id"] = 45,
 		["iconImageId"] = "rbxassetid://105432052190208",
 		["name_t"] = "Statutino Libertino",
@@ -361,7 +361,7 @@ return {
 	},
 	[46] = {
 		["resourceName"] = "Ballerina_Cappuccina",
-		["baseAbility"] = 1680000000,
+		["baseAbility"] = 10240,
 		["id"] = 46,
 		["iconImageId"] = "rbxassetid://94770858131086",
 		["name_t"] = "Ballerina Cappuccina",
@@ -369,7 +369,7 @@ return {
 	},
 	[47] = {
 		["resourceName"] = "Ta_Ta_Ta_Ta_Sahur",
-		["baseAbility"] = 3470000000,
+		["baseAbility"] = 11520,
 		["id"] = 47,
 		["iconImageId"] = "rbxassetid://135852762118102",
 		["name_t"] = "Ta Ta Ta Ta Sahur",
@@ -377,7 +377,7 @@ return {
 	},
 	[48] = {
 		["resourceName"] = "Talpa_Di_Fero",
-		["baseAbility"] = 5560000000,
+		["baseAbility"] = 12800,
 		["id"] = 48,
 		["iconImageId"] = "rbxassetid://132362517178716",
 		["name_t"] = "Talpa Di Fero",
@@ -385,7 +385,7 @@ return {
 	},
 	[49] = {
 		["resourceName"] = "Tric_Trac_Baraboom",
-		["baseAbility"] = 7130000000,
+		["baseAbility"] = 14080.000000000002,
 		["id"] = 49,
 		["iconImageId"] = "rbxassetid://92615425759229",
 		["name_t"] = "Tric Trac Baraboom",
@@ -393,7 +393,7 @@ return {
 	},
 	[50] = {
 		["resourceName"] = "Tigroligre Frutonni",
-		["baseAbility"] = 9360000000,
+		["baseAbility"] = 19200,
 		["id"] = 50,
 		["iconImageId"] = "rbxassetid://92360139849305",
 		["name_t"] = "Tigroligre Frutonni",
@@ -401,7 +401,7 @@ return {
 	},
 	[51] = {
 		["resourceName"] = "Tim_Cheese",
-		["baseAbility"] = 17600000000,
+		["baseAbility"] = 20480,
 		["id"] = 51,
 		["iconImageId"] = "rbxassetid://112465694069013",
 		["name_t"] = "Tim Cheese",
@@ -409,7 +409,7 @@ return {
 	},
 	[52] = {
 		["resourceName"] = "Boneca_Ambalabu",
-		["baseAbility"] = 27900000000,
+		["baseAbility"] = 23040,
 		["id"] = 52,
 		["iconImageId"] = "rbxassetid://76601089591786",
 		["name_t"] = "Boneca Ambalabu",
@@ -417,7 +417,7 @@ return {
 	},
 	[53] = {
 		["resourceName"] = "Tralalero_Tralala",
-		["baseAbility"] = 49000000000,
+		["baseAbility"] = 25600,
 		["id"] = 53,
 		["iconImageId"] = "rbxassetid://122783698164061",
 		["name_t"] = "Tralalero Tralala",
@@ -425,7 +425,7 @@ return {
 	},
 	[54] = {
 		["resourceName"] = "Trenostruzzo_Turbo_3000",
-		["baseAbility"] = 62100000000,
+		["baseAbility"] = 28160.000000000004,
 		["id"] = 54,
 		["iconImageId"] = "rbxassetid://112946358766381",
 		["name_t"] = "Trenostruzzo Turbo 3000",
@@ -433,7 +433,7 @@ return {
 	},
 	[55] = {
 		["resourceName"] = "Tigrilini Watermelini",
-		["baseAbility"] = 95300000000,
+		["baseAbility"] = 38400,
 		["id"] = 55,
 		["iconImageId"] = "rbxassetid://133210099512807",
 		["name_t"] = "Tigrilini Watermelini",
@@ -441,7 +441,7 @@ return {
 	},
 	[56] = {
 		["resourceName"] = "Tung_Tung_Tung_Sahur",
-		["baseAbility"] = 142000000000,
+		["baseAbility"] = 40960,
 		["id"] = 56,
 		["iconImageId"] = "rbxassetid://117400157034732",
 		["name_t"] = "Tung Tung Tung Sahur",
@@ -449,7 +449,7 @@ return {
 	},
 	[57] = {
 		["resourceName"] = "Trulimero_Trulicina",
-		["baseAbility"] = 315000000000,
+		["baseAbility"] = 46080,
 		["id"] = 57,
 		["iconImageId"] = "rbxassetid://132852123270651",
 		["name_t"] = "Trulimero Trulicina",
@@ -457,7 +457,7 @@ return {
 	},
 	[58] = {
 		["resourceName"] = "Trippi_Troppi",
-		["baseAbility"] = 503000000000,
+		["baseAbility"] = 51200,
 		["id"] = 58,
 		["iconImageId"] = "rbxassetid://117324003466900",
 		["name_t"] = "Trippi Troppi",
@@ -465,7 +465,7 @@ return {
 	},
 	[59] = {
 		["resourceName"] = "Unclito_Samito",
-		["baseAbility"] = 697000000000,
+		["baseAbility"] = 56320.00000000001,
 		["id"] = 59,
 		["iconImageId"] = "rbxassetid://82441700964470",
 		["name_t"] = "Unclito Samito",
@@ -473,7 +473,7 @@ return {
 	},
 	[60] = {
 		["resourceName"] = "Zibra Zubra Zibralini",
-		["baseAbility"] = 889000000000,
+		["baseAbility"] = 76800,
 		["id"] = 60,
 		["iconImageId"] = "rbxassetid://136242780619752",
 		["name_t"] = "Zibra Zubra Zibralini",
