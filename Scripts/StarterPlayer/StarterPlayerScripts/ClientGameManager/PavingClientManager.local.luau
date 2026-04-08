@@ -18,8 +18,10 @@ local isAwaitingRescue = false
 local stationaryTime = 0
 local lastStationaryPos: Vector3? = nil
 local lastRefillTime = 0
--- 区域补砖（Ground/Islands）共享全局节流，避免同帧重复发送。
+-- 区域补砖（Ground）共享全局节流，避免同帧重复发送。
 local lastZoneRefillTime = 0
+local EARTHQUAKE_POST_UNLOCK_PHASE_ATTR = "EarthquakePostQuakeUnlockPhase"
+local PLAYER_POST_UNLOCKED_ATTR = "PavingPostQuakeUnlocked"
 
 -- 跟踪地震状态切换，用于在地震结束瞬间做运行态清理。
 local lastEarthquakeActive = workspace:GetAttribute("EarthquakeActive") == true
@@ -93,8 +95,6 @@ local firstBrickFallbackAt = 0
 local previousFrameInSafeZone = true
 local BATCH_ACK_TIMEOUT = GameConfig.Paving.BatchAckTimeout or 0.9
 local FIRST_BRICK_FORCE_QUEUE_COOLDOWN = GameConfig.Paving.FirstBrickForceQueueCooldown or 0.12
-
-local clientTailPaveKey: string? = nil
 
 local function IsLocalPredictVisible(): boolean
 	local attr = workspace:GetAttribute(SHOW_LOCAL_PREDICT_ATTR)
@@ -202,10 +202,6 @@ local function IsLocalCarriedBricksFull(): boolean
 	return currentBricks == maxBricks
 end
 
-local function GetIslandsFolder(): Instance?
-	return workspace:FindFirstChild("Islands")
-end
-
 type RefillZoneState = {
 	name: string,
 	folderResolver: () -> Instance?,
@@ -221,16 +217,6 @@ local refillZoneStates: { RefillZoneState } = {
 	{
 		name = "Ground",
 		folderResolver = GetGroundFolder,
-		touchConns = {},
-		hookedFolder = nil,
-		overlapParams = nil,
-		lastTouchRefillTime = 0,
-		lastPollRefillTime = 0,
-		wasInZoneLastFrame = false,
-	},
-	{
-		name = "Islands",
-		folderResolver = GetIslandsFolder,
 		touchConns = {},
 		hookedFolder = nil,
 		overlapParams = nil,
@@ -262,7 +248,7 @@ local function IsLocalCharacterOnRefillZone(character: Model, zoneState: RefillZ
 		return true
 	end
 
-	-- 兜底：部分岛屿网格较薄/形状不规则时，盒体可能漏检，增加向下射线判定（长度与服务端补砖校验一致）。
+	-- 兜底：部分地面网格较薄/形状不规则时，盒体可能漏检，增加向下射线判定（长度与服务端补砖校验一致）。
 	local raycastParams = RaycastParams.new()
 	raycastParams.FilterType = Enum.RaycastFilterType.Include
 	raycastParams.FilterDescendantsInstances = { folder }
@@ -436,7 +422,6 @@ local function ClearLocalBricks()
 	table.clear(pendingPaveQueue)
 	table.clear(pendingBatchMap)
 	unresolvedRequestedCount = 0
-	clientTailPaveKey = nil
 	print("[PavingClient] Cleared all local prediction bricks and queue")
 end
 
@@ -447,7 +432,6 @@ local function ResetPavingRuntimeState()
 	lastBatchTime = 0
 	firstBrickFallbackAt = 0
 	previousFrameInSafeZone = true
-	clientTailPaveKey = nil
 	table.clear(pendingPaveQueue)
 end
 
@@ -771,9 +755,28 @@ local function IsEntireBrickFootprintOverSafeZone(center: Vector3): boolean
 	return true
 end
 
+local function IsLocalPlayerPostQuakePavingLocked(): boolean
+	if workspace:GetAttribute(EARTHQUAKE_POST_UNLOCK_PHASE_ATTR) ~= true then
+		return false
+	end
+	if localPlayer:GetAttribute(PLAYER_POST_UNLOCKED_ATTR) == true then
+		return false
+	end
+	local character = localPlayer.Character
+	local rootPart = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
+	if rootPart == nil then
+		return true
+	end
+	local snappedFeetPos = GetSnappedPosition(rootPart.Position)
+	return not IsEntireBrickFootprintOverSafeZone(snappedFeetPos)
+end
+
 -- requireTouchTrigger：多段跳弹簧，仅触碰/重叠预测砖入队。
 -- 非多段跳：水平逻辑产生的预测砖仅在“铺砖门禁安全区”外自动入队；触碰预测砖始终可入队（防掉落）。
 local function RequestPlaceBrick(targetPos: Vector3, requireTouchTrigger: boolean, forceQueue: boolean?)
+	if IsLocalPlayerPostQuakePavingLocked() then
+		return
+	end
 	local now = os.clock()
 	local key = GetPosKey(targetPos)
 	local existed = localBrickMap[key]
@@ -809,7 +812,6 @@ local function RequestPlaceBrick(targetPos: Vector3, requireTouchTrigger: boolea
 			entry.requested = true
 			entry.resolved = false
 			unresolvedRequestedCount += 1
-			clientTailPaveKey = key
 			table.insert(pendingPaveQueue, targetPos)
 		end
 	end
@@ -930,7 +932,7 @@ local function OnHeartbeat(dt: number)
 		end
 	end
 
-	-- Ground / Islands：统一补砖触发，Touch 优先，轮询兜底。
+	-- Ground：统一补砖触发，Touch 优先，轮询兜底。
 	if character and rootPart and humanoid and humanoid.Health > 0 then
 		local pollInterval = math.max(GameConfig.Paving.GroundPollRefillInterval or 2, 1.5)
 		for _, zoneState in ipairs(refillZoneStates) do
@@ -961,6 +963,13 @@ local function OnHeartbeat(dt: number)
 	local isOutOfBricks = serverBricks <= 0
 	local feetPosForState = GetSnappedPosition(pos)
 	local currentFrameInSafeZone = IsEntireBrickFootprintOverSafeZone(feetPosForState)
+	local inPostQuakeUnlockPhase = workspace:GetAttribute(EARTHQUAKE_POST_UNLOCK_PHASE_ATTR) == true
+	local unlockedAfterQuake = localPlayer:GetAttribute(PLAYER_POST_UNLOCKED_ATTR) == true
+	if inPostQuakeUnlockPhase and not unlockedAfterQuake and not currentFrameInSafeZone then
+		table.clear(pendingPaveQueue)
+		previousFrameInSafeZone = currentFrameInSafeZone
+		return
+	end
 
 	if not isOutOfBricks then
 		-- 4a. Feet Guard: 检测脚下是否有有效地面，无地面时立即铺砖
@@ -1121,18 +1130,13 @@ local function OnHeartbeat(dt: number)
 		local predictTransparency = GetLocalPredictTransparency()
 		
 		-- Locally predicted bricks
-		for key, entry in pairs(localBrickMap) do
-			if key == clientTailPaveKey then
-				entry.part.Color = brickTemplate.Color
-				entry.part.Transparency = 0 -- 地震中本地最后一块砖（避难砖）必须强制实体渲染（透明度不衰减），让玩家立刻有安全感
+		for _, entry in pairs(localBrickMap) do
+			if entry.requested then
+				entry.part.BrickColor = markedBrickColor
+				entry.part.Transparency = markedTransparency
 			else
-				if entry.requested then
-					entry.part.BrickColor = markedBrickColor
-					entry.part.Transparency = markedTransparency
-				else
-					entry.part.Color = brickTemplate.Color
-					entry.part.Transparency = predictTransparency
-				end
+				entry.part.Color = brickTemplate.Color
+				entry.part.Transparency = predictTransparency
 			end
 		end
 		
@@ -1143,39 +1147,11 @@ local function OnHeartbeat(dt: number)
 				if child:IsA("BasePart") then
 					local ownerId = child:GetAttribute("PavingOwnerUserId")
 					if type(ownerId) == "number" then
-						local shouldMark = true
-						if ownerId == localPlayer.UserId then
-							local tailKey = clientTailPaveKey
-							if tailKey then
-								local key = GetPosKey(child.Position)
-								if key == tailKey then
-									shouldMark = false
-								end
-							else
-								local tailAttr = localPlayer:GetAttribute("PavingTailPos")
-								if typeof(tailAttr) == "Vector3" and child.Position:FuzzyEq(tailAttr, 0.01) then
-									shouldMark = false
-								end
-							end
-						else
-							local ownerPlayer = players:GetPlayerByUserId(ownerId)
-							if ownerPlayer then
-								local tailAttr = ownerPlayer:GetAttribute("PavingTailPos")
-								if typeof(tailAttr) == "Vector3" and child.Position:FuzzyEq(tailAttr, 0.01) then
-									shouldMark = false
-								end
-							end
-						end
-						
 						local currentIsMarked = child:GetAttribute("ClientVisualMarked") == true
-						if shouldMark and not currentIsMarked then
+						if not currentIsMarked then
 							child.BrickColor = markedBrickColor
 							child.Transparency = markedTransparency
 							child:SetAttribute("ClientVisualMarked", true)
-						elseif not shouldMark and currentIsMarked then
-							child.Color = brickTemplate.Color
-							child.Transparency = 0 -- Server bricks are opaque
-							child:SetAttribute("ClientVisualMarked", false)
 						end
 					end
 				end
@@ -1293,7 +1269,7 @@ workspace.ChildAdded:Connect(function(child)
 	if child.Name == "PavedBricks" then
 		HookPavedBricksFolder(child)
 	end
-	if child.Name == "Ground" or child.Name == "ground" or child.Name == "Islands" then
+	if child.Name == "Ground" or child.Name == "ground" then
 		TryHookAllRefillZonesForUiSync()
 	end
 end)

@@ -579,7 +579,7 @@ GameConfig.Paving = {
 	GroundTouchRefillCooldown = 0.15,
 	-- Ground：在地面站立时周期性请求补砖，刷新 UI 携带砖数（秒）
 	GroundPollRefillInterval = 2,
-	-- Ground/Islands 补砖区兜底竖直射线的向下长度（stud）；需覆盖跳跃/多段跳高度，避免起跳后服务端拒补
+	-- Ground 补砖区兜底竖直射线的向下长度（stud）；需覆盖跳跃/多段跳高度，避免起跳后服务端拒补
 	RefillSurfaceRayLength = 80,
 }
 

@@ -326,6 +326,7 @@ local function StartEarthquake(now: number)
 	-- 允许地震期间新铺的砖也进入“标记->结束后掉落”流程
 	workspace:SetAttribute("EarthquakeDropExecutionActive", false)
 	workspace:SetAttribute("EarthquakeMarkPavingActive", true)
+	workspace:SetAttribute("EarthquakePostQuakeUnlockPhase", false)
 
 	-- 1) 标记 FloatBlock：地震开始时直接抽取一次
 	local partsByIsland = CollectFloatPartsByIsland()
@@ -363,6 +364,7 @@ local function TickEarthquake(now: number)
 			workspace:SetAttribute("EarthquakeRescuePaving", false)
 			workspace:SetAttribute("EarthquakeMarkPavingActive", false)
 			workspace:SetAttribute("EarthquakeDropExecutionActive", true)
+			workspace:SetAttribute("EarthquakePostQuakeUnlockPhase", true)
 			NetMsg.FireNotifyEarthquakeState(earthquakeId, false, 0, 0)
 
 			-- 构建执行队列：已标记 FloatBlock + 全服已标记 PavedBrick
@@ -385,12 +387,9 @@ local function TickEarthquake(now: number)
 				markedFloatRecoverDelayMap[k] = nil
 			end
 
-			-- PavedBrick：不再依赖 Marked 属性，只要不是受保护的全部视为在地震期间被牵连脱落
-			local protectedPavedBrickMap = PavingEarthquakeBridge.GetEarthquakeProtectedPavedBricks()
+			-- PavedBrick：不再保留“最后一块砖”的特殊保护，地震结束后统一进入掉落队列。
 			ForEachManagedPavedBrickPart(function(child: BasePart)
-				if protectedPavedBrickMap[child :: Part] then
-					PavingEarthquakeBridge.RefreshProtectedPavedBrickAfterEarthquake(child :: Part)
-				elseif child:GetAttribute("EarthquakeDropped") ~= true then
+				if child:GetAttribute("EarthquakeDropped") ~= true then
 					table.insert(executeQueue, {
 						kind = "PavedBrick" :: DropKind,
 						part = child,
@@ -504,6 +503,7 @@ function EarthquakeManager.Init()
 	workspace:SetAttribute("EarthquakeRescuePaving", false)
 	workspace:SetAttribute("EarthquakeMarkPavingActive", false)
 	workspace:SetAttribute("EarthquakeDropExecutionActive", false)
+	workspace:SetAttribute("EarthquakePostQuakeUnlockPhase", false)
 	workspace:SetAttribute("EarthquakeDebug", false)
 	if HEARTBEAT_CONN == nil then
 		HEARTBEAT_CONN = RunService.Heartbeat:Connect(OnHeartbeat)

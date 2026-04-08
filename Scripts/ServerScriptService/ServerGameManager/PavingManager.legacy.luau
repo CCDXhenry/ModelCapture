@@ -36,6 +36,8 @@ local metrics = {
 local METRIC_PREFIX = "PavingMetric_"
 
 local GHOST_DURATION = 1.5 -- 幽灵状态持续时间
+local EARTHQUAKE_POST_UNLOCK_PHASE_ATTR = "EarthquakePostQuakeUnlockPhase"
+local PLAYER_POST_UNLOCKED_ATTR = "PavingPostQuakeUnlocked"
 
 local modelsFolder = replicatedStorage:WaitForChild("Models")
 local bricksFolder = modelsFolder:WaitForChild("Bricks")
@@ -71,7 +73,6 @@ end
 
 local brickPool: { Part } = {}
 local SEA_LEVEL = 0
-local playerLastPlacedBrickMap: { [number]: Part } = {}
 
 -- 动态获取海平面高度 (与客户端逻辑对齐)
 local startPointFolder = workspace:FindFirstChild("StartPoint")
@@ -186,9 +187,6 @@ local function ReturnBrickToPool(brick: Part)
 		activeBricksGrid[key] = nil
 	end
 	local ownerUserId = brick:GetAttribute("PavingOwnerUserId")
-	if type(ownerUserId) == "number" and playerLastPlacedBrickMap[ownerUserId] == brick then
-		playerLastPlacedBrickMap[ownerUserId] = nil
-	end
 	activeBricks[brick] = nil
 	brick.Parent = nil
 	-- 防止地震掉落流程将碰撞关闭后带入对象池，影响后续新铺砖可站立性。
@@ -348,6 +346,30 @@ local function IsEntireBrickFootprintOverSafeZone(center: Vector3): boolean
 	return true
 end
 
+local function IsPlayerInPavingSafeZone(player: Player): boolean
+	local character = player.Character
+	local rootPart = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
+	if not rootPart then
+		return false
+	end
+	local feetPos = _GetSnappedPositionForPaving(rootPart.Position)
+	return _IsEntireBrickFootprintOverPavingSafeZone(feetPos)
+end
+
+local function RefreshPlayerPostQuakeUnlockState(player: Player)
+	if workspace:GetAttribute(EARTHQUAKE_POST_UNLOCK_PHASE_ATTR) ~= true then
+		player:SetAttribute(PLAYER_POST_UNLOCKED_ATTR, false)
+		return
+	end
+	player:SetAttribute(PLAYER_POST_UNLOCKED_ATTR, IsPlayerInPavingSafeZone(player))
+end
+
+local function RefreshAllPlayersPostQuakeUnlockState()
+	for _, player in ipairs(players:GetPlayers()) do
+		RefreshPlayerPostQuakeUnlockState(player)
+	end
+end
+
 -- 可视化：从 samplePos 向上偏移处向下打射线；绿色=命中 FloatBlock，红色=未命中（线段画满射程）
 local function VisualizeFloatBlockRaysForBrickCenter(center: Vector3)
 	local folder = GetOrCreateDebugRaysFolder()
@@ -455,6 +477,29 @@ local function OnRequestPlaceBrickBatch(player: Player, positions: any, batchId:
 	end
 
 	local showFloatBlockRays = workspace:GetAttribute(DEBUG_FLOATBLOCK_RAYS_ATTR) == true
+	local isPostQuakeUnlockPhase = workspace:GetAttribute(EARTHQUAKE_POST_UNLOCK_PHASE_ATTR) == true
+	local isPlayerUnlockedAfterQuake = player:GetAttribute(PLAYER_POST_UNLOCKED_ATTR) == true
+	if isPostQuakeUnlockPhase and not isPlayerUnlockedAfterQuake then
+		if IsPlayerInPavingSafeZone(player) then
+			player:SetAttribute(PLAYER_POST_UNLOCKED_ATTR, true)
+		else
+			for index = 1, #positions do
+				AddRejected(index, rejectReason.SafeZoneBlocked)
+				metrics.totalRejected += 1
+			end
+			NetMsg.FireNotifyPlaceBrickBatchResult(
+				player,
+				requestBatchId,
+				acceptedIndexes,
+				rejectedList,
+				ServerGameInfo.GetPlayerCarriedBricks(player),
+				now
+			)
+			playerInFlightBatchMap[playerId] = math.max((playerInFlightBatchMap[playerId] or 1) - 1, 0)
+			UpdateMetricAttributes()
+			return
+		end
+	end
 	local consumedBricks = 0
 	local remainingBricks = playerInfo.carriedInfo.bricks
 	local playerOnDangerousFloatBlock = IsPlayerOnDangerousFloatBlock(rootPart.Position)
@@ -568,8 +613,6 @@ local function OnRequestPlaceBrickBatch(player: Player, positions: any, batchId:
 		brick.Position = position
 		UpdateBrickVisual(brick, false)
 		brick:SetAttribute("PavingOwnerUserId", player.UserId)
-		playerLastPlacedBrickMap[player.UserId] = brick
-		player:SetAttribute("PavingTailPos", position)
 		brick.Parent = pavedBricksFolder
 
 		-- 存入空间哈希字典
@@ -685,19 +728,7 @@ local function GetCharacterRefillSurfaceHit(player: Player, folder: Instance): B
 	return nil
 end
 
--- Islands 下用于日志展示的名称：取命中部件在 Islands 下的第一层祖先（通常为单岛 Model/Folder 名）。
-local function GetIslandSubRootNameForLog(hit: BasePart, islandsFolder: Instance): string
-	local current: Instance? = hit
-	while current and current ~= islandsFolder do
-		if current.Parent == islandsFolder then
-			return current.Name
-		end
-		current = current.Parent
-	end
-	return islandsFolder.Name
-end
-
--- 补砖合法区域（与客户端 Ground/Islands/起点 对齐）；用于校验 Remote 与日志地点名
+-- 补砖合法区域（与客户端 Ground/起点 对齐）；用于校验 Remote 与日志地点名
 local function ResolveRefillLocation(player: Player): string?
 	if _IsPlayerOverlappingStartTrigger(player) then
 		return "起点"
@@ -705,14 +736,6 @@ local function ResolveRefillLocation(player: Player): string?
 	local groundFolder = workspace:FindFirstChild("Ground") or workspace:FindFirstChild("ground")
 	if groundFolder and GetCharacterRefillSurfaceHit(player, groundFolder) ~= nil then
 		return "Ground"
-	end
-	local islandsFolder = workspace:FindFirstChild("Islands")
-	if islandsFolder then
-		local islandHit = GetCharacterRefillSurfaceHit(player, islandsFolder)
-		if islandHit then
-			local subName = GetIslandSubRootNameForLog(islandHit, islandsFolder)
-			return "岛屿:" .. subName
-		end
 	end
 	return nil
 end
@@ -763,9 +786,6 @@ local function OnEarthquakeDropBrick(brick: Part)
 		activeBricksGrid[key] = nil
 	end
 	local ownerUserId = brick:GetAttribute("PavingOwnerUserId")
-	if type(ownerUserId) == "number" and playerLastPlacedBrickMap[ownerUserId] == brick then
-		playerLastPlacedBrickMap[ownerUserId] = nil
-	end
 	activeBricks[brick] = nil
 end
 
@@ -784,13 +804,7 @@ local function RefreshProtectedPavedBrickAfterEarthquake(brick: Part)
 end
 
 local function GetEarthquakeProtectedPavedBricks(): { [Part]: true }
-	local result: { [Part]: true } = {}
-	for _, brick in pairs(playerLastPlacedBrickMap) do
-		if brick.Parent ~= nil then
-			result[brick] = true
-		end
-	end
-	return result
+	return {}
 end
 
 local function ForEachActivePavedBrickForEarthquake(callback: (Part) -> ())
@@ -811,5 +825,26 @@ PavingEarthquakeBridge.RegisterForEachActivePavedBrickForEarthquake(ForEachActiv
 players.PlayerRemoving:Connect(function(player)
 	playerLastBatchTimeMap[player.UserId] = nil
 	playerInFlightBatchMap[player.UserId] = nil
-	playerLastPlacedBrickMap[player.UserId] = nil
 end)
+
+workspace:GetAttributeChangedSignal(EARTHQUAKE_POST_UNLOCK_PHASE_ATTR):Connect(function()
+	RefreshAllPlayersPostQuakeUnlockState()
+end)
+
+players.PlayerAdded:Connect(function(player)
+	player:SetAttribute(PLAYER_POST_UNLOCKED_ATTR, false)
+	player.CharacterAdded:Connect(function()
+		task.defer(function()
+			RefreshPlayerPostQuakeUnlockState(player)
+		end)
+	end)
+end)
+
+for _, player in ipairs(players:GetPlayers()) do
+	player:SetAttribute(PLAYER_POST_UNLOCKED_ATTR, false)
+	player.CharacterAdded:Connect(function()
+		task.defer(function()
+			RefreshPlayerPostQuakeUnlockState(player)
+		end)
+	end)
+end
