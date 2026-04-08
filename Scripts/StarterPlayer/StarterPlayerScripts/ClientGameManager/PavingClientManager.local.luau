@@ -788,6 +788,11 @@ local function RequestPlaceBrick(targetPos: Vector3, requireTouchTrigger: boolea
 	if IsLocalPlayerPostQuakePavingLocked() then
 		return
 	end
+	local placeInfo = ClientGameInfo.GetLocalPlayerInfo()
+	local carriedForPlace = if placeInfo then placeInfo.carriedInfo.bricks else 0
+	if carriedForPlace <= 0 then
+		return
+	end
 	local now = os.clock()
 	local key = GetPosKey(targetPos)
 	local existed = localBrickMap[key]
@@ -829,6 +834,10 @@ local function RequestPlaceBrick(targetPos: Vector3, requireTouchTrigger: boolea
 	local inPavingGateSafeZone = IsEntireBrickFootprintOverPavingGateSafeZone(targetPos)
 
 	local function triggerPave()
+		local triggerInfo = ClientGameInfo.GetLocalPlayerInfo()
+		if not triggerInfo or triggerInfo.carriedInfo.bricks <= 0 then
+			return
+		end
 		local entry = localBrickMap[key]
 		if entry and not entry.requested then
 			-- 触碰激活时立刻显示路径砖，与 feetGuard forceQueue 路径的即时可见保持一致
@@ -939,8 +948,10 @@ local function OnHeartbeat(dt: number)
 				--print("[PavingClient] Mode activated")
 
 				-- 【新增】：如果有惯性方向，额外在前方一格预铺一块
+				local activationInfo = ClientGameInfo.GetLocalPlayerInfo()
+				local activationBricks = if activationInfo then activationInfo.carriedInfo.bricks else 0
 				local velocity = rootPart.AssemblyLinearVelocity
-				if velocity.Magnitude > 1 then
+				if activationBricks > 0 and velocity.Magnitude > 1 then
 					local horizUnit = Vector3.new(velocity.X, 0, velocity.Z).Unit
 					local forwardSnapped = GetSnappedPosition(pos + horizUnit * GRID_SIZE)
 					RequestPlaceBrick(forwardSnapped, requireTouchTrigger)
@@ -1126,6 +1137,16 @@ local function OnHeartbeat(dt: number)
 		end
 	else
 		-- 无砖时不再发送续砖请求；是否可站立由砖本身是否已消失决定。
+		-- 清掉未入队的预测砖，避免补砖后 5b/发包把陈旧格子打成实体砖；仍踩在上的未请求砖保留以免脚下一空。
+		local toRemoveOutOfBricks: { string } = {}
+		for key, entry in pairs(localBrickMap) do
+			if not entry.requested and not IsCharacterStandingOnLocalBrick(entry.part, character) then
+				table.insert(toRemoveOutOfBricks, key)
+			end
+		end
+		for _, rk in ipairs(toRemoveOutOfBricks) do
+			RemoveLocalBrickEntry(rk)
+		end
 	end
 	previousFrameInSafeZone = currentFrameInSafeZone
 
@@ -1149,7 +1170,7 @@ local function OnHeartbeat(dt: number)
 	-- 5b. Per-frame overlap re-check：对未发送到服务端的本地预测砖做每帧重叠检测。
 	-- 地震时 feetGuard 高频触发 forceQueue 跳过 Touch 等待；非地震时仅靠 Touched 事件，
 	-- 多段跳等场景下 Touched 延迟高/不可靠。此处统一补偿：检测到角色重叠时立即 triggerPave+flush。
-	if character and isPavingMode then
+	if character and isPavingMode and not isOutOfBricks then
 		local overlapCheckParams = OverlapParams.new()
 		overlapCheckParams.FilterType = Enum.RaycastFilterType.Include
 		overlapCheckParams.FilterDescendantsInstances = { character }
