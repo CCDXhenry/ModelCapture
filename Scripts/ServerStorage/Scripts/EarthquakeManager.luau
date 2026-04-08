@@ -316,8 +316,10 @@ local function StartEarthquake(now: number)
 	end
 	earthquakeStartTime = now
 	earthquakeEndTime = now + GameConfig.Earthquake.Duration
+	local absoluteEndServerTime = workspace:GetServerTimeNow() + GameConfig.Earthquake.Duration
 	workspace:SetAttribute("EarthquakeId", earthquakeId)
 	workspace:SetAttribute("EarthquakeActive", true)
+	workspace:SetAttribute("EarthquakeAbsoluteEnd", absoluteEndServerTime)
 	workspace:SetAttribute("EarthquakeStartAt", earthquakeStartTime)
 	workspace:SetAttribute("EarthquakeEndAt", earthquakeEndTime)
 
@@ -346,13 +348,7 @@ local function StartEarthquake(now: number)
 		end
 	end
 
-	-- 2) 标记已经铺好的 PavedBrick：走铺砖模块登记的 activeBricks，不全量扫 PavedBricks 文件夹
-	ForEachManagedPavedBrickPart(function(child: BasePart)
-		if child:GetAttribute("EarthquakeDropped") ~= true then
-			child:SetAttribute("EarthquakeMarkedForDrop", true)
-			child:SetAttribute("EarthquakeMarkedKind", "PavedBrick")
-		end
-	end)
+	-- 2) 标记已经铺好的 PavedBrick：不再打标，全部交给客户端渲染和地震结束时的直接判定掉落。
 
 	NetMsg.FireNotifyEarthquakeState(earthquakeId, true, GameConfig.Earthquake.Duration, 1)
 	DebugLog("Earthquake start id=", earthquakeId, "duration=", GameConfig.Earthquake.Duration)
@@ -389,20 +385,16 @@ local function TickEarthquake(now: number)
 				markedFloatRecoverDelayMap[k] = nil
 			end
 
-			-- PavedBrick：同样以铺砖登记列表为准构建掉落队列（属性仍由 PavingManager 同步）
+			-- PavedBrick：不再依赖 Marked 属性，只要不是受保护的全部视为在地震期间被牵连脱落
 			local protectedPavedBrickMap = PavingEarthquakeBridge.GetEarthquakeProtectedPavedBricks()
 			ForEachManagedPavedBrickPart(function(child: BasePart)
-				if child:GetAttribute("EarthquakeMarkedForDrop") == true and child:GetAttribute("EarthquakeMarkedKind") == "PavedBrick" then
-					if protectedPavedBrickMap[child :: Part] then
-						child:SetAttribute("EarthquakeMarkedForDrop", nil)
-						child:SetAttribute("EarthquakeMarkedKind", nil)
-						PavingEarthquakeBridge.RefreshProtectedPavedBrickAfterEarthquake(child :: Part)
-					else
-						table.insert(executeQueue, {
-							kind = "PavedBrick" :: DropKind,
-							part = child,
-						})
-					end
+				if protectedPavedBrickMap[child :: Part] then
+					PavingEarthquakeBridge.RefreshProtectedPavedBrickAfterEarthquake(child :: Part)
+				elseif child:GetAttribute("EarthquakeDropped") ~= true then
+					table.insert(executeQueue, {
+						kind = "PavedBrick" :: DropKind,
+						part = child,
+					})
 				end
 			end)
 

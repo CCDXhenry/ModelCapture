@@ -94,6 +94,8 @@ local previousFrameInSafeZone = true
 local BATCH_ACK_TIMEOUT = GameConfig.Paving.BatchAckTimeout or 0.9
 local FIRST_BRICK_FORCE_QUEUE_COOLDOWN = GameConfig.Paving.FirstBrickForceQueueCooldown or 0.12
 
+local clientTailPaveKey: string? = nil
+
 local function IsLocalPredictVisible(): boolean
 	local attr = workspace:GetAttribute(SHOW_LOCAL_PREDICT_ATTR)
 	if type(attr) == "boolean" then
@@ -108,6 +110,7 @@ end
 
 local function ApplyLocalPredictDisplay(part: Part)
 	part.Transparency = GetLocalPredictTransparency()
+	part.Color = brickTemplate.Color
 end
 
 -- Object pool management
@@ -134,9 +137,6 @@ end
 
 workspace:GetAttributeChangedSignal(SHOW_LOCAL_PREDICT_ATTR):Connect(function()
 	local transparency = GetLocalPredictTransparency()
-	for _, entry in pairs(localBrickMap) do
-		entry.part.Transparency = transparency
-	end
 	for _, pooledPart in ipairs(localBrickPool) do
 		pooledPart.Transparency = transparency
 	end
@@ -436,6 +436,7 @@ local function ClearLocalBricks()
 	table.clear(pendingPaveQueue)
 	table.clear(pendingBatchMap)
 	unresolvedRequestedCount = 0
+	clientTailPaveKey = nil
 	print("[PavingClient] Cleared all local prediction bricks and queue")
 end
 
@@ -446,6 +447,7 @@ local function ResetPavingRuntimeState()
 	lastBatchTime = 0
 	firstBrickFallbackAt = 0
 	previousFrameInSafeZone = true
+	clientTailPaveKey = nil
 	table.clear(pendingPaveQueue)
 end
 
@@ -698,22 +700,25 @@ local function SendAllPendingPaveBatches()
 		local batchId = nextBatchId
 		nextBatchId += 1
 		local keys: { [string]: boolean } = {}
-		local sentAt = os.clock()
+		local localSentAt = os.clock()
+		local serverTimeAtSend = workspace:GetServerTimeNow()
 		for _, pos in ipairs(batchChunk) do
 			local key = GetPosKey(pos)
 			keys[key] = true
 			local entry = localBrickMap[key]
 			if entry then
-				entry.lastRequestAt = sentAt
+				entry.lastRequestAt = localSentAt
 				entry.lastBatchId = batchId
 			end
 		end
 		pendingBatchMap[batchId] = {
-			sentAt = sentAt,
+			sentAt = localSentAt,
 			positions = batchChunk,
 			keys = keys,
 		}
-		NetMsg.FireRequestPlaceBrickBatch(batchChunk, batchId, sentAt)
+		
+		local isEarthquakeMarkActive = workspace:GetAttribute("EarthquakeMarkPavingActive") == true
+		NetMsg.FireRequestPlaceBrickBatch(batchChunk, batchId, serverTimeAtSend, isEarthquakeMarkActive)
 		pendingCount += 1
 		queueIndex = endIndex + 1
 	end
@@ -804,6 +809,7 @@ local function RequestPlaceBrick(targetPos: Vector3, requireTouchTrigger: boolea
 			entry.requested = true
 			entry.resolved = false
 			unresolvedRequestedCount += 1
+			clientTailPaveKey = key
 			table.insert(pendingPaveQueue, targetPos)
 		end
 	end
@@ -1104,6 +1110,80 @@ local function OnHeartbeat(dt: number)
 			end
 			RemoveLocalBrickEntry(key)
 		end
+	end
+
+	-- 7. Full client marking system (Independent of Server)
+	local isEarthquakeMarkActive = workspace:GetAttribute("EarthquakeMarkPavingActive") == true
+	
+	if isEarthquakeMarkActive then
+		local markedBrickColor = BrickColor.new(GameConfig.Earthquake.MarkedBrickColor)
+		local markedTransparency = GameConfig.Earthquake.MarkedPavedBrickTransparency or 0
+		local predictTransparency = GetLocalPredictTransparency()
+		
+		-- Locally predicted bricks
+		for key, entry in pairs(localBrickMap) do
+			if key == clientTailPaveKey then
+				entry.part.Color = brickTemplate.Color
+				entry.part.Transparency = 0 -- 地震中本地最后一块砖（避难砖）必须强制实体渲染（透明度不衰减），让玩家立刻有安全感
+			else
+				if entry.requested then
+					entry.part.BrickColor = markedBrickColor
+					entry.part.Transparency = markedTransparency
+				else
+					entry.part.Color = brickTemplate.Color
+					entry.part.Transparency = predictTransparency
+				end
+			end
+		end
+		
+		-- Server generated real PavedBricks
+		local folder = workspace:FindFirstChild("PavedBricks")
+		if folder then
+			for _, child in ipairs(folder:GetChildren()) do
+				if child:IsA("BasePart") then
+					local ownerId = child:GetAttribute("PavingOwnerUserId")
+					if type(ownerId) == "number" then
+						local shouldMark = true
+						if ownerId == localPlayer.UserId then
+							local tailKey = clientTailPaveKey
+							if tailKey then
+								local key = GetPosKey(child.Position)
+								if key == tailKey then
+									shouldMark = false
+								end
+							else
+								local tailAttr = localPlayer:GetAttribute("PavingTailPos")
+								if typeof(tailAttr) == "Vector3" and child.Position:FuzzyEq(tailAttr, 0.01) then
+									shouldMark = false
+								end
+							end
+						else
+							local ownerPlayer = players:GetPlayerByUserId(ownerId)
+							if ownerPlayer then
+								local tailAttr = ownerPlayer:GetAttribute("PavingTailPos")
+								if typeof(tailAttr) == "Vector3" and child.Position:FuzzyEq(tailAttr, 0.01) then
+									shouldMark = false
+								end
+							end
+						end
+						
+						local currentIsMarked = child:GetAttribute("ClientVisualMarked") == true
+						if shouldMark and not currentIsMarked then
+							child.BrickColor = markedBrickColor
+							child.Transparency = markedTransparency
+							child:SetAttribute("ClientVisualMarked", true)
+						elseif not shouldMark and currentIsMarked then
+							child.Color = brickTemplate.Color
+							child.Transparency = 0 -- Server bricks are opaque
+							child:SetAttribute("ClientVisualMarked", false)
+						end
+					end
+				end
+			end
+		end
+	else
+		-- Do nothing. Brown bricks are doomed and will be dropped/destroyed shortly by the server.
+		-- No need to flash them back to original color.
 	end
 end
 

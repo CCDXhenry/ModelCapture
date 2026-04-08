@@ -71,7 +71,6 @@ end
 
 local brickPool: { Part } = {}
 local SEA_LEVEL = 0
-local lastEarthquakeActive = workspace:GetAttribute("EarthquakeActive") == true
 local playerLastPlacedBrickMap: { [number]: Part } = {}
 
 -- 动态获取海平面高度 (与客户端逻辑对齐)
@@ -379,32 +378,8 @@ local function GetServerMaxPendingBatches(): number
 	return base
 end
 
-local function SyncEarthquakePavedBrickMarksForPlayer(player: Player)
-	if workspace:GetAttribute("EarthquakeMarkPavingActive") ~= true then
-		return
-	end
-	local tail = playerLastPlacedBrickMap[player.UserId]
-	if tail == nil or tail.Parent == nil then
-		return
-	end
-	for brick, data in pairs(activeBricks) do
-		if data.Owner ~= player or brick.Parent == nil then
-			continue
-		end
-		if brick:GetAttribute("EarthquakeDropped") == true then
-			continue
-		end
-		if brick == tail then
-			brick:SetAttribute("EarthquakeMarkedForDrop", nil)
-			brick:SetAttribute("EarthquakeMarkedKind", nil)
-		else
-			brick:SetAttribute("EarthquakeMarkedForDrop", true)
-			brick:SetAttribute("EarthquakeMarkedKind", "PavedBrick")
-		end
-	end
-end
 
-local function OnRequestPlaceBrickBatch(player: Player, positions: any, batchId: number?, clientSentAt: number?)
+local function OnRequestPlaceBrickBatch(player: Player, positions: any, batchId: number?, clientSentAt: number?, isEarthquakeMarkActive: boolean?)
 	local rejectReason = GameConfig.PavingRejectReason
 	local acceptedIndexes: { number } = {}
 	local rejectedList: { PavingBatchRejectInfo } = {}
@@ -480,7 +455,6 @@ local function OnRequestPlaceBrickBatch(player: Player, positions: any, batchId:
 	end
 
 	local showFloatBlockRays = workspace:GetAttribute(DEBUG_FLOATBLOCK_RAYS_ATTR) == true
-	local placedNewEarthquakePavingBrick = false
 	local consumedBricks = 0
 	local remainingBricks = playerInfo.carriedInfo.bricks
 	local playerOnDangerousFloatBlock = IsPlayerOnDangerousFloatBlock(rootPart.Position)
@@ -594,11 +568,8 @@ local function OnRequestPlaceBrickBatch(player: Player, positions: any, batchId:
 		brick.Position = position
 		UpdateBrickVisual(brick, false)
 		brick:SetAttribute("PavingOwnerUserId", player.UserId)
-		if workspace:GetAttribute("EarthquakeMarkPavingActive") == true then
-			-- 属性在批末 SyncEarthquakePavedBrickMarksForPlayer 统一写入，此处只维护尾砖引用。
-			placedNewEarthquakePavingBrick = true
-			playerLastPlacedBrickMap[player.UserId] = brick
-		end
+		playerLastPlacedBrickMap[player.UserId] = brick
+		player:SetAttribute("PavingTailPos", position)
 		brick.Parent = pavedBricksFolder
 
 		-- 存入空间哈希字典
@@ -612,8 +583,27 @@ local function OnRequestPlaceBrickBatch(player: Player, positions: any, batchId:
 		table.insert(acceptedIndexes, index)
 	end
 
-	if workspace:GetAttribute("EarthquakeMarkPavingActive") == true and placedNewEarthquakePavingBrick then
-		SyncEarthquakePavedBrickMarksForPlayer(player)
+	local eqAbsoluteEnd = workspace:GetAttribute("EarthquakeAbsoluteEnd")
+	if typeof(clientSentAt) == "number" and typeof(eqAbsoluteEnd) == "number" then
+		local LATE_PACKET_TOLERANCE = 0.5
+		local isClientConsideredShaking = (isEarthquakeMarkActive == true)
+		local serverHasClosedDropQueue = workspace:GetAttribute("EarthquakeMarkPavingActive") == false
+		
+		if serverHasClosedDropQueue then
+			-- 如果客户端自己都打标了这是危险快要掉落的砖（即使它刚好卡在边缘），或者是严重迟到超过了容忍限度，强制销毁它！
+			if isClientConsideredShaking or clientSentAt <= (eqAbsoluteEnd - LATE_PACKET_TOLERANCE) then
+				for i = 1, #acceptedIndexes - 1 do
+					local idx = acceptedIndexes[i]
+					local posKey = GetPosKey(positions[idx])
+					local brick = activeBricksGrid[posKey]
+					if brick then
+						activeBricksGrid[posKey] = nil
+						activeBricks[brick] = nil
+						ReturnBrickToPool(brick)
+					end
+				end
+			end
+		end
 	end
 
 	if consumedBricks > 0 then
@@ -761,13 +751,7 @@ local function OnRequestStartPaving(player: Player)
 	print("[PavingManager] 补砖", player.Name, "增加砖块", added, "地点", location)
 end
 
-workspace:GetAttributeChangedSignal("EarthquakeActive"):Connect(function()
-	local earthquakeActiveNow = workspace:GetAttribute("EarthquakeActive") == true
-	if not lastEarthquakeActive and earthquakeActiveNow then
-		table.clear(playerLastPlacedBrickMap)
-	end
-	lastEarthquakeActive = earthquakeActiveNow
-end)
+
 
 NetMsg.ConnectRequestStartPaving(OnRequestStartPaving)
 NetMsg.ConnectRequestPlaceBrickBatch(OnRequestPlaceBrickBatch)

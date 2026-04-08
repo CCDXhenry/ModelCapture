@@ -156,6 +156,7 @@ local function RestoreAllMarkedPhaseVisuals()
 				local kind = part:GetAttribute("EarthquakeMarkedKind")
 				part.BrickColor = markedBrickColorValue
 				part.Transparency = GetMarkedTransparencyForKind(kind)
+				continue -- 【修复】若是掉落块，保留它真实的 original 外观记录，只复位CFrame
 			else
 				part.BrickColor = state.originalBrickColor
 				part.Material = state.originalMaterial
@@ -245,12 +246,7 @@ local function HookPavedBrickEarthquakeReplication(part: BasePart)
 		return
 	end
 	pavedBrickEarthquakeHooked[part] = true
-	part:GetAttributeChangedSignal("EarthquakeMarkedForDrop"):Connect(function()
-		TryMarkPart(part)
-	end)
-	part:GetAttributeChangedSignal("EarthquakeMarkedKind"):Connect(function()
-		TryMarkPart(part)
-	end)
+	-- 不再监听 EarthquakeMarkedForDrop 改变。PavedBrick 的染色由 PavingClient 独立控制。
 end
 
 local function OnPavedBrickAdded(child: Instance)
@@ -258,7 +254,7 @@ local function OnPavedBrickAdded(child: Instance)
 		local brick = child :: BasePart
 		HookPavedBrickEarthquakeReplication(brick)
 		TrackPart(brick)
-		TryMarkPart(brick)
+		-- 不再主动 TryMarkPart。
 	end
 end
 

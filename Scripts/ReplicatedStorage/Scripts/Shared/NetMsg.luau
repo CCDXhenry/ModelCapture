@@ -153,11 +153,11 @@ function NetMsg.ConnectNotifyAllPlayersModelYields(callback: (allYields: { [stri
 end
 
 -- 客户端请求批量放置砖块 (跑酷)
-function NetMsg.FireRequestPlaceBrickBatch(positions: { Vector3 }, batchId: number?, clientSentAt: number?)
+function NetMsg.FireRequestPlaceBrickBatch(positions: { Vector3 }, batchId: number?, clientSentAt: number?, isEarthquakeMarkActive: boolean?)
 	--print("[NetMsg] FireRequestPlaceBrickBatch with", #positions, "points")
-	requestPlaceBrickBatchEvent:FireServer(positions, batchId, clientSentAt)
+	requestPlaceBrickBatchEvent:FireServer(positions, batchId, clientSentAt, isEarthquakeMarkActive)
 end
-function NetMsg.ConnectRequestPlaceBrickBatch(callback: (player: Player, positions: { Vector3 }, batchId: number?, clientSentAt: number?) -> ())
+function NetMsg.ConnectRequestPlaceBrickBatch(callback: (player: Player, positions: { Vector3 }, batchId: number?, clientSentAt: number?, isEarthquakeMarkActive: boolean?) -> ())
 	requestPlaceBrickBatchEvent.OnServerEvent:Connect(callback)
 end
 
