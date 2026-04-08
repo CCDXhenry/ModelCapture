@@ -29,26 +29,15 @@ local lastEarthquakeActive = workspace:GetAttribute("EarthquakeActive") == true
 -- Local prediction config
 local LOCAL_PREDICT_TTL = GameConfig.Paving.LocalPredictTTL
 local LOCAL_PREDICT_BATCH_INTERVAL = GameConfig.Paving.BatchInterval
-local function IsEarthquakePavingHighThroughput(): boolean
-	return workspace:GetAttribute("EarthquakeActive") == true
-		or workspace:GetAttribute("EarthquakeMarkPavingActive") == true
-		or workspace:GetAttribute("EarthquakeRescuePaving") == true
-end
-
 local function GetEffectiveMaxPendingBatches(): number
 	local base = GameConfig.Paving.MaxPendingBatches or 4
-	if IsEarthquakePavingHighThroughput() then
-		return math.max(base, GameConfig.Paving.MaxPendingBatchesDuringEarthquake or 8)
-	end
-	return base
+	return math.max(base, GameConfig.Paving.MaxPendingBatchesDuringEarthquake or 8)
 end
 
 local function GetEffectiveBatchInterval(): number
-	if IsEarthquakePavingHighThroughput() then
-		local q = GameConfig.Paving.BatchIntervalDuringEarthquake
-		if type(q) == "number" and q > 0 then
-			return q
-		end
+	local q = GameConfig.Paving.BatchIntervalDuringEarthquake
+	if type(q) == "number" and q > 0 then
+		return q
 	end
 	return LOCAL_PREDICT_BATCH_INTERVAL
 end
@@ -59,6 +48,7 @@ local MAX_LOCAL_PREDICT_SUPPORT_TIME = LOCAL_PREDICT_TTL + LOCAL_PREDICT_SUPPORT
 local SHOW_LOCAL_PREDICT_ATTR = "PavingShowLocalPredictBricks"
 local LOCAL_PREDICT_VISIBLE_TRANSPARENCY = 0.5
 local LOCAL_PREDICT_HIDDEN_TRANSPARENCY = 1
+local NON_EARTHQUAKE_LOCAL_PREDICT_TRANSPARENCY = 0
 local DEBUG_AUTO_QUEUE_GATE_ATTR = "PavingDebugAutoQueueGate"
 
 local localBrickFolder = Instance.new("Folder")
@@ -77,6 +67,7 @@ type LocalPredictEntry = {
 	resolved: boolean,
 	lastRequestAt: number?,
 	lastBatchId: number?,
+	isTouchOnly: boolean, -- 仅触碰触发的路径砖（多段跳弹簧），初始隐藏，触碰后才激活显示
 }
 type PendingBatchInfo = {
 	sentAt: number,
@@ -105,7 +96,14 @@ local function IsLocalPredictVisible(): boolean
 end
 
 local function GetLocalPredictTransparency(): number
-	return if IsLocalPredictVisible() then LOCAL_PREDICT_VISIBLE_TRANSPARENCY else LOCAL_PREDICT_HIDDEN_TRANSPARENCY
+	if not IsLocalPredictVisible() then
+		return LOCAL_PREDICT_HIDDEN_TRANSPARENCY
+	end
+	-- 非地震时本地预测砖改为即时实心显示；地震标记期沿用原有透明度表现。
+	if workspace:GetAttribute("EarthquakeMarkPavingActive") == true then
+		return LOCAL_PREDICT_VISIBLE_TRANSPARENCY
+	end
+	return NON_EARTHQUAKE_LOCAL_PREDICT_TRANSPARENCY
 end
 
 local function ApplyLocalPredictDisplay(part: Part)
@@ -723,6 +721,19 @@ local function FlushPendingPaveQueue()
 	lastBatchTime = os.clock()
 end
 
+local function TrySendPendingImmediatelyForNonEarthquake()
+	if #pendingPaveQueue <= 0 then
+		return
+	end
+	local now = os.clock()
+	-- 统一策略：新砖入队后更积极地尝试立刻发包，减少等待下一拍 Heartbeat 的体感延迟。
+	if now - lastBatchTime < 0.015 then
+		return
+	end
+	SendAllPendingPaveBatches()
+	lastBatchTime = now
+end
+
 local function IsCharacterStandingOnLocalBrick(brick: Part, character: Model?): boolean
 	if not character then
 		return false
@@ -787,6 +798,7 @@ local function RequestPlaceBrick(targetPos: Vector3, requireTouchTrigger: boolea
 			existed.lastRequestAt = now
 			unresolvedRequestedCount += 1
 			table.insert(pendingPaveQueue, targetPos)
+			TrySendPendingImmediatelyForNonEarthquake()
 		end
 		return
 	end
@@ -794,11 +806,21 @@ local function RequestPlaceBrick(targetPos: Vector3, requireTouchTrigger: boolea
 	local brick = GetBrickFromPool()
 	brick.Position = targetPos
 
+	-- requireTouchTrigger 且非 forceQueue 的路径砖：初始隐藏，等触碰后才显示（与地震路径砖行为一致）
+	local isTouchOnly = requireTouchTrigger and (forceQueue ~= true)
+	if isTouchOnly then
+		brick.Transparency = LOCAL_PREDICT_HIDDEN_TRANSPARENCY
+		brick.Color = brickTemplate.Color
+	else
+		ApplyLocalPredictDisplay(brick)
+	end
+
 	localBrickMap[key] = {
 		part = brick,
 		createdAt = now,
 		requested = false,
 		resolved = false,
+		isTouchOnly = isTouchOnly,
 	}
 
 	local character = localPlayer.Character
@@ -809,10 +831,15 @@ local function RequestPlaceBrick(targetPos: Vector3, requireTouchTrigger: boolea
 	local function triggerPave()
 		local entry = localBrickMap[key]
 		if entry and not entry.requested then
+			-- 触碰激活时立刻显示路径砖，与 feetGuard forceQueue 路径的即时可见保持一致
+			if entry.isTouchOnly then
+				ApplyLocalPredictDisplay(entry.part)
+			end
 			entry.requested = true
 			entry.resolved = false
 			unresolvedRequestedCount += 1
 			table.insert(pendingPaveQueue, targetPos)
+			TrySendPendingImmediatelyForNonEarthquake()
 		end
 	end
 
@@ -983,17 +1010,24 @@ local function OnHeartbeat(dt: number)
 		local noGroundUnderFeet = not HasSolidGroundAt(pos)
 		local allowEmergencyPaving = onDangerousFloatBlock and serverBricks > 0
 		if noGroundUnderFeet then
-			if not CheckBrickExists(feetPos) and (allowEmergencyPaving or not IsFloatBlockBlockingPaving(feetPos)) then
+			-- 脚下投影仍在安全区内（Ground/Islands/Home）时跳过：服务端必然拒绝且无铺砖意义。
+			-- HasSolidGroundAt 使用短射线（±5），玩家跳高后会漏判；currentFrameInSafeZone 用长射线可靠覆盖。
+			-- 多段跳弹簧（requireTouchTrigger）依赖 Touch/overlap 机制落点后再铺；
+			-- 仅地震紧急兜座（allowEmergencyPaving）保留 forceQueue 保护。
+			local forceQueueNow = allowEmergencyPaving or not requireTouchTrigger
+			if not currentFrameInSafeZone and not CheckBrickExists(feetPos) and (allowEmergencyPaving or not IsFloatBlockBlockingPaving(feetPos)) then
 				-- 空中脚下无地时，强制请求脚下砖，避免跳跃与安全区边缘漏首块/尾块
-				RequestPlaceBrick(feetPos, requireTouchTrigger, true)
+				RequestPlaceBrick(feetPos, requireTouchTrigger, if forceQueueNow then true else nil)
 				FlushPendingPaveQueue()
 			end
 		end
 		-- 从安全区跃迁到海面且脚下无地时，强制首格入队并立刻同步，避免首块漏铺
+		-- 多段跳弹簧时同样不强制 forceQueue，让 Touch/overlap 接管。
 		if previousFrameInSafeZone and not currentFrameInSafeZone and (now - firstBrickFallbackAt) >= FIRST_BRICK_FORCE_QUEUE_COOLDOWN then
 			if noGroundUnderFeet then
 				firstBrickFallbackAt = now
-				RequestPlaceBrick(feetPos, requireTouchTrigger, true)
+				local forceQueueFirst = not requireTouchTrigger
+				RequestPlaceBrick(feetPos, requireTouchTrigger, if forceQueueFirst then true else nil)
 				FlushPendingPaveQueue()
 			end
 		end
@@ -1030,6 +1064,7 @@ local function OnHeartbeat(dt: number)
 					-- 加上射线检测与安全区检测
 					if not IsEntireBrickFootprintOverSafeZone(targetPos) and not IsFloatBlockBlockingPaving(targetPos) and not CheckBrickExists(targetPos) then
 						RequestPlaceBrick(targetPos, requireTouchTrigger)
+						FlushPendingPaveQueue()
 					end
 				end
 			else
@@ -1038,6 +1073,7 @@ local function OnHeartbeat(dt: number)
 				-- [顺发] 当检测到刚停下时，立即尝试续期一次，不再等待计时器
 				if not IsEntireBrickFootprintOverSafeZone(targetPos) and not IsFloatBlockBlockingPaving(targetPos) and not CheckBrickExists(targetPos) then
 					RequestPlaceBrick(targetPos, requireTouchTrigger)
+					FlushPendingPaveQueue()
 				end
 			end
 		else
@@ -1071,10 +1107,12 @@ local function OnHeartbeat(dt: number)
 					end
 					lastPavePosition = interimPos
 				end
+				FlushPendingPaveQueue()
 			else
 				if not IsEntireBrickFootprintOverSafeZone(targetPos) and not IsFloatBlockBlockingPaving(targetPos) and not CheckBrickExists(targetPos) then
 					lastPavePosition = targetPos
 					RequestPlaceBrick(targetPos, requireTouchTrigger)
+					FlushPendingPaveQueue()
 				else
 					lastPavePosition = targetPos
 				end
@@ -1083,6 +1121,7 @@ local function OnHeartbeat(dt: number)
 			if not IsEntireBrickFootprintOverSafeZone(targetPos) and not IsFloatBlockBlockingPaving(targetPos) and not CheckBrickExists(targetPos) then
 				lastPavePosition = targetPos
 				RequestPlaceBrick(targetPos, requireTouchTrigger)
+				FlushPendingPaveQueue()
 			end
 		end
 	else
@@ -1104,6 +1143,39 @@ local function OnHeartbeat(dt: number)
 				end
 			end
 			pendingBatchMap[batchId] = nil
+		end
+	end
+
+	-- 5b. Per-frame overlap re-check：对未发送到服务端的本地预测砖做每帧重叠检测。
+	-- 地震时 feetGuard 高频触发 forceQueue 跳过 Touch 等待；非地震时仅靠 Touched 事件，
+	-- 多段跳等场景下 Touched 延迟高/不可靠。此处统一补偿：检测到角色重叠时立即 triggerPave+flush。
+	if character and isPavingMode then
+		local overlapCheckParams = OverlapParams.new()
+		overlapCheckParams.FilterType = Enum.RaycastFilterType.Include
+		overlapCheckParams.FilterDescendantsInstances = { character }
+		local needFlush = false
+		for key, entry in pairs(localBrickMap) do
+			if entry.requested then
+				continue
+			end
+			local brickPart = entry.part
+			local expandedSize = brickPart.Size + Vector3.new(0, 3, 0)
+			local overlapping = workspace:GetPartBoundsInBox(brickPart.CFrame, expandedSize, overlapCheckParams)
+			if #overlapping > 0 then
+				-- 触碰触发的隐藏路径砖，重叠检测到时也立刻显示（补偿 Touch 事件延迟）
+				if entry.isTouchOnly then
+					ApplyLocalPredictDisplay(entry.part)
+				end
+				entry.requested = true
+				entry.resolved = false
+				entry.lastRequestAt = now
+				unresolvedRequestedCount += 1
+				table.insert(pendingPaveQueue, brickPart.Position)
+				needFlush = true
+			end
+		end
+		if needFlush then
+			FlushPendingPaveQueue()
 		end
 	end
 
@@ -1158,8 +1230,23 @@ local function OnHeartbeat(dt: number)
 			end
 		end
 	else
-		-- Do nothing. Brown bricks are doomed and will be dropped/destroyed shortly by the server.
-		-- No need to flash them back to original color.
+		-- 非地震时按 requested/isTouchOnly 三状态刷新，与地震时每帧写入的"强制渲染"保持一致。
+		-- requested=true（已入队）→ 实心显示；isTouchOnly=true（路径砖未触碰）→ 保持隐藏；其余 → 按配置透明度显示
+		local predictTransparency = GetLocalPredictTransparency()
+		for _, entry in pairs(localBrickMap) do
+			if entry.requested then
+				-- 已入队的砖：实心显示
+				entry.part.Color = brickTemplate.Color
+				entry.part.Transparency = 0
+			elseif entry.isTouchOnly then
+				-- 未触碰的路径砖：保持隐藏，等待触碰激活
+				entry.part.Transparency = LOCAL_PREDICT_HIDDEN_TRANSPARENCY
+			else
+				-- 普通移动砖（非弹簧 forceQueue 等）：按当前配置的透明度显示
+				entry.part.Color = brickTemplate.Color
+				entry.part.Transparency = predictTransparency
+			end
+		end
 	end
 end
 
@@ -1253,7 +1340,18 @@ local function HookPavedBricksFolder(folder: Instance)
 			return
 		end
 		local key = GetPosKey(child.Position)
-		RemoveLocalBrickEntry(key) -- Use linear search lookup for server sync
+		local entry = localBrickMap[key]
+		if entry then
+			-- 先标记已确认，再延迟一帧移除本地预测砖。
+			-- 避免服务端砖复制到客户端渲染完成前出现「两砖皆无」的 1 帧空白闪烁。
+			if entry.requested and not entry.resolved then
+				entry.resolved = true
+				unresolvedRequestedCount = math.max(unresolvedRequestedCount - 1, 0)
+			end
+			task.defer(function()
+				RemoveLocalBrickEntry(key)
+			end)
+		end
 	end)
 end
 

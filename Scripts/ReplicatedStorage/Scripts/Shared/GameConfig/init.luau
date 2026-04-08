@@ -197,8 +197,8 @@ end
 -- 从 n 级升到 n+1 级的费用（回本 ≤ T 秒）
 function GameConfig.GetBrainrotUpgradeCost(baseAbility: number, level: number): number
 	local basePaybackTime = 5
-	local maxPaybackTime = 300
-	-- 1. 动态回本封顶时间 T(n) = min(5 + 2 * n, 300)
+	local maxPaybackTime = 600
+	-- 1. 动态回本封顶时间 T(n) = min(5 + 2 * n, 600)
 	local paybackTime = math.min(basePaybackTime + 2 * level, maxPaybackTime)
 
 	-- 2. 系统期望重生次数 kexp(n) = (n-10) / 10 (向下取整)
@@ -553,8 +553,8 @@ GameConfig.Paving = {
 	BrickSize = Vector3.new(4, 1, 4), -- 砖块尺寸
 	MaxBatchSize = 15, -- 单次包最大砖块数
 	LocalPredictTTL = 1.5, -- 本地预测砖块存在时间
-	BatchInterval = 0.1, -- 客户端打包发送间隔（10Hz）
-	-- 地震摇晃/铺砖标记阶段：提高在途批上限、略加快发送，减轻背压拒收与队列堆积导致的漏铺感
+	BatchInterval = 0.06, -- 客户端常态打包发送间隔（高吞吐，约16.7Hz）
+	-- 常态与地震统一为高吞吐参数，减少非地震与地震手感差异
 	MaxPendingBatchesDuringEarthquake = 8,
 	BatchIntervalDuringEarthquake = 0.06,
 	MaxInterpolationSteps = 5, -- 最大插值步数，防止长距离瞬移导致卡顿
@@ -562,7 +562,7 @@ GameConfig.Paving = {
 	HighSpeedLookaheadMaxFactor = 2.2, -- 高速下前瞻倍率上限
 	FirstBrickForceQueueCooldown = 0.12, -- 首块兜底强制入队最短间隔
 	BatchAckTimeout = 0.9, -- 批回执超时判定（秒）
-	MaxPendingBatches = 4, -- 客户端最多允许在途批次数（背压）
+	MaxPendingBatches = 8, -- 客户端最多允许在途批次数（高吞吐背压上限）
 	OutOfBricksSupportTime = 1.2, -- 无砖时对脚下已拥有砖的保底续命时间
 	OutOfBricksSupportRenewThreshold = 0.35, -- 无砖保底续命触发阈值（相对 BaseCollapseTime）
 	OutOfBricksSupportRequestInterval = 0.12, -- 客户端无砖保底续命请求间隔

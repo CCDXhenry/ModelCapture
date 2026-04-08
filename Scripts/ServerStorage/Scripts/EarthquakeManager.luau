@@ -40,6 +40,7 @@ local executeDropsActive = false
 local executeQueue: { any } = {}
 local executeQueueIndex = 0
 local nextExecuteAt = 0
+local queuedDropPartMap: { [BasePart]: true } = {}
 local markedFloatRecoverDelayMap: { [BasePart]: { min: number, max: number } } = {}
 local warningIssued = false
 local warningEarthquakeId = 0
@@ -302,6 +303,23 @@ local function ForEachManagedPavedBrickPart(callback: (BasePart) -> ())
 	end
 end
 
+local function EnqueueDropEntry(entry: any): boolean
+	local part = entry.part
+	if typeof(part) ~= "Instance" or not part:IsA("BasePart") then
+		return false
+	end
+	local basePart = part :: BasePart
+	if basePart.Parent == nil then
+		return false
+	end
+	if queuedDropPartMap[basePart] or droppedStateMap[basePart] ~= nil then
+		return false
+	end
+	queuedDropPartMap[basePart] = true
+	table.insert(executeQueue, entry)
+	return true
+end
+
 local function StartEarthquake(now: number)
 	warningIssued = false
 	earthquakeId += 1
@@ -309,6 +327,7 @@ local function StartEarthquake(now: number)
 	earthquakeShakeActive = true
 	executeDropsActive = false
 	table.clear(executeQueue)
+	table.clear(queuedDropPartMap)
 	executeQueueIndex = 0
 	nextExecuteAt = 0
 	for part in pairs(markedFloatRecoverDelayMap) do
@@ -369,12 +388,13 @@ local function TickEarthquake(now: number)
 
 			-- 构建执行队列：已标记 FloatBlock + 全服已标记 PavedBrick
 			table.clear(executeQueue)
+			table.clear(queuedDropPartMap)
 			executeQueueIndex = 1
 
 			-- FloatBlock（起始时抽取并存储 recover delay）
 			for part, recoverDelay in pairs(markedFloatRecoverDelayMap) do
 				if part.Parent ~= nil and part:GetAttribute("EarthquakeMarkedForDrop") == true then
-					table.insert(executeQueue, {
+					EnqueueDropEntry({
 						kind = "FloatBlock" :: DropKind,
 						part = part,
 						recoverDelayMin = recoverDelay.min,
@@ -390,7 +410,7 @@ local function TickEarthquake(now: number)
 			-- PavedBrick：不再保留“最后一块砖”的特殊保护，地震结束后统一进入掉落队列。
 			ForEachManagedPavedBrickPart(function(child: BasePart)
 				if child:GetAttribute("EarthquakeDropped") ~= true then
-					table.insert(executeQueue, {
+					EnqueueDropEntry({
 						kind = "PavedBrick" :: DropKind,
 						part = child,
 					})
@@ -405,6 +425,16 @@ local function TickEarthquake(now: number)
 
 		-- 执行队列（1秒内全部执行完成，不再为每个块引入随机间隙）
 		if executeDropsActive then
+			-- 动态并入：执行窗口内新出现且尚未掉落的铺砖也纳入本轮地震掉落。
+			ForEachManagedPavedBrickPart(function(child: BasePart)
+				if child:GetAttribute("EarthquakeDropped") ~= true then
+					EnqueueDropEntry({
+						kind = "PavedBrick" :: DropKind,
+						part = child,
+					})
+				end
+			end)
+
 			local totalCount = math.max(1, #executeQueue)
 			local windowSeconds = math.max(0.05, GameConfig.Earthquake.DropExecuteWindowSeconds or 1.0)
 			local perDropInterval = windowSeconds / totalCount
@@ -442,6 +472,7 @@ local function TickEarthquake(now: number)
 			if executeQueueIndex > #executeQueue then
 				executeDropsActive = false
 				isActive = false
+				table.clear(queuedDropPartMap)
 				workspace:SetAttribute("EarthquakeDropExecutionActive", false)
 				ScheduleNextEarthquake(now)
 			end
