@@ -54,7 +54,7 @@ local GameTexts = {
 	QualitySecret = { key = "", source = "Secret" },
 	QualityCelestial = { key = "", source = "Celestial" },
 	EarthquakeImminent = { key = "", source = "Earthquake imminent" },
-	EarthquakeActive = { key = "", source = "Earthquake in progress" },
+	EarthquakeActive = { key = "", source = "Earthquake warning" },
 	DecelerationOn = { key = "", source = "[T] Deceleration: ON" },
 	DecelerationOff = { key = "", source = "[T] Deceleration: OFF" },
 	GuideTutorialBrainrotPickup = { key = "", source = "Pick up a brainrot on the island." },

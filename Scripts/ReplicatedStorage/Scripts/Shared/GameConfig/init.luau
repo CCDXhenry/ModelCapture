@@ -201,8 +201,8 @@ function GameConfig.GetBrainrotUpgradeCost(baseAbility: number, level: number): 
 	-- 1. 动态回本封顶时间 T(n) = min(5 + 2 * n, 300)
 	local paybackTime = math.min(basePaybackTime + 2 * level, maxPaybackTime)
 
-	-- 2. 系统期望重生次数 kexp(n) = n / 20 (向下取整)
-	local expectedRebirthCount = math.floor(level / 20)
+	-- 2. 系统期望重生次数 kexp(n) = (n-10) / 10 (向下取整)
+	local expectedRebirthCount = math.max(math.floor((level-10) / 10),0)
 
 	-- 3. 系统期望倍率 Mexp(n) = RebirthMult(kexp(n))
 	local expectedMultiplier = 1
