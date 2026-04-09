@@ -446,6 +446,14 @@ local function SetVisuals(inst: Instance, visible: boolean, isPlaceholder: boole
 	end
 end
 
+-- UpgradeHome/HomePart/InfoUI 的 Enabled 由 RefreshLocalHomeInteractionFocus 按距离控制，不能用 SetVisuals 覆盖
+local function IsUpgradeHomePartInfoUI(desc: Instance): boolean
+	return desc:IsA("BillboardGui")
+		and desc.Name == "InfoUI"
+		and desc.Parent ~= nil
+		and desc.Parent.Name == "HomePart"
+end
+
 -- Helper to ensure BillboardGui is set up for adaptation
 local function SetupBillboardAdaptation(gui: BillboardGui)
 	local controller = gui:FindFirstChild("ControllerFrame") :: Frame?
@@ -1226,6 +1234,10 @@ function ClearHomeVisuals(slotName: string)
 	local upgradeHomeModel = slotModel:FindFirstChild("UpgradeHome") :: Model?
 	if upgradeHomeModel then
 		for _, desc in ipairs(upgradeHomeModel:GetDescendants()) do
+			if IsUpgradeHomePartInfoUI(desc) then
+				(desc :: BillboardGui).Enabled = false
+				continue
+			end
 			SetVisuals(desc, false, false)
 		end
 		--if upgradeHomeModel:IsA("BasePart") then
@@ -1365,6 +1377,12 @@ function UpdateHomeVisuals(slotName: string, homeInfo: any, isLocalPlayer: boole
 	local upgradeHomeModel = slotModel:FindFirstChild("UpgradeHome") :: Model?
 	if upgradeHomeModel then
 		for _, desc in ipairs(upgradeHomeModel:GetDescendants()) do
+			if IsUpgradeHomePartInfoUI(desc) then
+				if not isLocalPlayer then
+					(desc :: BillboardGui).Enabled = false
+				end
+				continue
+			end
 			SetVisuals(desc, isLocalPlayer, false)
 		end
 
