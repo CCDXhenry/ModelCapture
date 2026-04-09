@@ -446,6 +446,7 @@ local function OnLocalPlayerSkillLevelChanged(skillType: number, level: number)
 	RefreshUpgradeValues()
 	if skillType == GameConfig.SkillType.RebirthLevel then
 		RefreshRebirthDisplay()
+		RefreshDecelerationButtonView()
 	end
 
 	if skillType == GameConfig.SkillType.RebirthLevel

@@ -215,6 +215,7 @@ function ClientGameInfo.UpdateSkillLevel(skillType: number, level: number)
 		localPlayerInfo.shopInfo.maxBricksLevel = level
 	elseif skillType == GameConfig.SkillType.RebirthLevel then
 		localPlayerInfo.shopInfo.rebirthLevel = level
+		localPlayerInfo.settingInfo.decelerationOn = false
 	end
 
 	print("[ClientGameInfo] UpdateSkillLevel", skillType, level)

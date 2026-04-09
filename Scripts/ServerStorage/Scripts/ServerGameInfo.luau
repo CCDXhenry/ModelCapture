@@ -347,6 +347,14 @@ function ServerGameInfo.ExecuteRebirth(player: Player, isPaid: boolean): boolean
 	playerInfo.shopInfo.rebirthLevel = nextRebirthCount
 	playerInfo.playerInfoChanged = true
 
+	-- 升级重生等级后关闭减速，并刷新移速与 Speed Coil（与 PlayerSettingManager 请求关减速一致）
+	if playerInfo.settingInfo.decelerationOn == true then
+		ServerGameInfo.UpdateDecelerationOn(player, false)
+		ServerGameInfo.ApplyWalkSpeed(player)
+		local CoilManager = require(serverScripts:FindFirstChild("CoilManager") :: ModuleScript)
+		CoilManager.ReapplyEquippedSpeedCoilBuff(player)
+	end
+
 	-- 通知客户端重生等级变更
 	NetMsg.FireNotifyPlayerSkillLevelUpdate(player, GameConfig.SkillType.RebirthLevel, playerInfo.shopInfo.rebirthLevel)
 
