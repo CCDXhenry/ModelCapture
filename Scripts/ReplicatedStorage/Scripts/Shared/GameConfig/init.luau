@@ -56,6 +56,8 @@ GameConfig.GuideType = {
 	TutorialBricksShop = 4,
 	-- 队列里有 Brainrot 但已收回 Tool：指引点击底部槽位重新装备
 	TutorialBrainrotPlaceSlot = 5,
+	-- 已在岛上拾取但未到主岛 Ground：先引导岛屿传送环
+	TutorialBrainrotIslandTeleport = 6,
 }
 
 GameConfig.GuideStepKey = {
@@ -75,6 +77,7 @@ GameConfig.GuideTextKeyMap = {
 	[GameConfig.GuideType.TutorialBrainrotPlaceSlot] = "GuideTutorialBrainrotPlaceSlot",
 	[GameConfig.GuideType.TutorialBricksLobby] = "GuideTutorialBricksLobby",
 	[GameConfig.GuideType.TutorialBricksShop] = "GuideTutorialBricksShop",
+	[GameConfig.GuideType.TutorialBrainrotIslandTeleport] = "GuideTutorialBrainrotIslandTeleport",
 }
 
 GameConfig.GuideAssetName = {

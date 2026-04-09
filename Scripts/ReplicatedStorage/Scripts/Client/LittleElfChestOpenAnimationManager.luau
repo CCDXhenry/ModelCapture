@@ -344,8 +344,8 @@ local function PlayInWorld(uid: string, chestConfigId: number, chestLevel: numbe
 		if not displayModel or not displayRoot then
 			return
 		end
-		-- 随机展示的 rewardPool 不需要倒计时 UI
-		CreateOrUpdateInfoUI(container, displayRoot, brainrotId, chestLevel, displayModel, not stayAsFinal)
+		-- 开箱动画全程（含随机切换与最终定格）不显示倒计时 UI
+		CreateOrUpdateInfoUI(container, displayRoot, brainrotId, chestLevel, displayModel, true)
 		TweenModelScale(displayModel, TinyScale, 1, 0.14, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
 		if stayAsFinal then
 			TweenModelScale(displayModel, 1, 1.15, 0.22, Enum.EasingStyle.Back, Enum.EasingDirection.Out)

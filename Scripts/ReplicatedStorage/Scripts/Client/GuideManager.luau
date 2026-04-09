@@ -34,6 +34,12 @@ local GUIDE_TYPE_REFRESH_INTERVAL = 0.2
 local GUIDE_TARGET_REFRESH_INTERVAL = 0.2
 local InitPickupCandidates: () -> ()
 
+-- 与 ServerGameInfo.IsPlayerOnWorkspaceGround / PavingClientManager 安全区射线对齐
+local GROUND_RAY_ORIGIN_Y = 50
+local GROUND_RAY_LENGTH = 60
+local ISLAND_RAY_ORIGIN_Y = 50
+local ISLAND_RAY_LENGTH = 60
+
 local function ApplyGuideArrowPartPhysics(part: BasePart)
 	part.Anchored = true
 	part.CanCollide = false
@@ -374,8 +380,102 @@ local function ResolveUpgradeShopWorldPosition(): Vector3?
 	return nil
 end
 
+local function GetLocalPlayerHrp(): BasePart?
+	if localPlayer == nil then
+		return nil
+	end
+	local character = localPlayer.Character
+	if character == nil then
+		return nil
+	end
+	return character:FindFirstChild("HumanoidRootPart") :: BasePart?
+end
+
+local function IsLocalPlayerOverWorkspaceGround(): boolean
+	local hrp = GetLocalPlayerHrp()
+	if hrp == nil then
+		return false
+	end
+	local groundFolder = workspace:FindFirstChild("Ground") or workspace:FindFirstChild("ground")
+	if groundFolder == nil then
+		return false
+	end
+	local samplePos = hrp.Position
+	local rayOrigin = samplePos + Vector3.new(0, GROUND_RAY_ORIGIN_Y, 0)
+	local rayDirection = Vector3.new(0, -GROUND_RAY_LENGTH, 0)
+	local raycastParams = RaycastParams.new()
+	raycastParams.FilterType = Enum.RaycastFilterType.Include
+	raycastParams.FilterDescendantsInstances = { groundFolder }
+	return workspace:Raycast(rayOrigin, rayDirection, raycastParams) ~= nil
+end
+
+local function GetIslandRootUnderLocalHrp(): Instance?
+	local hrp = GetLocalPlayerHrp()
+	if hrp == nil then
+		return nil
+	end
+	local islandsFolder = workspace:FindFirstChild("Islands")
+	if islandsFolder == nil then
+		return nil
+	end
+	local samplePos = hrp.Position
+	local rayOrigin = samplePos + Vector3.new(0, ISLAND_RAY_ORIGIN_Y, 0)
+	local rayDirection = Vector3.new(0, -ISLAND_RAY_LENGTH, 0)
+	local raycastParams = RaycastParams.new()
+	raycastParams.FilterType = Enum.RaycastFilterType.Include
+	raycastParams.FilterDescendantsInstances = { islandsFolder }
+	local result = workspace:Raycast(rayOrigin, rayDirection, raycastParams)
+	if result == nil then
+		return nil
+	end
+	local inst: Instance? = result.Instance
+	while inst ~= nil and inst ~= islandsFolder do
+		if inst.Parent == islandsFolder then
+			return inst
+		end
+		inst = inst.Parent
+	end
+	return nil
+end
+
+local function ResolveIslandTeleportWorldPosition(island: Instance): Vector3?
+	local teleportPoint = island:FindFirstChild("TeleportPoint")
+	if teleportPoint == nil or not teleportPoint:IsA("Model") then
+		return nil
+	end
+	local ring = teleportPoint:FindFirstChild("Ring")
+	if ring and ring:IsA("MeshPart") then
+		return ring.Position
+	end
+	return teleportPoint:GetPivot().Position
+end
+
+local function ShouldGuideIslandTeleportFirst(): boolean
+	if IsLocalPlayerOverWorkspaceGround() then
+		return false
+	end
+	local island = GetIslandRootUnderLocalHrp()
+	if island == nil then
+		return false
+	end
+	return ResolveIslandTeleportWorldPosition(island) ~= nil
+end
+
+local function MaybeIslandTeleportOr(placeType: number): number
+	if ShouldGuideIslandTeleportFirst() then
+		return GameConfig.GuideType.TutorialBrainrotIslandTeleport
+	end
+	return placeType
+end
+
 local function ResolveWorldTargetForGuide(guideType: number): Vector3?
-	if guideType == GameConfig.GuideType.TutorialBrainrotPlace or guideType == GameConfig.GuideType.TutorialBrainrotPlaceSlot then
+	if guideType == GameConfig.GuideType.TutorialBrainrotIslandTeleport then
+		local island = GetIslandRootUnderLocalHrp()
+		if island == nil then
+			return nil
+		end
+		return ResolveIslandTeleportWorldPosition(island)
+	elseif guideType == GameConfig.GuideType.TutorialBrainrotPlace or guideType == GameConfig.GuideType.TutorialBrainrotPlaceSlot then
 		local info = ClientGameInfo.GetLocalPlayerInfo()
 		if info == nil then
 			return nil
@@ -395,17 +495,6 @@ local function ResolveWorldTargetForGuide(guideType: number): Vector3?
 		return ResolveUpgradeShopWorldPosition()
 	end
 	return nil
-end
-
-local function GetLocalPlayerHrp(): BasePart?
-	if localPlayer == nil then
-		return nil
-	end
-	local character = localPlayer.Character
-	if character == nil then
-		return nil
-	end
-	return character:FindFirstChild("HumanoidRootPart") :: BasePart?
 end
 
 local function UpdateAttachmentsRotation()
@@ -428,6 +517,7 @@ local function UpdateGuideArrow()
 	local needsWorldArrow = guideType == GameConfig.GuideType.TutorialBrainrotPickup
 		or guideType == GameConfig.GuideType.TutorialBrainrotPlace
 		or guideType == GameConfig.GuideType.TutorialBrainrotPlaceSlot
+		or guideType == GameConfig.GuideType.TutorialBrainrotIslandTeleport
 		or guideType == GameConfig.GuideType.TutorialBricksLobby
 	if not needsWorldArrow then
 		guideArrowModel.Parent = nil
@@ -466,15 +556,15 @@ local function ResolveGuideType(): number
 	if not HasBrainrotPlacedOnHome(info) and not IsBrainrotPlaceFinished(info) then
 		if CountCarryingBrainrotsInQueue(info) > 0 then
 			if IsLocalPlayerCarryingBrainrot() then
-				return GameConfig.GuideType.TutorialBrainrotPlace
+				return MaybeIslandTeleportOr(GameConfig.GuideType.TutorialBrainrotPlace)
 			end
 			if not HasEquippedBrainrotTool() then
-				return GameConfig.GuideType.TutorialBrainrotPlaceSlot
+				return MaybeIslandTeleportOr(GameConfig.GuideType.TutorialBrainrotPlaceSlot)
 			end
-			return GameConfig.GuideType.TutorialBrainrotPlace
+			return MaybeIslandTeleportOr(GameConfig.GuideType.TutorialBrainrotPlace)
 		end
 		if IsLocalPlayerCarryingBrainrot() then
-			return GameConfig.GuideType.TutorialBrainrotPlace
+			return MaybeIslandTeleportOr(GameConfig.GuideType.TutorialBrainrotPlace)
 		end
 		return GameConfig.GuideType.TutorialBrainrotPickup
 	end

@@ -214,6 +214,12 @@ local function RefreshGuideFrame()
 		return
 	end
 
+	if guideType == GameConfig.GuideType.TutorialBrainrotIslandTeleport then
+		guideFrame.Visible = false
+		StopGuideAni()
+		return
+	end
+
 	if guideType == GameConfig.GuideType.TutorialBrainrotPlaceSlot then
 		local slotBtn = FindLobbyBrainrotSlotButton()
 		if slotBtn == nil or not IsGuiVisibleChain(slotBtn) then
