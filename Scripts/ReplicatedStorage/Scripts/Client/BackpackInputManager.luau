@@ -33,6 +33,11 @@ local KeyIndexMap: { [Enum.KeyCode]: number } = {
 	[Enum.KeyCode.Nine] = 9,
 }
 
+local function ToolBrainrotUidEquals(tool: Tool, uid: string): boolean
+	local a = tool:GetAttribute("BrainrotUID")
+	return a ~= nil and tostring(a) == tostring(uid)
+end
+
 -- 获取当前装备的 Tool
 local function GetEquippedTool(): Tool?
 	local character = localPlayer.Character
@@ -47,10 +52,11 @@ local function GetEquippedTool(): Tool?
 	return nil
 end
 
+-- 优先 Character（已装备实例），再 Backpack
 local function FindToolByUid(uid: string, backpack: Backpack, character: Model): Tool?
-	for _, container in ipairs({ backpack, character }) do
+	for _, container in ipairs({ character, backpack }) do
 		for _, obj in ipairs(container:GetChildren()) do
-			if obj:IsA("Tool") and obj:GetAttribute("BrainrotUID") == uid then
+			if obj:IsA("Tool") and ToolBrainrotUidEquals(obj :: Tool, uid) then
 				return obj :: Tool
 			end
 		end
@@ -60,7 +66,29 @@ end
 
 local function IsCarryingUid(character: Model, uid: string): boolean
 	local carrying = character:FindFirstChild("CarryingBrainrot")
-	return carrying ~= nil and carrying:GetAttribute("BrainrotUID") == uid
+	if not carrying then
+		return false
+	end
+	local a = carrying:GetAttribute("BrainrotUID")
+	return a ~= nil and tostring(a) == tostring(uid)
+end
+
+-- 供数字键防抖：本次按下是否会执行收起（已装备该槽 uid 的 Tool）
+local function WouldUnequipForSlotIndex(index: number): boolean
+	local character = localPlayer.Character
+	if not character then
+		return false
+	end
+	local humanoid = character:FindFirstChildOfClass("Humanoid") :: Humanoid?
+	if not humanoid or humanoid.Health <= 0 then
+		return false
+	end
+	local queue = ClientGameInfo.GetBrainrotQueue()
+	if not queue or not queue[index] then
+		return false
+	end
+	local equipped = GetEquippedTool()
+	return equipped ~= nil and ToolBrainrotUidEquals(equipped, queue[index].uid)
 end
 
 -- 切换指定索引的 Tool
@@ -80,7 +108,20 @@ function BackpackInputManager.ToggleTool(index: number)
 	end
 
 	local targetItem = queue[index]
-	if IsCarryingUid(character, targetItem.uid) then
+	local targetUid = targetItem.uid
+
+	-- 收起优先：不经过 IsCarryingUid / FindTool，避免携带态或查找失败挡死收起
+	local equippedFirst = GetEquippedTool()
+	if equippedFirst and ToolBrainrotUidEquals(equippedFirst, targetUid) then
+		humanoid:UnequipTools()
+		if _G.BackpackFrameManager then
+			(_G.BackpackFrameManager :: any).SetEquippedIndex(0)
+		end
+		return
+	end
+
+	-- 仅阻止「携带同 uid 时再从背包装备」，不阻止上面的收起
+	if IsCarryingUid(character, targetUid) then
 		return
 	end
 
@@ -91,7 +132,7 @@ function BackpackInputManager.ToggleTool(index: number)
 
 	local targetTool: Tool? = nil
 	for attempt = 1, ToolLookupRetryCount do
-		targetTool = FindToolByUid(targetItem.uid, backpack, character)
+		targetTool = FindToolByUid(targetUid, backpack, character)
 		if targetTool then
 			break
 		end
@@ -102,25 +143,14 @@ function BackpackInputManager.ToggleTool(index: number)
 
 	if not targetTool then
 		if DebugLogMissingTool then
-			warn("[BackpackInputManager] No Tool found for uid", targetItem.uid, "at index", index)
+			warn("[BackpackInputManager] No Tool found for uid", targetUid, "at index", index)
 		end
 		return
 	end
 
-	-- 判断是否已装备
-	local equippedTool = GetEquippedTool()
-	if equippedTool == targetTool then
-		-- 已装备 -> 卸装
-		humanoid:UnequipTools()
-		if _G.BackpackFrameManager then
-			(_G.BackpackFrameManager :: any).SetEquippedIndex(0)
-		end
-	else
-		-- 装备目标 Tool
-		humanoid:EquipTool(targetTool)
-		if _G.BackpackFrameManager then
-			(_G.BackpackFrameManager :: any).SetEquippedIndex(index)
-		end
+	humanoid:EquipTool(targetTool)
+	if _G.BackpackFrameManager then
+		(_G.BackpackFrameManager :: any).SetEquippedIndex(index)
 	end
 end
 
@@ -140,10 +170,13 @@ function BackpackInputManager.Init()
 		local index = KeyIndexMap[input.KeyCode]
 		if index then
 			local now = tick()
-			if now - lastInputTime < inputDebounceTime then
+			local skipDebounce = WouldUnequipForSlotIndex(index)
+			if not skipDebounce and now - lastInputTime < inputDebounceTime then
 				return
 			end
-			lastInputTime = now
+			if not skipDebounce then
+				lastInputTime = now
+			end
 
 			BackpackInputManager.ToggleTool(index)
 		end
