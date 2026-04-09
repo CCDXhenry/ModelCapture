@@ -172,6 +172,8 @@ local function SetPavedBrickSeaCollisionGroup(brick: BasePart)
 end
 
 local playerPitCollisionLast: { [number]: boolean? } = {}
+local postQuakeSafeZonePollAccum = 0
+local POST_QUAKE_SAFE_ZONE_POLL_INTERVAL = 0.15
 
 local function GetTargetCharacterCollisionGroupForPlayer(player: Player): string
 	return if ShouldBlockSeaLevelPaving(player) then COLLISION_GROUP_PLAYER_IN_FALL_SAFE_PIT else COLLISION_GROUP_DEFAULT
@@ -441,15 +443,6 @@ local function GetBrickFootprintCornerPositions(center: Vector3): { Vector3 }
 	}
 end
 
-local function _IsEntireBrickFootprintOverPavingSafeZone(center: Vector3): boolean
-	for _, p in GetBrickFootprintCornerPositions(center) do
-		if not IsPointOverPavingSafeZone(p) then
-			return false
-		end
-	end
-	return true
-end
-
 local function IsEntireBrickFootprintOverFloatBlock(center: Vector3): boolean
 	for _, p in GetBrickFootprintCornerPositions(center) do
 		if not IsPointOverFloatBlock(p) then
@@ -491,7 +484,7 @@ local function IsPlayerInPavingSafeZone(player: Player): boolean
 		return false
 	end
 	local feetPos = _GetSnappedPositionForPaving(rootPart.Position)
-	return _IsEntireBrickFootprintOverPavingSafeZone(feetPos)
+	return IsPointOverPavingSafeZone(feetPos)
 end
 
 local function RefreshPlayerPostQuakeUnlockState(player: Player)
@@ -914,6 +907,21 @@ local function OnHeartbeat(deltaTime: number)
 	end
 	for _, plr in ipairs(players:GetPlayers()) do
 		RefreshPlayerFallSafePitCollisionGroup(plr)
+	end
+	-- 震后阶段：玩家在安全区内若脚踏实心地面，可能不会发铺砖批次，导致 PavingPostQuakeUnlocked 一直为 false，
+	-- 走出安全区后客户端永久早退。定时检测：进入过安全区则置 true（粘性，直至阶段结束由 Refresh 清零）。
+	if workspace:GetAttribute(EARTHQUAKE_POST_UNLOCK_PHASE_ATTR) == true then
+		postQuakeSafeZonePollAccum += deltaTime
+		if postQuakeSafeZonePollAccum >= POST_QUAKE_SAFE_ZONE_POLL_INTERVAL then
+			postQuakeSafeZonePollAccum = 0
+			for _, plr in ipairs(players:GetPlayers()) do
+				if plr:GetAttribute(PLAYER_POST_UNLOCKED_ATTR) ~= true and IsPlayerInPavingSafeZone(plr) then
+					plr:SetAttribute(PLAYER_POST_UNLOCKED_ATTR, true)
+				end
+			end
+		end
+	else
+		postQuakeSafeZonePollAccum = 0
 	end
 end
 
