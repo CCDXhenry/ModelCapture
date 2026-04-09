@@ -13,6 +13,7 @@ local GameConfig = require(sharedScripts_game:FindFirstChild("GameConfig"))
 local NetMsg = require(sharedScripts_game:FindFirstChild("NetMsg"))
 local clientScripts = scripts:WaitForChild("Client")
 local ClientGameInfo = require(clientScripts:FindFirstChild("ClientGameInfo"))
+local ClientGroundZoneState = require(clientScripts:FindFirstChild("ClientGroundZoneState"))
 local uiManagerScript = clientScripts:WaitForChild("UIManager")
 local UIManager = require(uiManagerScript)
 local ClientMsg = require(clientScripts:FindFirstChild("ClientMsg"))
@@ -33,6 +34,8 @@ guideTextScript.Parent = guideText
 local maxBricksFrame: Frame = lobbyFrame:FindFirstChild("MaxBricksFrame") :: Frame
 local maxBricksText: TextLabel = maxBricksFrame:FindFirstChild("NumberText") :: TextLabel
 local maxBricksLvText: TextLabel = maxBricksFrame:FindFirstChild("LvText") :: TextLabel
+local maxBricksFrame2: Frame? = lobbyFrame:FindFirstChild("MaxBricksFrame2") :: Frame?
+local maxBricksText2: TextLabel? = if maxBricksFrame2 then (maxBricksFrame2:FindFirstChild("NumberText") :: TextLabel?) else nil
 local walkSpeedFrame: Frame = lobbyFrame:FindFirstChild("WalkSpeedFrame") :: Frame
 local walkSpeedText: TextLabel = walkSpeedFrame:FindFirstChild("NumberText") :: TextLabel
 local walkSpeedLvText: TextLabel = walkSpeedFrame:FindFirstChild("LvText") :: TextLabel
@@ -55,37 +58,68 @@ local MaxBricksWarningShrinkTweenInfo: TweenInfo = TweenInfo.new(0.12, Enum.Easi
 local MaxBricksWarningPulseScale: number = 1.12
 local defaultWalkSpeedColor = walkSpeedText.TextColor3
 local defaultMaxBricksColor = maxBricksText.TextColor3
+local defaultMaxBricksColor2: Color3? = if maxBricksText2 then maxBricksText2.TextColor3 else nil
 local maxBricksTextScale: UIScale = (maxBricksText:FindFirstChildOfClass("UIScale") or Instance.new("UIScale")) :: UIScale
 if maxBricksTextScale.Parent ~= maxBricksText then
 	maxBricksTextScale.Parent = maxBricksText
 end
 maxBricksTextScale.Scale = 1
-local maxBricksWarningGrowTween: Tween? = nil
-local maxBricksWarningShrinkTween: Tween? = nil
+
+type MaxBricksWarningAnimBundle = {
+	scale: UIScale,
+	growTween: Tween?,
+	shrinkTween: Tween?,
+}
+
+local maxBricksWarningPrimary: MaxBricksWarningAnimBundle = {
+	scale = maxBricksTextScale,
+	growTween = nil,
+	shrinkTween = nil,
+}
+local maxBricksWarningSecondary: MaxBricksWarningAnimBundle? = nil
+if maxBricksText2 then
+	local maxBricksText2Scale: UIScale = (maxBricksText2:FindFirstChildOfClass("UIScale") or Instance.new("UIScale")) :: UIScale
+	if maxBricksText2Scale.Parent ~= maxBricksText2 then
+		maxBricksText2Scale.Parent = maxBricksText2
+	end
+	maxBricksText2Scale.Scale = 1
+	maxBricksWarningSecondary = {
+		scale = maxBricksText2Scale,
+		growTween = nil,
+		shrinkTween = nil,
+	}
+end
 local localPlayer = game:GetService("Players").LocalPlayer
 local humSpeedConnection: RBXScriptConnection? = nil
 local DecelerationOnImage = GameConfig.DecelerationOnImage
 local DecelerationOffImage = GameConfig.DecelerationOffImage
 local DecelerationButtonShowSpeed = GameConfig.DecelerationButtonShowSpeed
 
-local function ResetMaxBricksWarningAnimation()
-	if maxBricksWarningGrowTween ~= nil then
-		maxBricksWarningGrowTween:Cancel()
-		maxBricksWarningGrowTween = nil
+local function RefreshMaxBricksFrame2Visibility()
+	if maxBricksFrame2 == nil then
+		return
 	end
-	if maxBricksWarningShrinkTween ~= nil then
-		maxBricksWarningShrinkTween:Cancel()
-		maxBricksWarningShrinkTween = nil
-	end
-	maxBricksTextScale.Scale = 1
+	maxBricksFrame2.Visible = not ClientGroundZoneState.GetLocalInGroundRefillZone()
 end
 
-local function PlayMaxBricksWarningAnimation()
-	ResetMaxBricksWarningAnimation()
-	local growTween = tweenService:Create(maxBricksTextScale, MaxBricksWarningGrowTweenInfo, { Scale = MaxBricksWarningPulseScale })
-	local shrinkTween = tweenService:Create(maxBricksTextScale, MaxBricksWarningShrinkTweenInfo, { Scale = 1 })
-	maxBricksWarningGrowTween = growTween
-	maxBricksWarningShrinkTween = shrinkTween
+local function ResetMaxBricksWarningAnimationForBundle(bundle: MaxBricksWarningAnimBundle)
+	if bundle.growTween ~= nil then
+		bundle.growTween:Cancel()
+		bundle.growTween = nil
+	end
+	if bundle.shrinkTween ~= nil then
+		bundle.shrinkTween:Cancel()
+		bundle.shrinkTween = nil
+	end
+	bundle.scale.Scale = 1
+end
+
+local function PlayMaxBricksWarningAnimationForBundle(bundle: MaxBricksWarningAnimBundle)
+	ResetMaxBricksWarningAnimationForBundle(bundle)
+	local growTween = tweenService:Create(bundle.scale, MaxBricksWarningGrowTweenInfo, { Scale = MaxBricksWarningPulseScale })
+	local shrinkTween = tweenService:Create(bundle.scale, MaxBricksWarningShrinkTweenInfo, { Scale = 1 })
+	bundle.growTween = growTween
+	bundle.shrinkTween = shrinkTween
 	local growConnection: RBXScriptConnection? = nil
 	local shrinkConnection: RBXScriptConnection? = nil
 	growConnection = growTween.Completed:Connect(function(playbackState: Enum.PlaybackState)
@@ -93,17 +127,17 @@ local function PlayMaxBricksWarningAnimation()
 			growConnection:Disconnect()
 			growConnection = nil
 		end
-		if playbackState ~= Enum.PlaybackState.Completed or maxBricksWarningGrowTween ~= growTween then
+		if playbackState ~= Enum.PlaybackState.Completed or bundle.growTween ~= growTween then
 			return
 		end
-		maxBricksWarningGrowTween = nil
+		bundle.growTween = nil
 		shrinkConnection = shrinkTween.Completed:Connect(function()
 			if shrinkConnection ~= nil then
 				shrinkConnection:Disconnect()
 				shrinkConnection = nil
 			end
-			if maxBricksWarningShrinkTween == shrinkTween then
-				maxBricksWarningShrinkTween = nil
+			if bundle.shrinkTween == shrinkTween then
+				bundle.shrinkTween = nil
 			end
 		end)
 		shrinkTween:Play()
@@ -264,13 +298,29 @@ local function RefreshBricksDisplay()
 	local maxValueStr = NumberExtension.FormatBigNumberAA(maxValue)
 
 	TranslationTool.CustomAutoLocalizeTextLabel(maxBricksText, GameTexts.BricksCurrentMax.source, GameTexts.BricksCurrentMax.key, { bricksStr, maxValueStr })
+	if maxBricksText2 then
+		TranslationTool.CustomAutoLocalizeTextLabel(
+			maxBricksText2,
+			GameTexts.BricksCurrentMax.source,
+			GameTexts.BricksCurrentMax.key,
+			{ bricksStr, maxValueStr }
+		)
+	end
 	local remainingBricks = bricksAmount
 	if remainingBricks <= LowBricksThreshold then
 		maxBricksText.TextColor3 = LowBricksWarningColor
-		PlayMaxBricksWarningAnimation()
+		PlayMaxBricksWarningAnimationForBundle(maxBricksWarningPrimary)
+		if maxBricksText2 and maxBricksWarningSecondary and defaultMaxBricksColor2 then
+			maxBricksText2.TextColor3 = LowBricksWarningColor
+			PlayMaxBricksWarningAnimationForBundle(maxBricksWarningSecondary)
+		end
 	else
 		maxBricksText.TextColor3 = defaultMaxBricksColor
-		ResetMaxBricksWarningAnimation()
+		ResetMaxBricksWarningAnimationForBundle(maxBricksWarningPrimary)
+		if maxBricksText2 and maxBricksWarningSecondary and defaultMaxBricksColor2 then
+			maxBricksText2.TextColor3 = defaultMaxBricksColor2
+			ResetMaxBricksWarningAnimationForBundle(maxBricksWarningSecondary)
+		end
 	end
 end
 
@@ -367,6 +417,7 @@ local function OnLocalPlayerInfoInit()
 	RefreshRebirthDisplay()
 	RefreshDecelerationButtonView()
 	RefreshRebirthRedPointView()
+	RefreshMaxBricksFrame2Visibility()
 end
 
 local function ConnectHumanoid(char: Model)
@@ -411,6 +462,11 @@ RefreshView()
 RefreshRebirthDisplay()
 RefreshDecelerationButtonView()
 RefreshRebirthRedPointView()
+RefreshMaxBricksFrame2Visibility()
+
+ClientGroundZoneState.ConnectChanged(function()
+	RefreshMaxBricksFrame2Visibility()
+end)
 
 ClientMsg.ConnectLocalPlayerCurrencyUpdate(OnLocalPlayerCoinCountChanged)
 ClientMsg.ConnectLocalPlayerInfoInit(OnLocalPlayerInfoInit)

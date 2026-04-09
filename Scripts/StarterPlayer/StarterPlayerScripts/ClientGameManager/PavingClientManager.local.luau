@@ -8,6 +8,7 @@ local NetMsg = require(sharedScripts:FindFirstChild("NetMsg"))
 local GameConfig = require(sharedScripts:FindFirstChild("GameConfig"))
 local clientScripts = scripts:WaitForChild("Client")
 local ClientGameInfo = require(clientScripts:FindFirstChild("ClientGameInfo"))
+local ClientGroundZoneState = require(clientScripts:FindFirstChild("ClientGroundZoneState"))
 local ClientMsg = require(clientScripts:FindFirstChild("ClientMsg"))
 
 local localPlayer = players.LocalPlayer
@@ -1014,6 +1015,17 @@ local function OnHeartbeat(dt: number)
 	local character = localPlayer.Character
 	local rootPart = character and character:FindFirstChild("HumanoidRootPart") :: BasePart
 	local humanoid = character and character:FindFirstChild("Humanoid") :: Humanoid
+
+	local inGroundRefillZoneThisFrame = false
+	if character and rootPart and humanoid and humanoid.Health > 0 then
+		for _, zoneState in ipairs(refillZoneStates) do
+			if zoneState.name == "Ground" then
+				inGroundRefillZoneThisFrame = IsLocalCharacterOnRefillZone(character, zoneState)
+				break
+			end
+		end
+	end
+	ClientGroundZoneState.SetLocalInGroundRefillZone(inGroundRefillZoneThisFrame)
 
 	-- 1. Hard cleanup conditions (Death/Falling/Invalid state)
 	local now = os.clock()
