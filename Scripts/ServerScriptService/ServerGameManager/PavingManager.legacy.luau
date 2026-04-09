@@ -9,6 +9,7 @@ local GameConfig = require(sharedScripts:FindFirstChild("GameConfig"))
 local NetMsg = require(sharedScripts:FindFirstChild("NetMsg"))
 local players: Players = game:GetService("Players")
 local runService: RunService = game:GetService("RunService")
+local physicsService: PhysicsService = game:GetService("PhysicsService")
 
 type BrickData = {
 	Owner: Player,
@@ -84,12 +85,148 @@ if startAttachment then
 	SEA_LEVEL = startAttachment.WorldPosition.Y
 end
 
+local FALL_SAFE_PIT_FOLDER_NAME = "FallSafePit"
+local function GetFallSafePitFolder(): Instance?
+	return workspace:FindFirstChild(FALL_SAFE_PIT_FOLDER_NAME)
+end
+
+local fallSafePitOverlapParams: OverlapParams? = nil
+local function IsPlayerOnFallSafePit(player: Player): boolean
+	local character = player.Character
+	if not character then
+		return false
+	end
+	local folder = GetFallSafePitFolder()
+	if not folder then
+		return false
+	end
+	local root = character:FindFirstChild("HumanoidRootPart") :: BasePart?
+	if not root then
+		return false
+	end
+	if not fallSafePitOverlapParams then
+		local p = OverlapParams.new()
+		p.FilterType = Enum.RaycastFilterType.Include
+		fallSafePitOverlapParams = p
+	end
+	(fallSafePitOverlapParams :: OverlapParams).FilterDescendantsInstances = { folder }
+	local boxSize = Vector3.new(2.8, 3, 2.8)
+	local boxCFrame = root.CFrame * CFrame.new(0, -root.Size.Y * 0.5 - 0.25, 0)
+	local overlapping = workspace:GetPartBoundsInBox(boxCFrame, boxSize, fallSafePitOverlapParams :: OverlapParams)
+	return #overlapping > 0
+end
+
+local function GetCharacterFeetWorldYForPlayer(player: Player): number?
+	local character = player.Character
+	if not character then
+		return nil
+	end
+	local root = character:FindFirstChild("HumanoidRootPart") :: BasePart?
+	if not root then
+		return nil
+	end
+	return root.Position.Y - root.Size.Y * 0.5
+end
+
+local function IsPlayerBelowSeaPavingPlane(player: Player): boolean
+	local feetY = GetCharacterFeetWorldYForPlayer(player)
+	if feetY == nil then
+		return false
+	end
+	local delta = GameConfig.Paving.NoPaveWhenFeetBelowSeaStuds
+	if type(delta) ~= "number" or delta <= 0 then
+		return false
+	end
+	return feetY < SEA_LEVEL - delta
+end
+
+local function ShouldBlockSeaLevelPaving(player: Player): boolean
+	return IsPlayerOnFallSafePit(player) or IsPlayerBelowSeaPavingPlane(player)
+end
+
+-- 海平面铺砖与「坑底/海面下」角色：二者不碰撞，便于坑底起跳穿过头顶砖再落回砖顶
+local COLLISION_GROUP_SEA_PAVED_BRICK = "SeaPavedBrick"
+local COLLISION_GROUP_PLAYER_IN_FALL_SAFE_PIT = "PlayerInFallSafePit"
+local COLLISION_GROUP_DEFAULT = "Default"
+local SEA_PAVED_BRICK_Y_TOLERANCE = 2
+
+local function RegisterPavingCollisionGroups()
+	local function tryRegister(name: string)
+		pcall(function()
+			physicsService:RegisterCollisionGroup(name)
+		end)
+	end
+	tryRegister(COLLISION_GROUP_SEA_PAVED_BRICK)
+	tryRegister(COLLISION_GROUP_PLAYER_IN_FALL_SAFE_PIT)
+	physicsService:CollisionGroupSetCollidable(COLLISION_GROUP_PLAYER_IN_FALL_SAFE_PIT, COLLISION_GROUP_SEA_PAVED_BRICK, false)
+end
+
+RegisterPavingCollisionGroups()
+
+local function IsSeaLevelPavedBrickPosition(pos: Vector3): boolean
+	return math.abs(pos.Y - SEA_LEVEL) <= SEA_PAVED_BRICK_Y_TOLERANCE
+end
+
+local function SetPavedBrickSeaCollisionGroup(brick: BasePart)
+	brick.CollisionGroup = COLLISION_GROUP_SEA_PAVED_BRICK
+end
+
+local playerPitCollisionLast: { [number]: boolean? } = {}
+
+local function GetTargetCharacterCollisionGroupForPlayer(player: Player): string
+	return if ShouldBlockSeaLevelPaving(player) then COLLISION_GROUP_PLAYER_IN_FALL_SAFE_PIT else COLLISION_GROUP_DEFAULT
+end
+
+local function ApplyCharacterCollisionGroup(character: Model, groupName: string)
+	for _, desc in character:GetDescendants() do
+		if desc:IsA("BasePart") then
+			desc.CollisionGroup = groupName
+		end
+	end
+end
+
+local function RefreshPlayerFallSafePitCollisionGroup(player: Player)
+	local character = player.Character
+	if not character then
+		playerPitCollisionLast[player.UserId] = nil
+		return
+	end
+	local inPitMode = ShouldBlockSeaLevelPaving(player)
+	local last = playerPitCollisionLast[player.UserId]
+	if last == inPitMode then
+		return
+	end
+	playerPitCollisionLast[player.UserId] = inPitMode
+	ApplyCharacterCollisionGroup(character, GetTargetCharacterCollisionGroupForPlayer(player))
+end
+
+local function HookCharacterForFallSafePitCollision(player: Player, character: Model)
+	character.DescendantAdded:Connect(function(desc)
+		if not desc:IsA("BasePart") then
+			return
+		end
+		desc.CollisionGroup = GetTargetCharacterCollisionGroupForPlayer(player)
+	end)
+end
+
 local pavedBricksFolder = workspace:FindFirstChild("PavedBricks")
 if not pavedBricksFolder then
 	pavedBricksFolder = Instance.new("Folder")
 	pavedBricksFolder.Name = "PavedBricks"
 	pavedBricksFolder.Parent = workspace
 end
+
+for _, inst in pavedBricksFolder:GetDescendants() do
+	if inst:IsA("BasePart") and IsSeaLevelPavedBrickPosition(inst.Position) then
+		SetPavedBrickSeaCollisionGroup(inst)
+	end
+end
+
+pavedBricksFolder.DescendantAdded:Connect(function(inst)
+	if inst:IsA("BasePart") and IsSeaLevelPavedBrickPosition(inst.Position) then
+		SetPavedBrickSeaCollisionGroup(inst)
+	end
+end)
 
 -- 调试：workspace:SetAttribute("PavingDebugFloatBlockRays", true) 显示 FloatBlock 四角竖直射线的命中情况
 local DEBUG_FLOATBLOCK_RAYS_ATTR = "PavingDebugFloatBlockRays"
@@ -193,6 +330,7 @@ local function ReturnBrickToPool(brick: Part)
 	brick.Anchored = true
 	brick.CanCollide = true
 	brick.CanQuery = true
+	brick.CollisionGroup = COLLISION_GROUP_DEFAULT
 	brick:SetAttribute("IsGhost", nil)
 	brick:SetAttribute("EarthquakeDropped", nil)
 	brick:SetAttribute("EarthquakeMarkedForDrop", nil)
@@ -476,6 +614,24 @@ local function OnRequestPlaceBrickBatch(player: Player, positions: any, batchId:
 		return
 	end
 
+	if ShouldBlockSeaLevelPaving(player) then
+		for index = 1, #positions do
+			AddRejected(index, rejectReason.FallSafePitBlocked)
+			metrics.totalRejected += 1
+		end
+		NetMsg.FireNotifyPlaceBrickBatchResult(
+			player,
+			requestBatchId,
+			acceptedIndexes,
+			rejectedList,
+			ServerGameInfo.GetPlayerCarriedBricks(player),
+			now
+		)
+		playerInFlightBatchMap[playerId] = math.max((playerInFlightBatchMap[playerId] or 1) - 1, 0)
+		UpdateMetricAttributes()
+		return
+	end
+
 	local showFloatBlockRays = workspace:GetAttribute(DEBUG_FLOATBLOCK_RAYS_ATTR) == true
 	local isPostQuakeUnlockPhase = workspace:GetAttribute(EARTHQUAKE_POST_UNLOCK_PHASE_ATTR) == true
 	local isPlayerUnlockedAfterQuake = player:GetAttribute(PLAYER_POST_UNLOCKED_ATTR) == true
@@ -612,6 +768,7 @@ local function OnRequestPlaceBrickBatch(player: Player, positions: any, batchId:
 		local brick = GetBrickFromPool()
 		brick.Position = position
 		UpdateBrickVisual(brick, false)
+		SetPavedBrickSeaCollisionGroup(brick)
 		brick:SetAttribute("PavingOwnerUserId", player.UserId)
 		brick.Parent = pavedBricksFolder
 
@@ -755,6 +912,9 @@ local function OnHeartbeat(deltaTime: number)
 			end
 		end
 	end
+	for _, plr in ipairs(players:GetPlayers()) do
+		RefreshPlayerFallSafePitCollisionGroup(plr)
+	end
 end
 
 local function OnRequestStartPaving(player: Player)
@@ -825,26 +985,35 @@ PavingEarthquakeBridge.RegisterForEachActivePavedBrickForEarthquake(ForEachActiv
 players.PlayerRemoving:Connect(function(player)
 	playerLastBatchTimeMap[player.UserId] = nil
 	playerInFlightBatchMap[player.UserId] = nil
+	playerPitCollisionLast[player.UserId] = nil
 end)
 
 workspace:GetAttributeChangedSignal(EARTHQUAKE_POST_UNLOCK_PHASE_ATTR):Connect(function()
 	RefreshAllPlayersPostQuakeUnlockState()
 end)
 
+local function OnPlayerCharacterAddedForPaving(player: Player, character: Model)
+	HookCharacterForFallSafePitCollision(player, character)
+	playerPitCollisionLast[player.UserId] = nil
+	task.defer(function()
+		RefreshPlayerPostQuakeUnlockState(player)
+		RefreshPlayerFallSafePitCollisionGroup(player)
+	end)
+end
+
 players.PlayerAdded:Connect(function(player)
 	player:SetAttribute(PLAYER_POST_UNLOCKED_ATTR, false)
-	player.CharacterAdded:Connect(function()
-		task.defer(function()
-			RefreshPlayerPostQuakeUnlockState(player)
-		end)
+	player.CharacterAdded:Connect(function(character)
+		OnPlayerCharacterAddedForPaving(player, character)
 	end)
 end)
 
 for _, player in ipairs(players:GetPlayers()) do
 	player:SetAttribute(PLAYER_POST_UNLOCKED_ATTR, false)
-	player.CharacterAdded:Connect(function()
-		task.defer(function()
-			RefreshPlayerPostQuakeUnlockState(player)
-		end)
+	player.CharacterAdded:Connect(function(character)
+		OnPlayerCharacterAddedForPaving(player, character)
 	end)
+	if player.Character then
+		OnPlayerCharacterAddedForPaving(player, player.Character)
+	end
 end

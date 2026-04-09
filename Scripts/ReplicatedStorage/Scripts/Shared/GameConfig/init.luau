@@ -581,6 +581,8 @@ GameConfig.Paving = {
 	GroundPollRefillInterval = 2,
 	-- Ground 补砖区兜底竖直射线的向下长度（stud）；需覆盖跳跃/多段跳高度，避免起跳后服务端拒补
 	RefillSurfaceRayLength = 80,
+	-- 脚底世界 Y 低于 SEA_LEVEL 超过该 stud 时禁止海平面铺砖（坑底 Start 等在 FallSafePit 外时仍生效）；可按关卡微调
+	NoPaveWhenFeetBelowSeaStuds = 3,
 }
 
 GameConfig.PavingRejectReason = {
@@ -594,6 +596,7 @@ GameConfig.PavingRejectReason = {
 	OutOfBricks = "OutOfBricks",
 	OccupiedByOther = "OccupiedByOther",
 	ServerBackpressure = "ServerBackpressure",
+	FallSafePitBlocked = "FallSafePitBlocked",
 }
 
 -- 升级家园 HomePart.InfoUI 显示距离（水平距离；<=隐藏，>显示）
