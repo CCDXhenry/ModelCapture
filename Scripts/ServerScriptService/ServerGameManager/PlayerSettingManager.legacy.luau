@@ -2,7 +2,6 @@
 local serverStorage: ServerStorage = game:GetService("ServerStorage")
 local serverScripts = serverStorage:WaitForChild("Scripts")
 local ServerGameInfo = require(serverScripts:FindFirstChild("ServerGameInfo"))
-local CoilManager = require(serverScripts:FindFirstChild("CoilManager"))
 local replicatedStorage: ReplicatedStorage = game:GetService("ReplicatedStorage")
 local scripts = replicatedStorage:WaitForChild("Scripts")
 local sharedScripts = scripts:WaitForChild("Shared")
@@ -40,9 +39,6 @@ local function OnPlayerRequestSetDecelerationOn(player: Player, decelerationOn: 
 	end
 	ServerGameInfo.UpdateDecelerationOn(player, decelerationOn)
 	ServerGameInfo.ApplyWalkSpeed(player)
-	if decelerationOn == false then
-		CoilManager.ReapplyEquippedSpeedCoilBuff(player)
-	end
 end
 
 NetMsg.ConnectRequestSetBGMVolume(OnPlayerRequestSetBGMVolume)

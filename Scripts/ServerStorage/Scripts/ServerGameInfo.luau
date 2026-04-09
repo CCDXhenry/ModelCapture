@@ -351,8 +351,6 @@ function ServerGameInfo.ExecuteRebirth(player: Player, isPaid: boolean): boolean
 	if playerInfo.settingInfo.decelerationOn == true then
 		ServerGameInfo.UpdateDecelerationOn(player, false)
 		ServerGameInfo.ApplyWalkSpeed(player)
-		local CoilManager = require(serverScripts:FindFirstChild("CoilManager") :: ModuleScript)
-		CoilManager.ReapplyEquippedSpeedCoilBuff(player)
 	end
 
 	-- 通知客户端重生等级变更
@@ -754,6 +752,8 @@ function ServerGameInfo.ApplyWalkSpeed(player: Player)
 		if humanoid then
 			humanoid.WalkSpeed = targetSpeed
 		end
+		local CoilManager = require(serverScripts:FindFirstChild("CoilManager") :: ModuleScript)
+		CoilManager.ReapplyEquippedSpeedCoilBuff(player)
 	end
 end
 
