@@ -3,6 +3,7 @@ local ModelBillboardOffsetTool = {}
 
 local DefaultPadding = 0.8
 local DefaultAnchorName = "BillboardAnchor"
+local DefaultVfxInstanceName = "VfxInstance"
 
 local function GetAnchorWorldY(model: Model, anchorName: string): number?
 	local anchorInstance = model:FindFirstChild(anchorName, true)
@@ -21,6 +22,23 @@ local function GetAnchorWorldY(model: Model, anchorName: string): number?
 	return nil
 end
 
+local function GetBasePartMaxWorldY(part: BasePart): number
+	local halfSize = part.Size * 0.5
+	local cf = part.CFrame
+	local maxY = -math.huge
+	for sx = -1, 1, 2 do
+		for sy = -1, 1, 2 do
+			for sz = -1, 1, 2 do
+				local cornerY = cf:PointToWorldSpace(Vector3.new(halfSize.X * sx, halfSize.Y * sy, halfSize.Z * sz)).Y
+				if cornerY > maxY then
+					maxY = cornerY
+				end
+			end
+		end
+	end
+	return maxY
+end
+
 local function GetModelMaxY(model: Model): number?
 	local maxY: number? = nil
 	for _, descendant in ipairs(model:GetDescendants()) do
@@ -28,17 +46,9 @@ local function GetModelMaxY(model: Model): number?
 			continue
 		end
 
-		local halfSize = descendant.Size * 0.5
-		local cf = descendant.CFrame
-		for sx = -1, 1, 2 do
-			for sy = -1, 1, 2 do
-				for sz = -1, 1, 2 do
-					local cornerPos = cf:PointToWorldSpace(Vector3.new(halfSize.X * sx, halfSize.Y * sy, halfSize.Z * sz))
-					if maxY == nil or cornerPos.Y > maxY then
-						maxY = cornerPos.Y
-					end
-				end
-			end
+		local partMax = GetBasePartMaxWorldY(descendant)
+		if maxY == nil or partMax > maxY then
+			maxY = partMax
 		end
 	end
 
@@ -49,9 +59,15 @@ function ModelBillboardOffsetTool.GetVisualOffsetY(model: Model, adornee: BasePa
 	local resolvedPadding = if padding == nil then DefaultPadding else padding
 	local resolvedAnchorName = if anchorName == nil or anchorName == "" then DefaultAnchorName else anchorName
 
-	local maxY = GetAnchorWorldY(model, resolvedAnchorName)
-	if maxY == nil then
-		maxY = GetModelMaxY(model)
+	local maxY: number? = nil
+	local vfx = model:FindFirstChild(DefaultVfxInstanceName, true)
+	if vfx and vfx:IsA("BasePart") then
+		maxY = GetBasePartMaxWorldY(vfx)
+	else
+		maxY = GetAnchorWorldY(model, resolvedAnchorName)
+		if maxY == nil then
+			maxY = GetModelMaxY(model)
+		end
 	end
 
 	if maxY == nil then

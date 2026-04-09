@@ -605,6 +605,10 @@ GameConfig.PavingRejectReason = {
 -- 升级家园 HomePart.InfoUI 显示距离（水平距离；<=隐藏，>显示）
 GameConfig.UpgradeHomeInfoUIDistanceLimit = 40
 
+-- 家园展台 PlaceModel.InfoUI / 放置 VisualModel 上 BrainrotInfoUI 的 Billboard 竖直 padding（Studs）
+GameConfig.HomePlaceModelInfoUIBillboardPadding = 0.5
+GameConfig.HomePlaceModelInfoUIBillboardOffsetY = 5
+
 -- 地震系统配置
 GameConfig.Earthquake = {
 	IntervalMin = 10, -- 两次地震最短间隔

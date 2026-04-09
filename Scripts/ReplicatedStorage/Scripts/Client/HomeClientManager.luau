@@ -60,6 +60,7 @@ local BRAINROT_PAID_PROMPT_COOLDOWN = 2
 
 local INTERACTION_FOCUS_REFRESH_INTERVAL = 0.1
 local BILLBOARD_TRACKED_ATTR = "BillboardTracked"
+local PLACE_MODEL_INFO_UI_BASE_STUDS_OFFSET_Y_ATTR = "BaseStudsOffsetY"
 local LOCAL_SLOT_RECOVERY_DELAY = 0.25
 local LOCAL_SLOT_RECOVERY_MAX_ATTEMPTS = 24
 
@@ -513,6 +514,9 @@ local function UpdatePlot(folder: Instance, placedData: any?, isLocalPlayer: boo
 
 	-- 3. UI Elements (InfoUI & CollectUI)
 	local infoUI = folder:FindFirstChild("InfoUI") :: BillboardGui?
+	if infoUI and infoUI:GetAttribute(PLACE_MODEL_INFO_UI_BASE_STUDS_OFFSET_Y_ATTR) == nil then
+		infoUI:SetAttribute(PLACE_MODEL_INFO_UI_BASE_STUDS_OFFSET_Y_ATTR, infoUI.StudsOffset.Y)
+	end
 	local collectPart = pedestal and pedestal:FindFirstChild("CollectPart") :: BasePart?
 	if collectPart then
 		collectPart.Transparency = 1
@@ -909,7 +913,13 @@ local function UpdatePlot(folder: Instance, placedData: any?, isLocalPlayer: boo
 			local resolvedAdornee = brainrotModelRoot :: BasePart
 			brainrotInfoUI.Enabled = true
 
-			local offsetY = if visualModel then ModelBillboardOffsetTool.GetVisualOffsetY(visualModel :: Model, resolvedAdornee, 0.5) else 2
+			local offsetY = if visualModel
+				then ModelBillboardOffsetTool.GetVisualOffsetY(
+					visualModel :: Model,
+					resolvedAdornee,
+					GameConfig.HomePlaceModelInfoUIBillboardPadding
+				)
+				else 2
 			brainrotInfoUI.StudsOffset = Vector3.new(0, offsetY, 0)
 
 			local controller = brainrotInfoUI:FindFirstChild("ControllerFrame")
@@ -948,6 +958,33 @@ local function UpdatePlot(folder: Instance, placedData: any?, isLocalPlayer: boo
 	else
 		if visualModel then
 			visualModel:Destroy()
+		end
+	end
+
+	-- PlaceModel.InfoUI：按 VisualModel 高度调整 StudsOffset.Y，空置或模型缺失时恢复 Studio 基准
+	if infoUI then
+		local baseStudsY = infoUI:GetAttribute(PLACE_MODEL_INFO_UI_BASE_STUDS_OFFSET_Y_ATTR)
+		local defaultY = if typeof(baseStudsY) == "number" then baseStudsY else infoUI.StudsOffset.Y
+
+		local plotVisual = if placedData then folder:FindFirstChild("VisualModel") else nil
+		local plotVisualModel = plotVisual and plotVisual:IsA("Model") and (plotVisual :: Model) or nil
+
+		if placedData and plotVisualModel then
+			local adornee: BasePart? = if infoUI.Adornee and infoUI.Adornee:IsA("BasePart")
+				then infoUI.Adornee :: BasePart
+				else rootPart
+			if adornee then
+				local offsetY = ModelBillboardOffsetTool.GetVisualOffsetY(
+					plotVisualModel,
+					adornee,
+					GameConfig.HomePlaceModelInfoUIBillboardPadding
+				)
+				infoUI.StudsOffset = Vector3.new(infoUI.StudsOffset.X, offsetY + GameConfig.HomePlaceModelInfoUIBillboardOffsetY, infoUI.StudsOffset.Z)
+			else
+				infoUI.StudsOffset = Vector3.new(infoUI.StudsOffset.X, defaultY, infoUI.StudsOffset.Z)
+			end
+		else
+			infoUI.StudsOffset = Vector3.new(infoUI.StudsOffset.X, defaultY, infoUI.StudsOffset.Z)
 		end
 	end
 
