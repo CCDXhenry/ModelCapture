@@ -1,6 +1,7 @@
 --!strict
 local GameTexts = {
 	PickUpBrainrot = { key = "", source = "Pick up" },
+	ReplaceBoothBrainrot = { key = "", source = "Replace" },
 	BrainrotPickupObjectText = { key = "BrainrotPickupObjectText", source = "{1} (Lv.{2})" },
 	YieldPerSecond = { key = "YieldPerSecond", source = "{1}/s" },
 	LevelWithNumber = { key = "LevelWithNumber", source = "Lv.{1}" },

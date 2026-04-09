@@ -100,7 +100,8 @@ local function SetPromptState(
 	isOccupied: boolean,
 	plotIndex: number,
 	currentSlotName: string,
-	applyEnabled: boolean?
+	applyEnabled: boolean?,
+	holdingBrainrot: boolean?
 )
 	if not attachment then
 		return
@@ -113,7 +114,15 @@ local function SetPromptState(
 		end
 		promptToPlotMap[prompt] = { pointIndex = plotIndex, slotName = currentSlotName }
 		if isOccupied then
-			TranslationTool.CustomAutoLocalizeProximityPrompt(prompt, GameTexts.PickUpBrainrot.source, GameTexts.PickUpBrainrot.key)
+			if holdingBrainrot then
+				TranslationTool.CustomAutoLocalizeProximityPrompt(
+					prompt,
+					GameTexts.ReplaceBoothBrainrot.source,
+					GameTexts.ReplaceBoothBrainrot.key
+				)
+			else
+				TranslationTool.CustomAutoLocalizeProximityPrompt(prompt, GameTexts.PickUpBrainrot.source, GameTexts.PickUpBrainrot.key)
+			end
 		else
 			TranslationTool.CustomAutoLocalizeProximityPrompt(prompt, GameTexts.PlaceAction.source, GameTexts.PlaceAction.key)
 		end
@@ -354,10 +363,10 @@ local function UpdateHomePrompts(slotName: string)
 					if isLocalPlayer then
 						-- Local home interactions are focus-driven; reset first to avoid default-enabled leftovers.
 						ResetPlotInteractionVisibility(placeAttachment, sellAttachment)
-						SetPromptState(placeAttachment, showPlacePrompt, isOccupied, pointIndex, slotName, false)
+						SetPromptState(placeAttachment, showPlacePrompt, isOccupied, pointIndex, slotName, false, isLocalHoldingBrainrot)
 						SetSellButtonVisibility(sellAttachment, isOccupied and isLocalPlayer, pointIndex, slotName, false)
 					else
-						SetPromptState(placeAttachment, showPlacePrompt, isOccupied, pointIndex, slotName)
+						SetPromptState(placeAttachment, showPlacePrompt, isOccupied, pointIndex, slotName, nil, isLocalHoldingBrainrot)
 						SetSellButtonVisibility(sellAttachment, isOccupied and isLocalPlayer, pointIndex, slotName)
 					end
 				end
@@ -610,7 +619,7 @@ local function UpdatePlot(folder: Instance, placedData: any?, isLocalPlayer: boo
 			-- Local home interactions are focus-driven; reset first to avoid default-enabled leftovers.
 			ResetPlotInteractionVisibility(placeAttachment, sellAttachment)
 		end
-		SetPromptState(placeAttachment, showPlacePrompt, isOccupied, pointIndex, slotName, not deferPromptEnabled)
+		SetPromptState(placeAttachment, showPlacePrompt, isOccupied, pointIndex, slotName, not deferPromptEnabled, isLocalHoldingBrainrot)
 		SetSellButtonVisibility(sellAttachment, isOccupied and isLocalPlayer, pointIndex, slotName, not deferPromptEnabled)
 	end
 
