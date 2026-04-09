@@ -88,6 +88,8 @@ local previousFrameInSafeZone = true
 local previousFrameOnOtherPlayerPavedBrick = false
 local BATCH_ACK_TIMEOUT = GameConfig.Paving.BatchAckTimeout or 0.9
 local FIRST_BRICK_FORCE_QUEUE_COOLDOWN = GameConfig.Paving.FirstBrickForceQueueCooldown or 0.12
+-- 5b 本地预测砖重叠补偿：隔帧执行，减轻 GetPartBoundsInBox 压力。
+local pavingOverlapRecheckFrameCounter = 0
 
 local function IsLocalPredictVisible(): boolean
 	local attr = workspace:GetAttribute(SHOW_LOCAL_PREDICT_ATTR)
@@ -556,6 +558,20 @@ end
 local FLOATBLOCK_RAY_ORIGIN_Y = 50
 local FLOATBLOCK_RAY_LENGTH = 60
 
+local reusableFloatBlockRayParams = RaycastParams.new()
+reusableFloatBlockRayParams.FilterType = Enum.RaycastFilterType.Include
+local reusableFloatBlockFilterSingleton: { Instance } = { nil :: any }
+
+local reusableSafeZoneFolderList: { Instance } = {}
+local reusableSafeZoneRayParams = RaycastParams.new()
+reusableSafeZoneRayParams.FilterType = Enum.RaycastFilterType.Include
+local reusableSolidGroundFilterList: { Instance } = {}
+local reusableSolidGroundRayParams = RaycastParams.new()
+reusableSolidGroundRayParams.FilterType = Enum.RaycastFilterType.Include
+local reusableFallSafePitRayParams = RaycastParams.new()
+reusableFallSafePitRayParams.FilterType = Enum.RaycastFilterType.Include
+local reusableFallSafePitFilterSingleton: { Instance } = { nil :: any }
+
 local function RaycastFloatBlockAtPoint(pos: Vector3): RaycastResult?
 	local floatBlockFolder = workspace:FindFirstChild("FloatBlock")
 	if not floatBlockFolder then
@@ -563,10 +579,9 @@ local function RaycastFloatBlockAtPoint(pos: Vector3): RaycastResult?
 	end
 	local rayOrigin = pos + Vector3.new(0, FLOATBLOCK_RAY_ORIGIN_Y, 0)
 	local rayDirection = Vector3.new(0, -FLOATBLOCK_RAY_LENGTH, 0)
-	local raycastParams = RaycastParams.new()
-	raycastParams.FilterType = Enum.RaycastFilterType.Include
-	raycastParams.FilterDescendantsInstances = { floatBlockFolder }
-	return workspace:Raycast(rayOrigin, rayDirection, raycastParams)
+	reusableFloatBlockFilterSingleton[1] = floatBlockFolder
+	reusableFloatBlockRayParams.FilterDescendantsInstances = reusableFloatBlockFilterSingleton
+	return workspace:Raycast(rayOrigin, rayDirection, reusableFloatBlockRayParams)
 end
 
 -- FloatBlock：单点竖直射线；四角全命中才视为整块在禁区（与服务端一致）
@@ -601,32 +616,29 @@ local function IsEntireBrickFootprintOverFloatBlock(center: Vector3): boolean
 	return true
 end
 
-local function GetSafeZoneFilterInstances(): { Instance }
-	local filterInstances = {}
+local function FillSafeZoneFolderList(): { Instance }
+	table.clear(reusableSafeZoneFolderList)
 	local groundFolder = workspace:FindFirstChild("Ground") or workspace:FindFirstChild("ground")
 	local islandsFolder = workspace:FindFirstChild("Islands")
 	local homesFolder = workspace:FindFirstChild("PlayersHome")
 	if groundFolder then
-		table.insert(filterInstances, groundFolder)
+		table.insert(reusableSafeZoneFolderList, groundFolder)
 	end
 	if islandsFolder then
-		table.insert(filterInstances, islandsFolder)
+		table.insert(reusableSafeZoneFolderList, islandsFolder)
 	end
 	if homesFolder then
-		table.insert(filterInstances, homesFolder)
+		table.insert(reusableSafeZoneFolderList, homesFolder)
 	end
-	return filterInstances
+	return reusableSafeZoneFolderList
 end
 
-local function IsPointOverSafeZone(pos: Vector3): boolean
-	local filterInstances = GetSafeZoneFilterInstances()
+local function IsPointOverSafeZoneWithFolderList(pos: Vector3, folderList: { Instance }): boolean
 	local rayOrigin = pos + Vector3.new(0, FLOATBLOCK_RAY_ORIGIN_Y, 0)
 	local rayDirection = Vector3.new(0, -FLOATBLOCK_RAY_LENGTH, 0)
-	if #filterInstances > 0 then
-		local raycastParams = RaycastParams.new()
-		raycastParams.FilterType = Enum.RaycastFilterType.Include
-		raycastParams.FilterDescendantsInstances = filterInstances
-		if workspace:Raycast(rayOrigin, rayDirection, raycastParams) ~= nil then
+	if #folderList > 0 then
+		reusableSafeZoneRayParams.FilterDescendantsInstances = folderList
+		if workspace:Raycast(rayOrigin, rayDirection, reusableSafeZoneRayParams) ~= nil then
 			return true
 		end
 	end
@@ -644,18 +656,23 @@ local function IsPointOverSafeZone(pos: Vector3): boolean
 	return false
 end
 
+local function IsPointOverSafeZone(pos: Vector3): boolean
+	return IsPointOverSafeZoneWithFolderList(pos, FillSafeZoneFolderList())
+end
+
 -- 铺砖自动入队专用安全区判定：仅 Ground/Islands/PlayersHome 计入，不包含 FloatBlock。
-local function IsPointOverPavingGateSafeZone(pos: Vector3): boolean
-	local filterInstances = GetSafeZoneFilterInstances()
-	if #filterInstances == 0 then
+local function IsPointOverPavingGateSafeZoneWithFolderList(pos: Vector3, folderList: { Instance }): boolean
+	if #folderList == 0 then
 		return false
 	end
 	local rayOrigin = pos + Vector3.new(0, FLOATBLOCK_RAY_ORIGIN_Y, 0)
 	local rayDirection = Vector3.new(0, -FLOATBLOCK_RAY_LENGTH, 0)
-	local raycastParams = RaycastParams.new()
-	raycastParams.FilterType = Enum.RaycastFilterType.Include
-	raycastParams.FilterDescendantsInstances = filterInstances
-	return workspace:Raycast(rayOrigin, rayDirection, raycastParams) ~= nil
+	reusableSafeZoneRayParams.FilterDescendantsInstances = folderList
+	return workspace:Raycast(rayOrigin, rayDirection, reusableSafeZoneRayParams) ~= nil
+end
+
+local function IsPointOverPavingGateSafeZone(pos: Vector3): boolean
+	return IsPointOverPavingGateSafeZoneWithFolderList(pos, FillSafeZoneFolderList())
 end
 
 local function IsEntireBrickFootprintOverPavingGateSafeZone(center: Vector3): boolean
@@ -669,8 +686,9 @@ local function IsEntireBrickFootprintOverPavingGateSafeZone(center: Vector3): bo
 		Vector3.new(center.X - hx, y, center.Z + hz),
 		Vector3.new(center.X + hx, y, center.Z + hz),
 	}
+	local folderList = FillSafeZoneFolderList()
 	for _, p in corners do
-		if not IsPointOverPavingGateSafeZone(p) then
+		if not IsPointOverPavingGateSafeZoneWithFolderList(p, folderList) then
 			return false
 		end
 	end
@@ -728,28 +746,26 @@ local function HasSolidGroundAt(samplePos: Vector3): boolean
 	local rayOrigin = samplePos + Vector3.new(0, 5, 0)
 	local rayDir = Vector3.new(0, -10, 0)
 
-	local groundFilterInstances = GetSafeZoneFilterInstances()
+	FillSafeZoneFolderList()
+	table.clear(reusableSolidGroundFilterList)
+	for _, inst in reusableSafeZoneFolderList do
+		table.insert(reusableSolidGroundFilterList, inst)
+	end
 	local floatBlockFolder = workspace:FindFirstChild("FloatBlock")
-	local pavedBricksFolder = workspace:FindFirstChild("PavedBricks")
-	local filterList: { Instance } = {}
-	for _, inst in groundFilterInstances do
-		table.insert(filterList, inst)
-	end
 	if floatBlockFolder then
-		table.insert(filterList, floatBlockFolder)
+		table.insert(reusableSolidGroundFilterList, floatBlockFolder)
 	end
+	local pavedBricksFolder = workspace:FindFirstChild("PavedBricks")
 	if pavedBricksFolder then
-		table.insert(filterList, pavedBricksFolder)
+		table.insert(reusableSolidGroundFilterList, pavedBricksFolder)
 	end
-	if #filterList == 0 then
+	if #reusableSolidGroundFilterList == 0 then
 		return false
 	end
 
-	local params = RaycastParams.new()
-	params.FilterType = Enum.RaycastFilterType.Include
-	params.FilterDescendantsInstances = filterList
+	reusableSolidGroundRayParams.FilterDescendantsInstances = reusableSolidGroundFilterList
 
-	local result = workspace:Raycast(rayOrigin, rayDir, params)
+	local result = workspace:Raycast(rayOrigin, rayDir, reusableSolidGroundRayParams)
 	if result and result.Instance and result.Position.Y >= SEA_LEVEL - 1 then
 		if result.Instance:GetAttribute("EarthquakeDropped") == true then
 			return false
@@ -770,10 +786,9 @@ local function HasFallSafePitSupportAt(worldPos: Vector3): boolean
 	end
 	local origin = Vector3.new(worldPos.X, worldPos.Y + FALLSAFE_PIT_RAY_ORIGIN_OFFSET_Y, worldPos.Z)
 	local direction = Vector3.new(0, -FALLSAFE_PIT_RAY_LENGTH, 0)
-	local params = RaycastParams.new()
-	params.FilterType = Enum.RaycastFilterType.Include
-	params.FilterDescendantsInstances = { folder }
-	local result = workspace:Raycast(origin, direction, params)
+	reusableFallSafePitFilterSingleton[1] = folder
+	reusableFallSafePitRayParams.FilterDescendantsInstances = reusableFallSafePitFilterSingleton
+	local result = workspace:Raycast(origin, direction, reusableFallSafePitRayParams)
 	return result ~= nil and result.Instance ~= nil
 end
 
@@ -884,8 +899,9 @@ local function IsEntireBrickFootprintOverSafeZone(center: Vector3): boolean
 		Vector3.new(center.X - hx, y, center.Z + hz),
 		Vector3.new(center.X + hx, y, center.Z + hz),
 	}
+	local folderList = FillSafeZoneFolderList()
 	for _, p in corners do
-		if not IsPointOverSafeZone(p) then
+		if not IsPointOverSafeZoneWithFolderList(p, folderList) then
 			return false
 		end
 	end
@@ -1424,10 +1440,17 @@ local function OnHeartbeat(dt: number)
 		end
 	end
 
-	-- 5b. Per-frame overlap re-check：对未发送到服务端的本地预测砖做每帧重叠检测。
+	-- 5b. Per-frame overlap re-check：对未发送到服务端的本地预测砖做重叠检测（隔帧降低 GetPartBoundsInBox 开销）。
 	-- 地震时 feetGuard 高频触发 forceQueue 跳过 Touch 等待；非地震时仅靠 Touched 事件，
 	-- 多段跳等场景下 Touched 延迟高/不可靠。此处统一补偿：检测到角色重叠时立即 triggerPave+flush。
-	if character and isPavingMode and not isOutOfBricks and not blockSeaLevelPave then
+	pavingOverlapRecheckFrameCounter += 1
+	if
+		character
+		and isPavingMode
+		and not isOutOfBricks
+		and not blockSeaLevelPave
+		and pavingOverlapRecheckFrameCounter % 2 == 0
+	then
 		local overlapCheckParams = OverlapParams.new()
 		overlapCheckParams.FilterType = Enum.RaycastFilterType.Include
 		overlapCheckParams.FilterDescendantsInstances = { character }

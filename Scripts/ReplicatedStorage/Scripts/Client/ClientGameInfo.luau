@@ -1,5 +1,6 @@
 --!strict
 local ClientGameInfo = {}
+local players: Players = game:GetService("Players")
 local replicatedStorage: ReplicatedStorage = game:GetService("ReplicatedStorage")
 local scripts = replicatedStorage:WaitForChild("Scripts")
 local sharedScripts = scripts:WaitForChild("Shared")
@@ -151,6 +152,42 @@ function ClientGameInfo.UpdateCarriedInfo(carriedInfo: GameConfig.PlayerCarriedI
 	end
 end
 
+-- 家园展台收益数字 UI：最多每秒刷新一次，减轻 ClientGameManager 侧 NetMsg 回调压力；数据仍每包合并。
+local HOME_YIELD_UI_MIN_INTERVAL = 1.0
+local lastYieldUiFireClock = -math.huge
+local yieldUiThrottleSeq = 0
+
+local function buildAllPlayersModelYieldsSnapshot(): { [string]: { [string]: number } }
+	local snapshot: { [string]: { [string]: number } } = {}
+	local function addPlayerYields(playerId: number, pInfo: GameConfig.ClientLocalPlayerInfo | GameConfig.ClientOtherPlayerInfo)
+		if not pInfo.homeInfo or not pInfo.homeInfo.placedModels then
+			return
+		end
+		local yieldsForPlayer: { [string]: number } = {}
+		for pointIndexStr, model in pairs(pInfo.homeInfo.placedModels) do
+			if model then
+				local m = model :: any
+				yieldsForPlayer[pointIndexStr] = if type(m.unclaimedYield) == "number" then m.unclaimedYield else 0
+			end
+		end
+		if next(yieldsForPlayer) ~= nil then
+			snapshot[tostring(playerId)] = yieldsForPlayer
+		end
+	end
+	if localPlayerInfo then
+		addPlayerYields(players.LocalPlayer.UserId, localPlayerInfo)
+	end
+	for otherPlayerId, otherInfo in pairs(otherPlayerInfoMap) do
+		addPlayerYields(otherPlayerId, otherInfo)
+	end
+	return snapshot
+end
+
+local function fireYieldUiFromSnapshot()
+	ClientMsg.FireAllPlayersModelYieldsUpdate(buildAllPlayersModelYieldsSnapshot())
+	lastYieldUiFireClock = os.clock()
+end
+
 --更新收益信息
 function ClientGameInfo.UpdateAllPlayersModelYields(allYields: { [string]: { [string]: number } })
 	for playerIdStr, yields in pairs(allYields) do
@@ -159,7 +196,7 @@ function ClientGameInfo.UpdateAllPlayersModelYields(allYields: { [string]: { [st
 			continue
 		end
 
-		local pInfo = if playerId == game.Players.LocalPlayer.UserId then localPlayerInfo else otherPlayerInfoMap[playerId]
+		local pInfo = if playerId == players.LocalPlayer.UserId then localPlayerInfo else otherPlayerInfoMap[playerId]
 
 		if pInfo and pInfo.homeInfo and pInfo.homeInfo.placedModels then
 			for pointIndexStr, amount in pairs(yields) do
@@ -170,8 +207,21 @@ function ClientGameInfo.UpdateAllPlayersModelYields(allYields: { [string]: { [st
 			end
 		end
 	end
-	ClientMsg.FireAllPlayersModelYieldsUpdate(allYields)
-	--print("[ClientGameInfo] All players model yields updated and signal fired")
+
+	local now = os.clock()
+	if now - lastYieldUiFireClock >= HOME_YIELD_UI_MIN_INTERVAL then
+		yieldUiThrottleSeq += 1
+		fireYieldUiFromSnapshot()
+	else
+		yieldUiThrottleSeq += 1
+		local seq = yieldUiThrottleSeq
+		task.delay(HOME_YIELD_UI_MIN_INTERVAL - (now - lastYieldUiFireClock), function()
+			if seq ~= yieldUiThrottleSeq then
+				return
+			end
+			fireYieldUiFromSnapshot()
+		end)
+	end
 end
 
 --更新自己或其他玩家的房屋信息

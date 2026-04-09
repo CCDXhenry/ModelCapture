@@ -21,6 +21,16 @@ local VISUAL_SCALE = 0.25 -- 背部砖块缩放比例
 local MAX_VISUAL = GameConfig.Paving.BackBricksMaxVisual or 10
 local STACK_OFFSET = Vector3.new(0, 0, 1.2) -- 基础偏移 (调远一些)
 
+-- 安全区 Raycast 开销大：降频并复用参数；搬运量突变时立即重算以免视觉不同步。
+local SAFE_ZONE_RAYCAST_MIN_INTERVAL = 0.2
+local lastSafeZoneRayClock = -math.huge
+local lastSafeZoneRayBrickCount = -1
+local cachedIsInSafeZone = false
+local cachedHitUnderIslands = false
+local reusableSafeRayParams = RaycastParams.new()
+reusableSafeRayParams.FilterType = Enum.RaycastFilterType.Include
+local reusableSafeFilterList: { Instance } = {}
+
 local function GetContainer(): Model?
 	local character = localPlayer.Character
 	if not character then
@@ -80,42 +90,49 @@ local function UpdateBackBricks()
 		end
 	end
 
-	-- 检测是否在安全区 (地面 / 岛屿 / 玩家房屋)
-	local isInSafeZone = false
-	local hitUnderIslands = false
-	local groundFolder = workspace:FindFirstChild("Ground") or workspace:FindFirstChild("ground")
-	local islandsFolder = workspace:FindFirstChild("Islands")
-	local homesFolder = workspace:FindFirstChild("PlayersHome")
-
-	local rayOrigin = (upperTorso :: BasePart).Position + Vector3.new(0, 10, 0) -- 从上方探测，覆盖脚下障碍
-	local rayDirection = Vector3.new(0, -200, 0) -- 增加探测深度，覆盖高层建筑
-	local raycastParams = RaycastParams.new()
-	raycastParams.FilterType = Enum.RaycastFilterType.Include
-
-	local filterInstances = {}
-	if groundFolder then
-		table.insert(filterInstances, groundFolder)
-	end
-	if islandsFolder then
-		table.insert(filterInstances, islandsFolder)
-	end
-	if homesFolder then
-		table.insert(filterInstances, homesFolder)
-	end
-
-	if #filterInstances > 0 then
-		raycastParams.FilterDescendantsInstances = filterInstances
-		local result = workspace:Raycast(rayOrigin, rayDirection, raycastParams)
-		if result then
-			isInSafeZone = true
-			if islandsFolder then
-				hitUnderIslands = result.Instance:IsDescendantOf(islandsFolder)
-			end
-		end
-	end
-
 	-- 视觉砖块数量逻辑: 基于玩家当前瞬态搬运量，实现铺砖减少的视觉
 	local currentBricks = playerInfo.carriedInfo.bricks
+
+	-- 检测是否在安全区 (地面 / 岛屿 / 玩家房屋)：复用 RaycastParams，并按间隔刷新
+	local isInSafeZone = cachedIsInSafeZone
+	local hitUnderIslands = cachedHitUnderIslands
+	local nowClock = os.clock()
+	local islandsFolder = workspace:FindFirstChild("Islands")
+	if
+		currentBricks ~= lastSafeZoneRayBrickCount
+		or (nowClock - lastSafeZoneRayClock >= SAFE_ZONE_RAYCAST_MIN_INTERVAL)
+	then
+		lastSafeZoneRayClock = nowClock
+		lastSafeZoneRayBrickCount = currentBricks
+		isInSafeZone = false
+		hitUnderIslands = false
+		local groundFolder = workspace:FindFirstChild("Ground") or workspace:FindFirstChild("ground")
+		local homesFolder = workspace:FindFirstChild("PlayersHome")
+		table.clear(reusableSafeFilterList)
+		if groundFolder then
+			table.insert(reusableSafeFilterList, groundFolder)
+		end
+		if islandsFolder then
+			table.insert(reusableSafeFilterList, islandsFolder)
+		end
+		if homesFolder then
+			table.insert(reusableSafeFilterList, homesFolder)
+		end
+		if #reusableSafeFilterList > 0 then
+			local rayOrigin = (upperTorso :: BasePart).Position + Vector3.new(0, 10, 0)
+			local rayDirection = Vector3.new(0, -200, 0)
+			reusableSafeRayParams.FilterDescendantsInstances = reusableSafeFilterList
+			local result = workspace:Raycast(rayOrigin, rayDirection, reusableSafeRayParams)
+			if result then
+				isInSafeZone = true
+				if islandsFolder then
+					hitUnderIslands = result.Instance:IsDescendantOf(islandsFolder)
+				end
+			end
+		end
+		cachedIsInSafeZone = isInSafeZone
+		cachedHitUnderIslands = hitUnderIslands
+	end
 
 	-- 这里的除数可以根据表现调整，比如 1 表示 1:1 显示，10 表示 1:10 显示
 	-- 之前用户手动改成了 / 1，遵循此设定
