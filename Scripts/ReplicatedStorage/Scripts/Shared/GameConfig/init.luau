@@ -15,7 +15,7 @@ local ShopBundleConfigurationDataModule = require(script:FindFirstChild("ShopBun
 local ShopBundleDataModule = require(script:FindFirstChild("ShopBundleData"))
 
 --游戏版本
-GameConfig.GameVersion = "1.0.0"
+GameConfig.GameVersion = "1.0.1"
 --本次AB测试版本
 GameConfig.ABTestVersion = "1.0.0"
 --玩家存档数据版本
