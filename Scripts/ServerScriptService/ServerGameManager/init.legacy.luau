@@ -14,6 +14,7 @@ AnalyticsTool.SetDataAccess({
 	end,
 })
 local BrainrotIslandManager = require(serverScripts:FindFirstChild("BrainrotIslandManager"))
+local ObstacleManager = require(serverScripts:FindFirstChild("ObstacleManager"))
 local PlayerInteractManager = require(serverScripts:FindFirstChild("PlayerInteractManager"))
 local CoilManager = require(serverScripts:FindFirstChild("CoilManager"))
 local EarthquakeManager = require(serverScripts:FindFirstChild("EarthquakeManager"))
@@ -225,6 +226,7 @@ end
 print("GameVersion", GameConfig.GameVersion)
 AnalyticsTool.Init()
 BrainrotIslandManager.Init()
+ObstacleManager.Init()
 PlayerInteractManager.Init()
 CoilManager.Init()
 EarthquakeManager.Init()

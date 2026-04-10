@@ -934,7 +934,7 @@ local function OnRequestStartPaving(player: Player)
 	local before = ServerGameInfo.GetPlayerCarriedBricks(player)
 	local maxBricks = ServerGameInfo.GetPlayerMaxBricks(player)
 	if before >= maxBricks then
-		print("[PavingManager] 补砖", player.Name, "携带砖已满 地点", location, "当前", before)
+		--print("[PavingManager] 补砖", player.Name, "携带砖已满 地点", location, "当前", before)
 		return
 	end
 	ServerGameInfo.SetPlayerBricksToMax(player)
