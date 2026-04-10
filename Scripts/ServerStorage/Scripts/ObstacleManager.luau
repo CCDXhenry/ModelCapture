@@ -388,6 +388,8 @@ local function RunMultiWaypointLoop(part: BasePart, waypoints: { WaypointConfig 
 	local step = 1
 
 	while part.Parent do
+		local didYieldThisIteration = false
+
 		part.CFrame = CFrame.new(waypoints[i].worldPosition) * rotation
 
 		local dwell = waypoints[i].dwellSeconds
@@ -395,6 +397,7 @@ local function RunMultiWaypointLoop(part: BasePart, waypoints: { WaypointConfig 
 			local t0 = os.clock()
 			while part.Parent and os.clock() - t0 < dwell do
 				task.wait()
+				didYieldThisIteration = true
 			end
 		end
 
@@ -427,11 +430,16 @@ local function RunMultiWaypointLoop(part: BasePart, waypoints: { WaypointConfig 
 			moveTween:Play()
 			while not finished and part.Parent do
 				task.wait()
+				didYieldThisIteration = true
 			end
 			conn:Disconnect()
 			moveTween:Cancel()
 		else
 			part.CFrame = nextCFrame
+		end
+
+		if not didYieldThisIteration then
+			task.wait()
 		end
 
 		if not part.Parent then
