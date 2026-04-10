@@ -519,11 +519,11 @@ local function ScanObstacleFolder(obstacleFolder: Instance)
 
 			local waypoints = CollectOrderedWaypoints(obstaclePart)
 			if waypoints == nil then
-				warn(
-					"[ObstacleManager] Need at least two Attachment1, Attachment2, … under",
-					obstaclePart:GetFullName(),
-					"— motion disabled; scale/touch only."
-				)
+				--warn(
+				--	"[ObstacleManager] Need at least two Attachment1, Attachment2, … under",
+				--	obstaclePart:GetFullName(),
+				--	"— motion disabled; scale/touch only."
+				--)
 			end
 
 			validObstacleCount += 1

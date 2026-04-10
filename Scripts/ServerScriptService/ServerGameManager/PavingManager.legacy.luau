@@ -939,7 +939,7 @@ local function OnRequestStartPaving(player: Player)
 	end
 	ServerGameInfo.SetPlayerBricksToMax(player)
 	local added = maxBricks - before
-	print("[PavingManager] 补砖", player.Name, "增加砖块", added, "地点", location)
+	--print("[PavingManager] 补砖", player.Name, "增加砖块", added, "地点", location)
 end
 
 

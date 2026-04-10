@@ -90,7 +90,7 @@ function HomeManager.OnRequestPickupHomeModel(player: Player, pointIndex: number
 				AnalyticsTool.LogModelHold(player, oldConfigId, oldLevel)
 			end
 
-			print(string.format("[HomeManager] Player %s swapped held brainrot (%d) with display point %d (%d)", player.Name, heldConfigId, pointIndex, oldConfigId))
+			--print(string.format("[HomeManager] Player %s swapped held brainrot (%d) with display point %d (%d)", player.Name, heldConfigId, pointIndex, oldConfigId))
 			return
 		end
 	end
@@ -106,7 +106,7 @@ function HomeManager.OnRequestPickupHomeModel(player: Player, pointIndex: number
 	if BrainrotQueueManager.AddItem(player, configId, quality, level, true, nil, false) then
 		AnalyticsTool.LogModelHold(player, configId, level)
 	end
-	print("[HomeManager] Player", player.Name, "picked up model from point", pointIndex, "into backpack queue")
+	--print("[HomeManager] Player", player.Name, "picked up model from point", pointIndex, "into backpack queue")
 end
 
 function HomeManager.RestoreHomeModel(player: Player, brainrot: Instance)
@@ -131,7 +131,7 @@ function HomeManager.RestoreHomeModel(player: Player, brainrot: Instance)
 
 	if ok and originalData then
 		ServerGameInfo.UpdatePlayerPlacedModel(player, fromPointIndex, originalData)
-		print("[HomeManager] Restored brainrot to slot", fromHomeSlot, "point", fromPointIndex)
+		--print("[HomeManager] Restored brainrot to slot", fromHomeSlot, "point", fromPointIndex)
 	end
 
 	brainrot:Destroy()

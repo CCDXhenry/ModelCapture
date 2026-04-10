@@ -126,7 +126,7 @@ function ClientGameInfo.UpdateCurrency(currencyType: number, totalAmount: number
 
 	local currencyKey: string = tostring(currencyType)
 	localPlayerInfo.currencies[currencyKey] = totalAmount
-	print("[ClientGameInfo] UpdateCurrency type", currencyType, "total", totalAmount, "change", lastChange, "reason", reason)
+	--print("[ClientGameInfo] UpdateCurrency type", currencyType, "total", totalAmount, "change", lastChange, "reason", reason)
 
 	--如果是增加且金额大于0，弹出获得提示
 	if lastChange > 0 then
@@ -229,7 +229,7 @@ function ClientGameInfo.UpdatePlayerHomeInfo(playerId: number, homeSlot: string,
 	if localPlayerInfo ~= nil and playerId == game.Players.LocalPlayer.UserId then
 		localPlayerInfo.homeSlot = homeSlot
 		localPlayerInfo.homeInfo = homeInfo
-		print("[ClientGameInfo] UpdatePlayerHomeInfo for LocalPlayer")
+		--print("[ClientGameInfo] UpdatePlayerHomeInfo for LocalPlayer")
 	elseif otherPlayerInfoMap[playerId] ~= nil then
 		otherPlayerInfoMap[playerId].homeSlot = homeSlot
 		otherPlayerInfoMap[playerId].homeInfo = homeInfo
@@ -237,7 +237,7 @@ function ClientGameInfo.UpdatePlayerHomeInfo(playerId: number, homeSlot: string,
 		if rebirthLevel ~= nil then
 			otherPlayerInfoMap[playerId].rebirthLevel = rebirthLevel
 		end
-		print("[ClientGameInfo] UpdatePlayerHomeInfo for OtherPlayer", playerId)
+		--print("[ClientGameInfo] UpdatePlayerHomeInfo for OtherPlayer", playerId)
 	end
 	ClientMsg.FirePlayerHomeInfoUpdate(playerId, homeSlot, homeInfo, rebirthLevel)
 end
@@ -351,7 +351,7 @@ function ClientGameInfo.UpdateBrainrotQueue(queue: { GameConfig.BrainrotQueueIte
 			seenQueueUidSet[item.uid] = true
 		end
 
-		print("[ClientGameInfo] BrainrotQueue updated, count:", #queue)
+		--print("[ClientGameInfo] BrainrotQueue updated, count:", #queue)
 	end
 end
 
@@ -392,7 +392,7 @@ end
 -- 移除其他玩家信息 (当玩家离开时)
 function ClientGameInfo.RemoveOtherPlayer(playerId: number)
 	otherPlayerInfoMap[playerId] = nil
-	print("[ClientGameInfo] RemoveOtherPlayer for playerId", playerId)
+	--print("[ClientGameInfo] RemoveOtherPlayer for playerId", playerId)
 end
 
 return ClientGameInfo

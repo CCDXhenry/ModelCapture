@@ -523,7 +523,7 @@ local function ScheduleSlotUpdate(slotName: string)
 			return
 		end
 		pendingUpdates[slotName] = nil
-		print("[HomeClientManager] Applying visuals for slot", slotName)
+		--print("[HomeClientManager] Applying visuals for slot", slotName)
 		ApplySlotVisuals(slotName)
 	end)
 end
@@ -1173,7 +1173,7 @@ end
 
 -- Updates the rebirth multiplier UI for the home
 local function UpdateRebirthMultiplierUI(slotName: string, homeInfo: any, isLocalPlayer: boolean, rebirthLevel: number?)
-	print("[UpdateRebirthMultiplierUI] Updating UI for slot", slotName, "isLocalPlayer", isLocalPlayer)
+	--print("[UpdateRebirthMultiplierUI] Updating UI for slot", slotName, "isLocalPlayer", isLocalPlayer)
 	local slotModel = homesFolder:FindFirstChild(slotName)
 	if not slotModel or not homeInfo then
 		return

@@ -769,7 +769,7 @@ local function SellOneActiveBrainrot(player: Player, suppressAnalytics: boolean?
 	end
 	carryingBrainrot:Destroy()
 
-	print("[BrainrotIslandManager] Player", player.Name, "sold tool brainrot for", sellPrice)
+	--print("[BrainrotIslandManager] Player", player.Name, "sold tool brainrot for", sellPrice)
 	return true, sellPrice, configIdNum, currentLevel
 end
 

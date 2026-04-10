@@ -231,7 +231,7 @@ function ServerGameInfo.InitPlayerInfo(
 		task.defer(OnCharacterReady, player.Character)
 	end
 
-	print("[ServerGameInfo] InitPlayerInfo complete for", player.Name)
+	--print("[ServerGameInfo] InitPlayerInfo complete for", player.Name)
 end
 
 -- 通知玩家家园信息变更 (辅助方法)
@@ -246,7 +246,7 @@ end
 function ServerGameInfo.RemovePlayerInfo(player: Player)
 	playerInfoMap[player.UserId] = nil
 	lastBroadcastModelYieldMap[player.UserId] = nil
-	print("[ServerGameInfo] RemovePlayerInfo for", player.Name)
+	--print("[ServerGameInfo] RemovePlayerInfo for", player.Name)
 end
 
 --获取玩家信息
@@ -362,7 +362,7 @@ function ServerGameInfo.ExecuteRebirth(player: Player, isPaid: boolean): boolean
 	-- 通知客户端重生等级变更
 	NetMsg.FireNotifyPlayerSkillLevelUpdate(player, GameConfig.SkillType.RebirthLevel, playerInfo.shopInfo.rebirthLevel)
 
-	print("[ServerGameInfo] ExecuteRebirth success for", player.Name, "New Level:", playerInfo.shopInfo.rebirthLevel, "isPaid:", isPaid)
+	--print("[ServerGameInfo] ExecuteRebirth success for", player.Name, "New Level:", playerInfo.shopInfo.rebirthLevel, "isPaid:", isPaid)
 	analyticsTool().LogPlayerRebirth(
 		player,
 		playerInfo.shopInfo.rebirthLevel,
@@ -392,7 +392,7 @@ function ServerGameInfo.ChangePlayerLoginDays(player: Player, loginDays: number,
 		return
 	end
 	playerInfo.loginDays = loginDays
-	print("[ServerGameInfo] ChangePlayerLoginDays for", player.Name, "to", loginDays)
+	--print("[ServerGameInfo] ChangePlayerLoginDays for", player.Name, "to", loginDays)
 	playerInfo.lastOnlineDate = lastOnlineDate
 	playerInfo.lastOnlineDateUTC = DateTime.fromUniversalTime(lastOnlineDate.Year, lastOnlineDate.Month, lastOnlineDate.Day).UnixTimestamp
 	playerInfo.playerInfoChanged = true
@@ -408,7 +408,7 @@ function ServerGameInfo.SetPlayerGamePassAcquired(player: Player, gamePassId: nu
 	if playerInfo.ownedGamePassMap[gamePassId] then
 		return
 	end
-	print("[ServerGameInfo] SetPlayerGamePassAcquired for", player.Name, "id", gamePassId)
+	--print("[ServerGameInfo] SetPlayerGamePassAcquired for", player.Name, "id", gamePassId)
 	table.insert(playerInfo.ownedGamePassList, gamePassId)
 	playerInfo.ownedGamePassMap[gamePassId] = true
 	playerInfo.playerInfoChanged = true
@@ -473,7 +473,7 @@ function ServerGameInfo.UpdatePlayerPlacedModel(player: Player, pointIndex: numb
 	-- 通知客户端更新 (封装在数据层)
 	NetMsg.FireNotifyPlayerHomeInfoUpdate(player.UserId, playerInfo.homeSlot, playerInfo.homeInfo)
 
-	print("[ServerGameInfo] UpdatePlayerPlacedModel and notified for", player.Name, "at point", pointIndex)
+	--print("[ServerGameInfo] UpdatePlayerPlacedModel and notified for", player.Name, "at point", pointIndex)
 end
 
 --设置玩家家园槽位
@@ -488,7 +488,7 @@ function ServerGameInfo.SetPlayerHomeSlot(player: Player, slotName: string)
 
 	--槽位变更也需要通知客户端家园数据
 	NetMsg.FireNotifyPlayerHomeInfoUpdate(player.UserId, playerInfo.homeSlot, playerInfo.homeInfo)
-	print("[ServerGameInfo] SetPlayerHomeSlot for", player.Name, "to", slotName)
+	--print("[ServerGameInfo] SetPlayerHomeSlot for", player.Name, "to", slotName)
 end
 
 --更新玩家货币
@@ -635,7 +635,7 @@ function ServerGameInfo.ClaimModelYield(player: Player, targetPlayerId: number, 
 		ServerGameInfo.NotifyPlayerHomeInfoUpdate(targetPlayerId)
 	end
 
-	print("[ServerGameInfo] Player", player.Name, "claimed", amount, "yield from model at point", pointIndex, "owned by", targetPlayer.Name)
+	--print("[ServerGameInfo] Player", player.Name, "claimed", amount, "yield from model at point", pointIndex, "owned by", targetPlayer.Name)
 end
 
 --升级模型
@@ -650,7 +650,7 @@ function ServerGameInfo.UpgradePlacedModel(player: Player, pointIndex: number)
 		model.level += 1
 		playerInfo.playerInfoChanged = true
 		NetMsg.FireNotifyPlayerHomeInfoUpdate(player.UserId, playerInfo.homeSlot, playerInfo.homeInfo)
-		print("[ServerGameInfo] UpgradePlacedModel for", player.Name, "at point", pointIndex, "to level", model.level)
+		--print("[ServerGameInfo] UpgradePlacedModel for", player.Name, "at point", pointIndex, "to level", model.level)
 	end
 end
 
@@ -773,7 +773,7 @@ function ServerGameInfo.UpdateDecelerationOn(player: Player, decelerationOn: boo
 	end
 	playerInfo.settingInfo.decelerationOn = decelerationOn
 	playerInfo.playerInfoChanged = true
-	print("[ServerGameInfo] UpdateDecelerationOn for", player.Name, "to", decelerationOn)
+	--print("[ServerGameInfo] UpdateDecelerationOn for", player.Name, "to", decelerationOn)
 end
 
 --更新行走速度等级
@@ -786,7 +786,7 @@ function ServerGameInfo.UpdateWalkSpeedLevel(player: Player, levelAdd: number)
 	playerInfo.shopInfo.walkSpeedLevel += levelAdd
 	playerInfo.playerInfoChanged = true
 	NetMsg.FireNotifyPlayerSkillLevelUpdate(player, GameConfig.SkillType.WalkSpeed, playerInfo.shopInfo.walkSpeedLevel)
-	print("[ServerGameInfo] UpdateWalkSpeedLevel for", player.Name, "by", levelAdd, "total", playerInfo.shopInfo.walkSpeedLevel)
+	--print("[ServerGameInfo] UpdateWalkSpeedLevel for", player.Name, "by", levelAdd, "total", playerInfo.shopInfo.walkSpeedLevel)
 end
 
 --更新最大砖头等级

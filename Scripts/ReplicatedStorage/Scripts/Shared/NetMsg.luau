@@ -135,7 +135,7 @@ end
 
 --通知所有客户端更新在线玩家的房子信息
 function NetMsg.FireNotifyPlayerHomeInfoUpdate(playerId: number, homeSlot: string, homeInfo: any, rebirthLevel: number?)
-	print("[NetMsg] FireNotifyPlayerHomeInfoUpdate for playerId", playerId)
+	--print("[NetMsg] FireNotifyPlayerHomeInfoUpdate for playerId", playerId)
 	notifyPlayerHomeInfoUpdateEvent:FireAllClients(playerId, homeSlot, homeInfo, rebirthLevel)
 end
 
@@ -225,7 +225,7 @@ end
 
 -- 客户端请求领取展示台收益 (由触碰本地 CollectPart 触发)
 function NetMsg.FireRequestClaimYield(targetPlayerId: number, pointIndex: number)
-	print("[NetMsg] FireRequestClaimYield from target", targetPlayerId, "plot", pointIndex)
+	--print("[NetMsg] FireRequestClaimYield from target", targetPlayerId, "plot", pointIndex)
 	requestClaimYieldEvent:FireServer(targetPlayerId, pointIndex)
 end
 function NetMsg.ConnectRequestClaimYield(callback: (player: Player, targetPlayerId: number, pointIndex: number) -> ())
@@ -234,7 +234,7 @@ end
 
 -- 客户端请求从家园展台拾取模型
 function NetMsg.FireRequestPickupHomeModel(pointIndex: number)
-	print("[NetMsg] FireRequestPickupHomeModel at pointIndex", pointIndex)
+	--print("[NetMsg] FireRequestPickupHomeModel at pointIndex", pointIndex)
 	requestPickupHomeModelEvent:FireServer(pointIndex)
 end
 function NetMsg.ConnectRequestPickupHomeModel(callback: (player: Player, pointIndex: number) -> ())
@@ -252,7 +252,7 @@ end
 
 -- 客户端请求放置正在搬运的宠物
 function NetMsg.FireRequestPlaceCarryingBrainrot(pointIndex: number)
-	print("[NetMsg] FireRequestPlaceCarryingBrainrot at pointIndex", pointIndex)
+	--print("[NetMsg] FireRequestPlaceCarryingBrainrot at pointIndex", pointIndex)
 	requestPlaceCarryingBrainrotEvent:FireServer(pointIndex)
 end
 function NetMsg.ConnectRequestPlaceCarryingBrainrot(callback: (player: Player, pointIndex: number) -> ())
@@ -374,7 +374,7 @@ end
 
 -- 服务端通知玩家 Brainrot 背包队列更新
 function NetMsg.FireNotifyBrainrotQueueUpdate(player: Player, queue: { GameConfig.BrainrotQueueItem })
-	print("[NetMsg] FireNotifyBrainrotQueueUpdate for player", player.Name, "count:", #queue)
+	--print("[NetMsg] FireNotifyBrainrotQueueUpdate for player", player.Name, "count:", #queue)
 	notifyBrainrotQueueUpdateEvent:FireClient(player, queue)
 end
 

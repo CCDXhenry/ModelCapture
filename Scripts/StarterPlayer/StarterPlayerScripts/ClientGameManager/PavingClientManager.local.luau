@@ -482,7 +482,7 @@ local function ClearLocalBricks()
 			end
 		end
 		table.clear(localBrickMap)
-		print("[PavingClient] Cleared all local prediction bricks and queue")
+		--print("[PavingClient] Cleared all local prediction bricks and queue")
 	end
 	table.clear(pendingPaveQueue)
 	table.clear(pendingBatchMap)
@@ -1145,7 +1145,7 @@ local function OnHeartbeat(dt: number)
 
 		if isPavingMode then
 			isPavingMode = false
-			print("[PavingClient] Mode reset due to death/falling")
+			--print("[PavingClient] Mode reset due to death/falling")
 		end
 		ClearLocalBricks()
 		return

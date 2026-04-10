@@ -205,7 +205,7 @@ PreloadAssets = function()
 		AddImage(otherImage)
 	end
 
-	print(string.format("[ClientGameManager] PreloadAssets start. candidates=%d", #assetList))
+	--print(string.format("[ClientGameManager] PreloadAssets start. candidates=%d", #assetList))
 	local preloadSuccess, preloadErr = pcall(function()
 		contentProvider:PreloadAsync(assetList, function(assetId: string, assetFetchStatus: Enum.AssetFetchStatus)
 			if assetFetchStatus ~= Enum.AssetFetchStatus.Success then
@@ -225,13 +225,13 @@ PreloadAssets = function()
 	table.clear(assetList)
 
 	local elapsedTime = os.clock() - preloadStartTime
-	print(string.format(
-		"[ClientGameManager] PreloadAssets complete. failed=%d elapsed=%.2fs",
-		#failedAssetList,
-		elapsedTime
-	))
+	--print(string.format(
+	--	"[ClientGameManager] PreloadAssets complete. failed=%d elapsed=%.2fs",
+	--	#failedAssetList,
+	--	elapsedTime
+	--))
 	if #failedAssetList > 0 then
-		print(string.format("[ClientGameManager] PreloadAssets failed sample=%s", tostring(failedAssetList[1])))
+		--print(string.format("[ClientGameManager] PreloadAssets failed sample=%s", tostring(failedAssetList[1])))
 	end
 	table.clear(failedAssetList)
 end

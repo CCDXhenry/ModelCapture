@@ -50,7 +50,7 @@ local function InitSlots()
 		end
 	end
 	table.sort(availableSlots)
-	print("[HomeManager] Initialized with", #availableSlots, "slots. Base plots per floor:", basePlotsCount)
+	--print("[HomeManager] Initialized with", #availableSlots, "slots. Base plots per floor:", basePlotsCount)
 end
 
 -- local function BroadcastHomeUpdate(player: Player) ... removed as logic is now in ServerGameInfo

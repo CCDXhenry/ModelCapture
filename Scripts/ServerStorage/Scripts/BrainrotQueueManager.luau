@@ -265,7 +265,7 @@ function BrainrotQueueManager.AddItem(
 		end
 	end)
 
-	print("[BrainrotQueueManager] AddItem for", player.Name, "configId:", configId, "uid:", item.uid, "total:", #playerInfo.brainrotQueue)
+	--print("[BrainrotQueueManager] AddItem for", player.Name, "configId:", configId, "uid:", item.uid, "total:", #playerInfo.brainrotQueue)
 	NotifyQueueUpdate(player, playerInfo.brainrotQueue)
 
 	local resolvedType = itemType or GameConfig.ItemType.Brainrot
@@ -295,7 +295,7 @@ function BrainrotQueueManager.RemoveItem(player: Player, uid: string): boolean
 	if removedIndex then
 		table.remove(playerInfo.brainrotQueue, removedIndex)
 		playerInfo.playerInfoChanged = true
-		print("[BrainrotQueueManager] RemoveItem for", player.Name, "uid:", uid, "remaining:", #playerInfo.brainrotQueue)
+		--print("[BrainrotQueueManager] RemoveItem for", player.Name, "uid:", uid, "remaining:", #playerInfo.brainrotQueue)
 		NotifyQueueUpdate(player, playerInfo.brainrotQueue)
 		return true
 	else

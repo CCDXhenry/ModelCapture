@@ -35,9 +35,9 @@ function ShopManager.OnUpgradeRequested(player: Player, skillType: number, level
 	-- 直接调用数据层的升级接口，内部会处理余额检查和扣费
 	local success = ServerGameInfo.UpgradeAbility(player, abilityName, levelAdd)
 	if success then
-		print(`[ShopManager] {player.Name} successfully upgraded {abilityName} by {levelAdd} levels`)
+		--print(`[ShopManager] {player.Name} successfully upgraded {abilityName} by {levelAdd} levels`)
 	else
-		print(`[ShopManager] {player.Name} upgrade failed for {abilityName}`)
+		--print(`[ShopManager] {player.Name} upgrade failed for {abilityName}`)
 	end
 end
 
@@ -51,7 +51,7 @@ function ShopManager.Init()
 		ShopManager.OnUpgradeRequested(player, skillType, levelAdd)
 	end)
 	
-	print("[ShopManager] Initialized")
+	--print("[ShopManager] Initialized")
 end
 
 -- Start
