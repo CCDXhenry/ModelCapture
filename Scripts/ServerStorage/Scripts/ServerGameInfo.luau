@@ -159,6 +159,7 @@ function ServerGameInfo.InitPlayerInfo(
 		playerInfo.playerInfoChanged = true
 	end
 	playerInfoMap[player.UserId] = playerInfo
+	player:SetAttribute("LastArrivedIslandId", playerInfo.lastArrivedIslandId)
 	ServerMsg.FirePlayerInfoInit(player)
 
 	local clientLocalPlayerSaveInfo: GameConfig.ClientLocalPlayerSaveInfo = {
@@ -217,6 +218,11 @@ function ServerGameInfo.InitPlayerInfo(
 				local pinfo = ServerGameInfo.GetPlayerInfo(player)
 				local islandId = if pinfo and pinfo.lastArrivedIslandId > 0 then pinfo.lastArrivedIslandId else 1
 				analyticsTool().LogPlayerDeath(player, totalBricks, remainingBricks, islandId)
+				-- 死亡后刷新：与重生/出生点对齐，避免客户端长期保留死前岛屿 id（飞行援助门槛等）
+				if pinfo then
+					pinfo.lastArrivedIslandId = 1
+				end
+				player:SetAttribute("LastArrivedIslandId", 1)
 			end)
 		end
 	end

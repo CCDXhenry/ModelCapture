@@ -343,8 +343,9 @@ local function OnHeartbeat(dt: number)
 				local islandId = ServerGameInfo.GetIslandIdAtPosition(hrp.Position)
 				if islandId > 0 then
 					local pinfo = ServerGameInfo.GetPlayerInfo(plr)
-					if pinfo then
+					if pinfo and pinfo.lastArrivedIslandId ~= islandId then
 						pinfo.lastArrivedIslandId = islandId
+						plr:SetAttribute("LastArrivedIslandId", islandId)
 					end
 				end
 				ServerGameInfo.TryMarkIslandDiscovered(plr, islandId)

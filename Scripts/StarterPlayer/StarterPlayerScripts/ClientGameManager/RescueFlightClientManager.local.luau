@@ -10,19 +10,25 @@ local NetMsg = require(sharedScripts:FindFirstChild("NetMsg"))
 local localPlayer = players.LocalPlayer
 local lastTouchedIsland: Instance? = nil
 
+-- 从水平参考点向上偏移后向下打射线，得到直立 HRP CFrame（脚大致在地表上）
+local RAYCAST_ABOVE_STUDS = 200
+local RAYCAST_DOWN_STUDS = 600
+local SURFACE_BIAS_ALONG_NORMAL = 0.25
+local PIVOT_FALLBACK_EXTRA_Y = 15
+
 runService.Heartbeat:Connect(function()
 	local character = localPlayer.Character
 	if not character then return end
 	local rootPart = character:FindFirstChild("HumanoidRootPart") :: BasePart
 	if not rootPart then return end
-	
+
 	local rayOrigin = rootPart.Position
 	local rayDirection = Vector3.new(0, -10, 0)
 	local params = RaycastParams.new()
 	params.FilterType = Enum.RaycastFilterType.Include
 	local islandsFolder = workspace:FindFirstChild("Islands")
 	if islandsFolder then
-		params.FilterDescendantsInstances = {islandsFolder}
+		params.FilterDescendantsInstances = { islandsFolder }
 		local result = workspace:Raycast(rayOrigin, rayDirection, params)
 		if result and result.Instance then
 			local island = result.Instance
@@ -52,7 +58,7 @@ local function FindNearestIsland(startPos: Vector3): Instance?
 		elseif island:IsA("BasePart") then
 			pos = island.Position
 		end
-		
+
 		local dist = (pos - startPos).Magnitude
 		if dist < minDistance then
 			minDistance = dist
@@ -75,7 +81,7 @@ local function AttachWings(character: Model): Part?
 	wings.CanCollide = false
 	wings.Massless = true
 	wings.CFrame = (torso :: BasePart).CFrame * CFrame.new(0, 0.5, 1)
-	
+
 	local weld = Instance.new("WeldConstraint")
 	weld.Part0 = torso :: BasePart
 	weld.Part1 = wings
@@ -85,78 +91,135 @@ local function AttachWings(character: Model): Part?
 	return wings
 end
 
+local function GroundHrpCFrameFromHorizontalRef(
+	character: Model,
+	horizontalRef: Vector3
+): CFrame?
+	local rootPart = character:FindFirstChild("HumanoidRootPart") :: BasePart?
+	local humanoid = character:FindFirstChild("Humanoid") :: Humanoid?
+	if not rootPart or not humanoid then
+		return nil
+	end
+
+	local origin = Vector3.new(horizontalRef.X, horizontalRef.Y + RAYCAST_ABOVE_STUDS, horizontalRef.Z)
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	params.FilterDescendantsInstances = { character }
+
+	local hit = workspace:Raycast(origin, Vector3.new(0, -RAYCAST_DOWN_STUDS, 0), params)
+	if not hit then
+		return nil
+	end
+
+	local ground = hit.Position + hit.Normal * SURFACE_BIAS_ALONG_NORMAL
+	local yOff = rootPart.Size.Y * 0.5 + humanoid.HipHeight
+	local pos = ground + Vector3.new(0, yOff, 0)
+	return CFrame.new(pos)
+end
+
+local function ResolveRescueLandCFrame(targetIsland: Instance?, character: Model): CFrame
+	local rootPart = character:FindFirstChild("HumanoidRootPart") :: BasePart?
+	local humanoid = character:FindFirstChild("Humanoid") :: Humanoid?
+	if not rootPart or not humanoid then
+		return CFrame.new()
+	end
+
+	if not targetIsland then
+		return rootPart.CFrame
+	end
+
+	local tp = targetIsland:FindFirstChild("TeleportPoint")
+	if tp then
+		local spawnLoc = tp:FindFirstChild("SpawnLocation")
+		if spawnLoc and spawnLoc:IsA("SpawnLocation") then
+			local spawnPart = spawnLoc :: BasePart
+			local ref = spawnPart.CFrame * CFrame.new(0, 3, 0)
+			local cf = GroundHrpCFrameFromHorizontalRef(character, ref.Position)
+			if cf then
+				return cf
+			end
+		end
+
+		local ring = tp:FindFirstChild("Ring")
+		if ring and ring:IsA("BasePart") then
+			local ringPart = ring :: BasePart
+			local refPos = ringPart.Position + Vector3.new(0, 8, 0)
+			local cf = GroundHrpCFrameFromHorizontalRef(character, refPos)
+			if cf then
+				return cf
+			end
+		end
+	end
+
+	local pivotPos: Vector3
+	if targetIsland:IsA("Model") then
+		pivotPos = targetIsland:GetPivot().Position
+	elseif targetIsland:IsA("BasePart") then
+		pivotPos = targetIsland.Position
+	else
+		pivotPos = rootPart.Position
+	end
+
+	local cf = GroundHrpCFrameFromHorizontalRef(character, pivotPos + Vector3.new(0, 20, 0))
+	if cf then
+		return cf
+	end
+
+	local yOff = rootPart.Size.Y * 0.5 + humanoid.HipHeight + PIVOT_FALLBACK_EXTRA_Y
+	return CFrame.new(pivotPos + Vector3.new(0, yOff, 0))
+end
+
 local function OnRescueStart()
 	local character = localPlayer.Character
 	if not character then return end
-	
+
 	local rootPart = character:FindFirstChild("HumanoidRootPart") :: BasePart
 	local humanoid = character:FindFirstChild("Humanoid") :: Humanoid
 	if not rootPart or not humanoid then return end
 
-	-- Ensure anchored
 	rootPart.Anchored = true
 	humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
-	
-	-- Attach simple wings mask
+
 	local wings = AttachWings(character)
-	
-	-- Phase 1: Fly Up
+
 	local startPos = rootPart.Position
 	local highCFrame = rootPart.CFrame + Vector3.new(0, 100, 0)
-	
+
 	local flyUpInfo = TweenInfo.new(1.2, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
-	local flyUpTween = tweenService:Create(rootPart, flyUpInfo, {CFrame = highCFrame})
-	
+	local flyUpTween = tweenService:Create(rootPart, flyUpInfo, { CFrame = highCFrame })
+
 	flyUpTween:Play()
 	flyUpTween.Completed:Wait()
-	
-	-- Phase 2: Fly to Nearest Island
+
 	local targetIsland = lastTouchedIsland or FindNearestIsland(startPos)
-	local islandPos = rootPart.Position -- fallback
-	if targetIsland then
-		islandPos = Vector3.zero
-		if targetIsland:IsA("Model") then
-			islandPos = targetIsland:GetPivot().Position + Vector3.new(0, 3, 0)
-		elseif targetIsland:IsA("BasePart") then
-			islandPos = targetIsland.Position + Vector3.new(0, 3, 0)
-		end
-		
-		-- Calculate fly time based on distance (Increasing overall speed)
-		local highPos = highCFrame.Position
-		local distance = (Vector3.new(islandPos.X, highPos.Y, islandPos.Z) - highPos).Magnitude
-		local speed = 120 -- Studs per second (Previously 50)
-		local flyTime = distance / speed
-		
-		local targetHighPos = Vector3.new(islandPos.X, highPos.Y, islandPos.Z)
-		
-		-- Match orientation to look at target
-		local lookCFrame = CFrame.lookAt(highPos, targetHighPos)
-		rootPart.CFrame = lookCFrame
-		
-		humanoid:ChangeState(Enum.HumanoidStateType.Freefall)
-		
-		local targetCFrame = CFrame.new(targetHighPos) * lookCFrame.Rotation
-		local glideInfo = TweenInfo.new(flyTime, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
-		local glideTween = tweenService:Create(rootPart, glideInfo, {CFrame = targetCFrame})
-		
+	local landCFrame = ResolveRescueLandCFrame(targetIsland, character)
+	local landPos = landCFrame.Position
+
+	-- Phase 2：水平移动到目标落点正上方（高度保持升空终点，Tween）；不做竖直下落 Tween
+	local highPos = rootPart.Position
+	local targetAbovePos = Vector3.new(landPos.X, highPos.Y, landPos.Z)
+	local horizontalDelta = targetAbovePos - highPos
+	local distance = horizontalDelta.Magnitude
+	if distance > 0.5 then
+		local speed = 120
+		local flyTime = math.max(distance / speed, 0.12)
+		local lookCFrame = CFrame.lookAt(highPos, targetAbovePos)
+		rootPart.CFrame = CFrame.new(highPos) * lookCFrame.Rotation
+		local targetCFrame = CFrame.new(targetAbovePos) * lookCFrame.Rotation
+		local glideInfo = TweenInfo.new(flyTime, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut)
+		local glideTween = tweenService:Create(rootPart, glideInfo, { CFrame = targetCFrame })
 		glideTween:Play()
 		glideTween.Completed:Wait()
-		
-		-- Align character upright before dropping
-		rootPart.CFrame = CFrame.new(targetHighPos)
+	else
+		rootPart.CFrame = CFrame.new(targetAbovePos)
 	end
-	
-	-- Phase 3: Drop down (Faster and CubicIn for more impact)
-	humanoid:ChangeState(Enum.HumanoidStateType.Freefall)
-	local dropInfo = TweenInfo.new(0.6, Enum.EasingStyle.Cubic, Enum.EasingDirection.In)
-	local dropTween = tweenService:Create(rootPart, dropInfo, {CFrame = CFrame.new(islandPos)})
-	dropTween:Play()
-	dropTween.Completed:Wait()
 
 	if wings then
 		wings:Destroy()
 	end
-	
+
+	-- 目标正上方解锚，由物理自由落体到底（无下落 Tween）
+	humanoid:ChangeState(Enum.HumanoidStateType.Freefall)
 	rootPart.Anchored = false
 	humanoid.PlatformStand = false
 end

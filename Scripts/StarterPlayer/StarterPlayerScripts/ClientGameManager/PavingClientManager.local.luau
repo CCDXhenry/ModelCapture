@@ -1133,11 +1133,24 @@ local function OnHeartbeat(dt: number)
 	if isDeadOrFalling then
 		-- 如果是落水且还没死，尝试开启救援流程
 		if isFallingIntoSea and humanoid and humanoid.Health > 0 and not isAwaitingRescue then
-			isAwaitingRescue = true
-			rootPart.Anchored = true
-			humanoid.PlatformStand = true
-			ClientMsg.FireShowRescuePopup()
-			return
+			local lastIslandId = tonumber(localPlayer:GetAttribute("LastArrivedIslandId")) or 1
+			if lastIslandId >= GameConfig.Paving.RescueFlightMinLastArrivedIslandId then
+				isAwaitingRescue = true
+				rootPart.Anchored = true
+				humanoid.PlatformStand = true
+				ClientMsg.FireShowRescuePopup()
+				return
+			else
+				-- 未达援助门槛：与拒绝救援相同，立即死亡以免长期困在水中
+				rootPart.Anchored = false
+				humanoid.PlatformStand = false
+				humanoid.Health = 0
+				if isPavingMode then
+					isPavingMode = false
+				end
+				ClearLocalBricks()
+				return
+			end
 		end
 
 		if isPavingMode then
