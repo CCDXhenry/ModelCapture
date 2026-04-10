@@ -3,7 +3,8 @@ local runService = game:GetService("RunService")
 
 local BillboardManager = {}
 type TrackedBillboardInfo = {
-	controllerFrame: Frame?,
+	-- Brainrot 等模板用 "Controller"，其它用 "ControllerFrame"（与 BrainrotClientManager 一致）
+	controllerFrame: GuiObject?,
 	uiScale: UIScale?,
 	designX: number,
 	designY: number,
@@ -28,6 +29,18 @@ local activeCursor = 0
 local UPDATE_INTERVAL = 0.017
 local SCALE_EPSILON = 0.001
 local MAX_UPDATES_PER_TICK = 160
+-- 与 BrainrotClientManager.AttachInfoUIToModel 查找顺序一致：优先 Controller
+local CONTROLLER_NAME_PRIORITY = { "Controller", "ControllerFrame" } :: { string }
+
+local function FindBillboardController(gui: BillboardGui): GuiObject?
+	for _, name in CONTROLLER_NAME_PRIORITY do
+		local inst = gui:FindFirstChild(name)
+		if inst and inst:IsA("GuiObject") then
+			return inst
+		end
+	end
+	return nil
+end
 
 local function IsGuiActive(gui: BillboardGui): boolean
 	return gui.Parent ~= nil and gui.Enabled
@@ -72,7 +85,7 @@ local function SetActiveState(gui: BillboardGui, info: TrackedBillboardInfo, act
 end
 
 local function ResolveCache(gui: BillboardGui, oldInfo: TrackedBillboardInfo?): TrackedBillboardInfo
-	local controllerFrame = gui:FindFirstChild("ControllerFrame") :: Frame?
+	local controllerFrame = FindBillboardController(gui)
 	local uiScale = controllerFrame and controllerFrame:FindFirstChild("UIScale") :: UIScale?
 
 	local designX = if controllerFrame then controllerFrame.Size.X.Offset else 0
@@ -322,5 +335,20 @@ runService.RenderStepped:Connect(function(deltaTime: number)
 	updateAccumulator = 0
 	UpdateUIScales()
 end)
+
+-- 渲染前再尝试一次，避免脚本在 RenderStepped 之后才 Track/Enable 导致当帧已画出错误比例
+local preRender = (runService :: any).PreRender :: RBXScriptSignal?
+if preRender then
+	preRender:Connect(function()
+		local n = #activeUIs
+		for i = 1, n do
+			local gui = activeUIs[i]
+			local info = trackedUIs[gui]
+			if info and IsGuiActive(gui) and not info.showScaleCommitted then
+				TryApplyBillboardScale(gui)
+			end
+		end
+	end)
+end
 
 return BillboardManager
