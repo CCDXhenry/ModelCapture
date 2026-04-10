@@ -27,12 +27,6 @@ function HomeManager.OnRequestPickupHomeModel(player: Player, pointIndex: number
 		return
 	end
 
-	-- 检查背包是否已满
-	if #playerInfo.brainrotQueue >= GameConfig.BrainrotQueue.MaxCapacity then
-		warn("[HomeManager] OnRequestPickupHomeModel: brainrotQueue full for", player.Name)
-		return
-	end
-
 	-- 检查手上是否有拿着的 Tool / Carrying
 	local function GetActiveBrainrot(plr: Player): Instance?
 		local char = plr.Character

@@ -664,11 +664,6 @@ GameConfig.Inventory = {
 	InitialBricksCapacityLevel = 1, -- 初始容量等级，而非初始砖块数
 }
 
--- Brainrot 背包队列配置
-GameConfig.BrainrotQueue = {
-	MaxCapacity = 9, -- 背包最多容纳 9 个 Brainrot
-}
-
 -- Island spawned Brainrot 的独立倒计时（秒）
 -- 倒计时结束时该 brainrot 消失并触发岛上随机补刷。
 GameConfig.BrainrotRefreshCountdownSeconds = 150

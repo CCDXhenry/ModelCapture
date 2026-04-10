@@ -11,7 +11,6 @@ local NetMsg = require(sharedScripts:FindFirstChild("NetMsg"))
 local GameTexts = require(sharedScripts:FindFirstChild("GameTexts"))
 
 local serverScripts = serverStorage:WaitForChild("Scripts")
-local MaxCapacity = GameConfig.BrainrotQueue.MaxCapacity
 local ServerGameInfo = require(serverScripts:FindFirstChild("ServerGameInfo"))
 local AnalyticsTool = require(serverScripts:FindFirstChild("AnalyticsTool"))
 
@@ -19,10 +18,6 @@ local actualModels = replicatedStorage:WaitForChild("Models"):WaitForChild("Brai
 local actualChests = replicatedStorage:WaitForChild("Models"):WaitForChild("LittleElfChests")
 local actualCoils = replicatedStorage:WaitForChild("Tools")
 local OpenChestRevealDelay = 5.7
-
--- 提示冷却逻辑
-local FullTipCooldown: number = 5
-local playerLastFullTipTime: { [Player]: number } = {}
 
 -- 生成 Tool 并放入玩家 Backpack
 local function CreateToolForItem(player: Player, item: GameConfig.BrainrotQueueItem): Tool?
@@ -220,9 +215,7 @@ local function PickWeightedRewardEntry(rewardPool: { any }, chestConfigId: numbe
 	return lastValidEntry
 end
 
--- shouldEnforceMaxCapacity:
--- - true: 超过 MaxCapacity 则拒绝入队（岛屿“拿在手上转成队列/背包tool”的流程）
--- - false: 允许队列突破上限（例如商店发放），UI 仍只显示前 9 个。
+-- _shouldEnforceMaxCapacity: 保留形参以兼容旧调用，已不再做容量限制。
 -- grantTipKey/grantExpectedCount/grantShopBundleId:
 -- - 用于客户端“获得奖励提示”的播放分组判定（不做服务端去重）
 function BrainrotQueueManager.AddItem(
@@ -232,7 +225,7 @@ function BrainrotQueueManager.AddItem(
 	level: number,
 	equipImmediately: boolean?,
 	itemType: number?,
-	shouldEnforceMaxCapacity: boolean?,
+	_shouldEnforceMaxCapacity: boolean?,
 	grantTipKey: string?,
 	grantExpectedCount: number?,
 	grantShopBundleId: number?,
@@ -242,18 +235,6 @@ function BrainrotQueueManager.AddItem(
 	local playerInfo = ServerGameInfo.GetPlayerInfo(player)
 	if not playerInfo then
 		warn("[BrainrotQueueManager] AddItem failed: playerInfo not found for", player.Name)
-		return false
-	end
-
-	local enforceCapacity = if shouldEnforceMaxCapacity == nil then true else shouldEnforceMaxCapacity
-	if enforceCapacity and #playerInfo.brainrotQueue >= MaxCapacity then
-		-- 提示玩家背包已满 (增加 5 秒间隔限制)
-		local now = os.clock()
-		local lastTip = playerLastFullTipTime[player] or 0
-		if now - lastTip >= FullTipCooldown then
-			playerLastFullTipTime[player] = now
-			NetMsg.FireNotifyShowGameTip(player, GameTexts.BackpackFull.source, GameConfig.GameTipTweenType.FlyUp, GameTexts.BackpackFull.key)
-		end
 		return false
 	end
 
