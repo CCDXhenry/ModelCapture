@@ -145,6 +145,9 @@ GameConfig.ModelGetSource = {
 -- 玩家间赠送（ProximityPrompt + Remote）；关闭时不显示提示且服务端拒绝流程
 GameConfig.EnablePlayerGift = false
 
+-- Players.RespawnTime（秒）：Health=0 后至自动 LoadCharacter 的等待；引擎默认约 5，此处缩短重生节奏
+GameConfig.PlayerRespawnTime = 1
+
 -- 线圈类型
 GameConfig.CoilType = {
 	Speed = 1, --速度

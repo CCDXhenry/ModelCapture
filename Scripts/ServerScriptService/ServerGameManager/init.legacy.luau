@@ -31,6 +31,7 @@ local GameConfig = require(sharedScripts:FindFirstChild("GameConfig"))
 local dataStoreService: DataStoreService = game:GetService("DataStoreService")
 local playerInfoDataStore: DataStore = dataStoreService:GetDataStore("PlayerInfo")
 local players: Players = game:GetService("Players")
+players.RespawnTime = GameConfig.PlayerRespawnTime
 local localizationService: LocalizationService = game:GetService("LocalizationService")
 local runService: RunService = game:GetService("RunService")
 local configService: ConfigService = game:GetService("ConfigService")
