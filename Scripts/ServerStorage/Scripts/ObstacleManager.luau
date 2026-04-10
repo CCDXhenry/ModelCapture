@@ -11,14 +11,18 @@ local OBSTACLE_FOLDER_WAIT_SECONDS = 5
 local ISLAND_NAME_PATTERN = "^Island%d+$"
 local FULL_CYCLE_DURATION_SECONDS = 4
 local TOUCH_KILL_DEBOUNCE_SECONDS = 0.35
-local EASING_STYLE = Enum.EasingStyle.Quad
-local EASING_DIRECTION = Enum.EasingDirection.InOut
+local MOVE_TWEEN_EASING_STYLE = Enum.EasingStyle.Linear
+local MOVE_TWEEN_EASING_DIRECTION = Enum.EasingDirection.In
 
 local ATTR_DURATION = "Duration"
 local ATTR_DWELL_TIME = "DwellTime"
+local ATTR_MOVE_MODEL = "MoveModel"
 local ATTR_MIN_SCALE = "MinScale"
 local ATTR_MAX_SCALE = "MaxScale"
 local ATTR_SCALE_TIME = "ScaleTime"
+
+local MOVE_MODEL_PING_PONG = 1
+local MOVE_MODEL_LOOP = 2
 
 local DEFAULT_DWELL_TIME_SECONDS = 0
 local DEFAULT_MIN_SCALE = 1
@@ -30,12 +34,16 @@ local lastKillClockByUserId: { [number]: number } = {}
 local isInitialized = false
 
 type ObstacleMotionConfig = {
-	durationSeconds: number,
-	dwellTimeSeconds: number,
 	minScale: Vector3,
 	maxScale: Vector3,
 	scaleTime: Vector3,
 	needsScaleAnimation: boolean,
+}
+
+type WaypointConfig = {
+	worldPosition: Vector3,
+	durationToNext: number,
+	dwellSeconds: number,
 }
 
 type ScaleAnimationEntry = {
@@ -108,8 +116,20 @@ local function sizesRoughlyEqual(a: Vector3, b: Vector3): boolean
 	return (a - b).Magnitude < SCALE_EQUALITY_EPSILON
 end
 
-local function ReadDurationSeconds(part: Instance): number
-	local raw = part:GetAttribute(ATTR_DURATION)
+local function ReadNonNegativeNumberAttribute(part: Instance, attrName: string, defaultValue: number): number
+	local raw = part:GetAttribute(attrName)
+	if type(raw) ~= "number" then
+		return defaultValue
+	end
+	if raw ~= raw or raw < 0 then
+		return defaultValue
+	end
+	return raw
+end
+
+-- Per-waypoint Duration: missing/invalid/negative → default; explicit 0 = instant leg (allowed).
+local function ReadWaypointDurationSeconds(att: Attachment): number
+	local raw = att:GetAttribute(ATTR_DURATION)
 	if raw == nil then
 		return FULL_CYCLE_DURATION_SECONDS
 	end
@@ -122,15 +142,56 @@ local function ReadDurationSeconds(part: Instance): number
 	return raw
 end
 
-local function ReadNonNegativeNumberAttribute(part: Instance, attrName: string, defaultValue: number): number
-	local raw = part:GetAttribute(attrName)
-	if type(raw) ~= "number" then
-		return defaultValue
+local function ReadMoveModel(part: BasePart): number
+	local raw = part:GetAttribute(ATTR_MOVE_MODEL)
+	if raw == nil then
+		return MOVE_MODEL_LOOP
 	end
-	if raw ~= raw or raw < 0 then
-		return defaultValue
+	if type(raw) ~= "number" or raw ~= raw then
+		warn("[ObstacleManager] MoveModel invalid on", part:GetFullName(), "— using loop (2).")
+		return MOVE_MODEL_LOOP
 	end
-	return raw
+	local r = math.floor(raw + 0)
+	if r == MOVE_MODEL_PING_PONG or r == MOVE_MODEL_LOOP then
+		return r
+	end
+	warn("[ObstacleManager] MoveModel must be 1 or 2 on", part:GetFullName(), "— using loop (2).")
+	return MOVE_MODEL_LOOP
+end
+
+local function CollectOrderedWaypoints(part: BasePart): { WaypointConfig }?
+	type IndexedAtt = { index: number, att: Attachment }
+	local indexed: { IndexedAtt } = {}
+
+	for _, child in part:GetChildren() do
+		if child:IsA("Attachment") then
+			local nStr = string.match(child.Name, "^Attachment(%d+)$")
+			if nStr ~= nil then
+				local idx = tonumber(nStr)
+				if idx ~= nil and idx == idx and idx > 0 then
+					table.insert(indexed, { index = idx, att = child })
+				end
+			end
+		end
+	end
+
+	if #indexed < 2 then
+		return nil
+	end
+
+	table.sort(indexed, function(a: IndexedAtt, b: IndexedAtt): boolean
+		return a.index < b.index
+	end)
+
+	local waypoints: { WaypointConfig } = {}
+	for _, entry in indexed do
+		table.insert(waypoints, {
+			worldPosition = entry.att.WorldPosition,
+			durationToNext = ReadWaypointDurationSeconds(entry.att),
+			dwellSeconds = ReadNonNegativeNumberAttribute(entry.att, ATTR_DWELL_TIME, DEFAULT_DWELL_TIME_SECONDS),
+		})
+	end
+	return waypoints
 end
 
 local function ReadVector3Attribute(part: Instance, attrName: string, defaultVec: Vector3): Vector3
@@ -239,9 +300,6 @@ local function ParseScaleTimeVector(part: BasePart, anyAxisRange: boolean): Vect
 end
 
 local function BuildObstacleMotionConfig(part: BasePart): ObstacleMotionConfig
-	local durationSeconds = ReadDurationSeconds(part)
-	local dwellTimeSeconds = ReadNonNegativeNumberAttribute(part, ATTR_DWELL_TIME, DEFAULT_DWELL_TIME_SECONDS)
-
 	local minRaw = ReadVector3Attribute(part, ATTR_MIN_SCALE, Vector3.one)
 	local maxRaw = ReadVector3Attribute(part, ATTR_MAX_SCALE, Vector3.one)
 	local partFullName = part:GetFullName()
@@ -254,8 +312,6 @@ local function BuildObstacleMotionConfig(part: BasePart): ObstacleMotionConfig
 	local needsScaleAnimation = ComputeNeedsScaleAnimation(minScale, maxScale, scaleTime)
 
 	return {
-		durationSeconds = durationSeconds,
-		dwellTimeSeconds = dwellTimeSeconds,
 		minScale = minScale,
 		maxScale = maxScale,
 		scaleTime = scaleTime,
@@ -311,51 +367,85 @@ local function applyOneTimeScaleWhenNoHeartbeat(part: BasePart, baseSize: Vector
 	end
 end
 
-local function RunMoveAndDwellLoop(part: BasePart, startCFrame: CFrame, endCFrame: CFrame, config: ObstacleMotionConfig)
-	local halfCycle = config.durationSeconds / 2
-	if halfCycle <= 0 then
+local function computeNextIndexPingPong(i: number, n: number, step: number): (number, number)
+	local nextIndex = i + step
+	if nextIndex > n then
+		return n - 1, -1
+	end
+	if nextIndex < 1 then
+		return 2, 1
+	end
+	return nextIndex, step
+end
+
+local function RunMultiWaypointLoop(part: BasePart, waypoints: { WaypointConfig }, rotation: CFrame, moveModel: number)
+	local n = #waypoints
+	if n < 2 then
 		return
 	end
 
+	local i = 1
+	local step = 1
+
 	while part.Parent do
-		part.CFrame = startCFrame
-		local moveTween = tweenService:Create(
-			part,
-			TweenInfo.new(halfCycle, EASING_STYLE, EASING_DIRECTION, 0, true, 0),
-			{ CFrame = endCFrame }
-		)
+		part.CFrame = CFrame.new(waypoints[i].worldPosition) * rotation
 
-		local finished = false
-		local conn = moveTween.Completed:Connect(function()
-			finished = true
-		end)
-		moveTween:Play()
-
-		while not finished and part.Parent do
-			task.wait()
+		local dwell = waypoints[i].dwellSeconds
+		if dwell > 0 then
+			local t0 = os.clock()
+			while part.Parent and os.clock() - t0 < dwell do
+				task.wait()
+			end
 		end
-		conn:Disconnect()
-		moveTween:Cancel()
 
 		if not part.Parent then
 			break
 		end
 
-		if config.dwellTimeSeconds > 0 then
-			local t0 = os.clock()
-			while part.Parent and os.clock() - t0 < config.dwellTimeSeconds do
+		local nextIndex: number
+		if moveModel == MOVE_MODEL_LOOP then
+			nextIndex = (i % n) + 1
+		else
+			local newStep: number
+			nextIndex, newStep = computeNextIndexPingPong(i, n, step)
+			step = newStep
+		end
+
+		local legDuration = waypoints[i].durationToNext
+		local nextCFrame = CFrame.new(waypoints[nextIndex].worldPosition) * rotation
+
+		if legDuration > 0 then
+			local moveTween = tweenService:Create(
+				part,
+				TweenInfo.new(legDuration, MOVE_TWEEN_EASING_STYLE, MOVE_TWEEN_EASING_DIRECTION, 0, false, 0),
+				{ CFrame = nextCFrame }
+			)
+			local finished = false
+			local conn = moveTween.Completed:Connect(function()
+				finished = true
+			end)
+			moveTween:Play()
+			while not finished and part.Parent do
 				task.wait()
 			end
+			conn:Disconnect()
+			moveTween:Cancel()
+		else
+			part.CFrame = nextCFrame
 		end
+
+		if not part.Parent then
+			break
+		end
+
+		i = nextIndex
 	end
 end
 
-local function StartObstacleMotionAndScale(part: BasePart, startWorldPos: Vector3, endWorldPos: Vector3)
+local function StartObstacleMotionAndScale(part: BasePart, waypoints: { WaypointConfig }?, moveModel: number?)
 	local config = BuildObstacleMotionConfig(part)
 	local baseSize = part.Size
 	local rotation = part.CFrame.Rotation
-	local startCFrame = CFrame.new(startWorldPos) * rotation
-	local endCFrame = CFrame.new(endWorldPos) * rotation
 
 	if config.needsScaleAnimation then
 		registerScaleAnimationEntry(part, baseSize, config)
@@ -364,10 +454,11 @@ local function StartObstacleMotionAndScale(part: BasePart, startWorldPos: Vector
 		applyOneTimeScaleWhenNoHeartbeat(part, baseSize, config)
 	end
 
-	if config.durationSeconds > 0 then
-		part.CFrame = startCFrame
+	if waypoints ~= nil and #waypoints >= 2 then
+		part.CFrame = CFrame.new(waypoints[1].worldPosition) * rotation
+		local model = if moveModel ~= nil then moveModel else MOVE_MODEL_LOOP
 		task.spawn(function()
-			RunMoveAndDwellLoop(part, startCFrame, endCFrame, config)
+			RunMultiWaypointLoop(part, waypoints, rotation, model)
 		end)
 	end
 end
@@ -418,26 +509,23 @@ local function ScanObstacleFolder(obstacleFolder: Instance)
 				continue
 			end
 
-			local startAtt = obstaclePart:FindFirstChild("StartAttachment")
-			local endAtt = obstaclePart:FindFirstChild("EndAttachment")
-			if startAtt == nil or not startAtt:IsA("Attachment") then
-				warn("[ObstacleManager] Missing StartAttachment (Attachment) under", obstaclePart:GetFullName())
-				continue
-			end
-			if endAtt == nil or not endAtt:IsA("Attachment") then
-				warn("[ObstacleManager] Missing EndAttachment (Attachment) under", obstaclePart:GetFullName())
-				continue
+			local waypoints = CollectOrderedWaypoints(obstaclePart)
+			if waypoints == nil then
+				warn(
+					"[ObstacleManager] Need at least two Attachment1, Attachment2, … under",
+					obstaclePart:GetFullName(),
+					"— motion disabled; scale/touch only."
+				)
 			end
 
 			validObstacleCount += 1
-			local startWorldPos = startAtt.WorldPosition
-			local endWorldPos = endAtt.WorldPosition
 
 			obstaclePart.Touched:Connect(function(hit: BasePart)
 				OnObstacleTouched(obstaclePart, hit)
 			end)
 
-			StartObstacleMotionAndScale(obstaclePart, startWorldPos, endWorldPos)
+			local moveModel = if waypoints ~= nil then ReadMoveModel(obstaclePart) else nil
+			StartObstacleMotionAndScale(obstaclePart, waypoints, moveModel)
 		end
 	end
 
