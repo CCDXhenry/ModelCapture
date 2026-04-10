@@ -33,12 +33,16 @@ guideTextScript.Parent = guideText
 
 local maxBricksFrame: Frame = lobbyFrame:FindFirstChild("MaxBricksFrame") :: Frame
 local maxBricksText: TextLabel = maxBricksFrame:FindFirstChild("NumberText") :: TextLabel
+--[[ LvText hidden in UI
 local maxBricksLvText: TextLabel = maxBricksFrame:FindFirstChild("LvText") :: TextLabel
+]]
 local maxBricksFrame2: Frame? = lobbyFrame:FindFirstChild("MaxBricksFrame2") :: Frame?
 local maxBricksText2: TextLabel? = if maxBricksFrame2 then (maxBricksFrame2:FindFirstChild("NumberText") :: TextLabel?) else nil
 local walkSpeedFrame: Frame = lobbyFrame:FindFirstChild("WalkSpeedFrame") :: Frame
 local walkSpeedText: TextLabel = walkSpeedFrame:FindFirstChild("NumberText") :: TextLabel
+--[[ LvText hidden in UI
 local walkSpeedLvText: TextLabel = walkSpeedFrame:FindFirstChild("LvText") :: TextLabel
+]]
 local decelerationButton: ImageButton? = lobbyFrame:FindFirstChild("DecelerationButton") :: ImageButton?
 local decelerationButtonTextLabel: TextLabel? = if decelerationButton then (decelerationButton:FindFirstChild("TextLabel") :: TextLabel?) else nil
 local bottomButtonsFrame = lobbyFrame:FindFirstChild("BottomButtonsFrame")
@@ -334,6 +338,7 @@ local function RefreshUpgradeValues()
 	-- MaxBricks done in RefreshBricksDisplay
 	RefreshBricksDisplay()
 
+	--[[ LvText hidden in UI
 	-- Level text (用于显示“（Lv.10）”)
 	local maxBricksLevel = localPlayerInfo.shopInfo.maxBricksLevel or 1
 	TranslationTool.CustomAutoLocalizeTextLabel(
@@ -342,15 +347,18 @@ local function RefreshUpgradeValues()
 		GameTexts.LevelWithFullWidthParentheses.key,
 		{ tostring(maxBricksLevel) }
 	)
+	]]
 
 	-- WalkSpeed
 	local walkSpeedLevel = localPlayerInfo.shopInfo.walkSpeedLevel or 1
+	--[[ LvText hidden in UI
 	TranslationTool.CustomAutoLocalizeTextLabel(
 		walkSpeedLvText,
 		GameTexts.LevelWithFullWidthParentheses.source,
 		GameTexts.LevelWithFullWidthParentheses.key,
 		{ tostring(walkSpeedLevel) }
 	)
+	]]
 
 	local isDecelerationOn = localPlayerInfo.settingInfo.decelerationOn == true
 	local targetWalkSpeedLevel = if isDecelerationOn then 1 else walkSpeedLevel
