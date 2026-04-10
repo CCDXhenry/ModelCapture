@@ -13,7 +13,7 @@ return {
 	},
 	[2] = {
 		["coilType"] = 1,
-		["description_t"] = "increases speed by 15.",
+		["description_t"] = "increases speed by 20.",
 		["id"] = 2,
 		["iconImageId"] = "rbxassetid://97835723925030",
 		["name_t"] = "Fire Coil",
