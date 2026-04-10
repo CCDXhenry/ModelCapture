@@ -21,8 +21,8 @@ local ATTR_MIN_SCALE = "MinScale"
 local ATTR_MAX_SCALE = "MaxScale"
 local ATTR_SCALE_TIME = "ScaleTime"
 
-local MOVE_MODEL_PING_PONG = 1
-local MOVE_MODEL_LOOP = 2
+local MOVE_MODEL_PING_PONG = 1 --来回移动
+local MOVE_MODEL_LOOP = 2 --循环移动
 
 local DEFAULT_DWELL_TIME_SECONDS = 0
 local DEFAULT_MIN_SCALE = 1
