@@ -739,27 +739,28 @@ function ServerGameInfo.TryConsumeBrainrotPaidUpgrade(player: Player): boolean
 	return true
 end
 
---应用行走速度比例到角色
-function ServerGameInfo.ApplyWalkSpeed(player: Player)
+-- 商店与减速设置下的基准行走速度（不含线圈加成）
+function ServerGameInfo.GetResolvedShopWalkSpeed(player: Player): number?
 	local playerInfo: GameConfig.PlayerInfo? = ServerGameInfo.GetPlayerInfo(player)
 	if playerInfo == nil then
-		return
+		return nil
 	end
-
 	local walkSpeedLevel = playerInfo.shopInfo.walkSpeedLevel
 	local isDecelerationOn = playerInfo.settingInfo.decelerationOn == true
 	local config = GameConfig.Shop.WalkSpeed
 	local targetLevel = if isDecelerationOn then 1 else walkSpeedLevel
-	local targetSpeed = config.abilityList[targetLevel] or config.abilityList[config.maxLevel] or config.abilityList[1]
+	return config.abilityList[targetLevel] or config.abilityList[config.maxLevel] or config.abilityList[1]
+end
 
+--应用行走速度比例到角色
+function ServerGameInfo.ApplyWalkSpeed(player: Player)
+	if ServerGameInfo.GetPlayerInfo(player) == nil then
+		return
+	end
 	local character = player.Character
 	if character then
-		local humanoid = character:FindFirstChildOfClass("Humanoid")
-		if humanoid then
-			humanoid.WalkSpeed = targetSpeed
-		end
 		local CoilManager = require(serverScripts:FindFirstChild("CoilManager") :: ModuleScript)
-		CoilManager.ReapplyEquippedSpeedCoilBuff(player)
+		CoilManager.SyncHumanoidCoilLocomotion(player)
 	end
 end
 

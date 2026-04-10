@@ -421,16 +421,6 @@ local function GetPosKey(pos: Vector3)
 	return string.format("%.1f,%.1f,%.1f", pos.X, pos.Y, pos.Z)
 end
 
-local function GetCurrentWalkSpeed(): number
-	local playerInfo = ClientGameInfo.GetLocalPlayerInfo()
-	if playerInfo and playerInfo.shopInfo then
-		local level = playerInfo.shopInfo.walkSpeedLevel or 1
-		local speedList = GameConfig.Shop.WalkSpeed.abilityList
-		return speedList[level] or 16
-	end
-	return 16
-end
-
 local function GetEquippedToolName(character: Model?): string?
 	if not character then
 		return nil
@@ -1322,8 +1312,8 @@ local function OnHeartbeat(dt: number)
 			if otherPlayerPavedBrickUnderFeet and (lastPavePosition == nil or not wasOnOtherPlayerPavedBrick) then
 				lastPavePosition = GetSnappedPosition(otherPlayerPavedBrickUnderFeet.Position)
 			end
-			local playerWalkSpeed = GetCurrentWalkSpeed()
-			local lookaheadFactor = math.clamp(speed / math.max(1, playerWalkSpeed), 1.0, GameConfig.Paving.HighSpeedLookaheadMaxFactor or 2.2)
+			local playerWalkSpeed = math.max(1, humanoid.WalkSpeed)
+			local lookaheadFactor = math.clamp(speed / playerWalkSpeed, 1.0, GameConfig.Paving.HighSpeedLookaheadMaxFactor or 2.2)
 			local targetPos = if isStationary then GetSnappedPosition(pos) else GetSnappedPosition(pos + moveDir * (GRID_SIZE * lookaheadFactor))
 			-- 出站首帧：用沿前进方向第一块可铺格覆盖远 lookahead，避免与安全区边缘留缝。
 			if not isStationary and previousFrameInSafeZone and not currentFrameInSafeZone then
