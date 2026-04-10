@@ -12,6 +12,7 @@ type TrackedBillboardInfo = {
 	lastScale: number,
 	active: boolean,
 	dirty: boolean,
+	showScaleCommitted: boolean,
 	enabledConn: RBXScriptConnection?,
 	ancestryConn: RBXScriptConnection?,
 	absSizeConn: RBXScriptConnection?,
@@ -88,11 +89,108 @@ local function ResolveCache(gui: BillboardGui, oldInfo: TrackedBillboardInfo?): 
 		lastScale = lastScale,
 		active = if oldInfo then oldInfo.active else false,
 		dirty = if oldInfo then oldInfo.dirty else true,
+		showScaleCommitted = if oldInfo then oldInfo.showScaleCommitted else false,
 		enabledConn = if oldInfo then oldInfo.enabledConn else nil,
 		ancestryConn = if oldInfo then oldInfo.ancestryConn else nil,
 		absSizeConn = if oldInfo then oldInfo.absSizeConn else nil,
 		destroyConn = if oldInfo then oldInfo.destroyConn else nil,
 	}
+end
+
+local function BeginBillboardShow(gui: BillboardGui)
+	local info = trackedUIs[gui]
+	if info == nil or not IsGuiActive(gui) then
+		return
+	end
+	if info.controllerFrame == nil or info.controllerFrame.Parent == nil then
+		local refreshed = ResolveCache(gui, info)
+		trackedUIs[gui] = refreshed
+		info = refreshed
+	end
+	info.showScaleCommitted = false
+	local controllerFrame = info.controllerFrame
+	if controllerFrame ~= nil then
+		controllerFrame.Visible = false
+	end
+end
+
+local function TryApplyBillboardScale(gui: BillboardGui): boolean
+	local info = trackedUIs[gui]
+	if info == nil or not IsGuiActive(gui) then
+		return false
+	end
+
+	local controllerFrame = info.controllerFrame
+	local uiScale = info.uiScale
+	if controllerFrame == nil or uiScale == nil or controllerFrame.Parent == nil or uiScale.Parent == nil then
+		local refreshed = ResolveCache(gui, info)
+		trackedUIs[gui] = refreshed
+		info = refreshed
+		controllerFrame = info.controllerFrame
+		uiScale = info.uiScale
+	end
+
+	if controllerFrame == nil or uiScale == nil then
+		return false
+	end
+
+	if info.designX <= 0 or info.designY <= 0 then
+		return false
+	end
+
+	local absX = gui.AbsoluteSize.X
+	local absY = gui.AbsoluteSize.Y
+	if absX <= 0 or absY <= 0 then
+		return false
+	end
+
+	local absChanged = absX ~= info.lastAbsX or absY ~= info.lastAbsY
+	if info.showScaleCommitted and not info.dirty and not absChanged then
+		return true
+	end
+
+	info.lastAbsX = absX
+	info.lastAbsY = absY
+	local targetScale = math.min(absX / info.designX, absY / info.designY)
+	if math.abs(targetScale - info.lastScale) > SCALE_EPSILON then
+		uiScale.Scale = targetScale
+		info.lastScale = targetScale
+	end
+	info.dirty = false
+	info.showScaleCommitted = true
+	controllerFrame.Visible = true
+	return true
+end
+
+local function TryApplyBillboardScaleWithRetry(gui: BillboardGui)
+	if TryApplyBillboardScale(gui) then
+		return
+	end
+	if not IsGuiActive(gui) then
+		return
+	end
+	task.defer(function()
+		if not IsGuiActive(gui) then
+			return
+		end
+		if TryApplyBillboardScale(gui) then
+			return
+		end
+		if trackedUIs[gui] == nil or not IsGuiActive(gui) then
+			return
+		end
+		local absConn: RBXScriptConnection? = nil
+		absConn = gui:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
+			if absConn then
+				absConn:Disconnect()
+				absConn = nil
+			end
+			if trackedUIs[gui] == nil or not IsGuiActive(gui) then
+				return
+			end
+			TryApplyBillboardScale(gui)
+		end)
+	end)
 end
 
 function BillboardManager.Track(gui: BillboardGui)
@@ -101,8 +199,13 @@ function BillboardManager.Track(gui: BillboardGui)
 		if oldInfo.controllerFrame == nil or oldInfo.uiScale == nil then
 			trackedUIs[gui] = ResolveCache(gui, oldInfo)
 		end
-		oldInfo.dirty = true
-		SetActiveState(gui, oldInfo, IsGuiActive(gui))
+		local tracked = trackedUIs[gui] :: TrackedBillboardInfo
+		tracked.dirty = true
+		SetActiveState(gui, tracked, IsGuiActive(gui))
+		if IsGuiActive(gui) then
+			BeginBillboardShow(gui)
+			TryApplyBillboardScaleWithRetry(gui)
+		end
 		return
 	end
 
@@ -115,7 +218,15 @@ function BillboardManager.Track(gui: BillboardGui)
 			return
 		end
 		tracked.dirty = true
+		if not gui.Enabled then
+			tracked.showScaleCommitted = false
+		else
+			BeginBillboardShow(gui)
+		end
 		SetActiveState(gui, tracked, IsGuiActive(gui))
+		if gui.Enabled and IsGuiActive(gui) then
+			TryApplyBillboardScaleWithRetry(gui)
+		end
 	end)
 	info.ancestryConn = gui.AncestryChanged:Connect(function()
 		local tracked = trackedUIs[gui]
@@ -123,7 +234,15 @@ function BillboardManager.Track(gui: BillboardGui)
 			return
 		end
 		tracked.dirty = true
-		SetActiveState(gui, tracked, IsGuiActive(gui))
+		local wasActive = tracked.active
+		local nowActive = IsGuiActive(gui)
+		if not nowActive then
+			tracked.showScaleCommitted = false
+		elseif not wasActive and nowActive then
+			BeginBillboardShow(gui)
+			TryApplyBillboardScaleWithRetry(gui)
+		end
+		SetActiveState(gui, tracked, nowActive)
 	end)
 	info.absSizeConn = gui:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
 		local tracked = trackedUIs[gui]
@@ -136,6 +255,10 @@ function BillboardManager.Track(gui: BillboardGui)
 		BillboardManager.Untrack(gui)
 	end)
 	SetActiveState(gui, info, IsGuiActive(gui))
+	if IsGuiActive(gui) then
+		BeginBillboardShow(gui)
+		TryApplyBillboardScaleWithRetry(gui)
+	end
 end
 
 function BillboardManager.Untrack(gui: BillboardGui)
@@ -187,40 +310,7 @@ local function UpdateUIScales()
 		if not shouldActive then
 			continue
 		end
-
-		local controllerFrame = info.controllerFrame
-		local uiScale = info.uiScale
-		if controllerFrame == nil or uiScale == nil or controllerFrame.Parent == nil or uiScale.Parent == nil then
-			local refreshed = ResolveCache(gui, info)
-			trackedUIs[gui] = refreshed
-			info = refreshed
-			controllerFrame = info.controllerFrame
-			uiScale = info.uiScale
-		end
-
-		if controllerFrame == nil or uiScale == nil then
-			continue
-		end
-
-		if info.designX <= 0 or info.designY <= 0 then
-			continue
-		end
-
-		local absX = gui.AbsoluteSize.X
-		local absY = gui.AbsoluteSize.Y
-		local absChanged = absX ~= info.lastAbsX or absY ~= info.lastAbsY
-		if not info.dirty and not absChanged then
-			continue
-		end
-
-		info.lastAbsX = absX
-		info.lastAbsY = absY
-		local targetScale = math.min(absX / info.designX, absY / info.designY)
-		if math.abs(targetScale - info.lastScale) > SCALE_EPSILON then
-			uiScale.Scale = targetScale
-			info.lastScale = targetScale
-		end
-		info.dirty = false
+		TryApplyBillboardScale(gui)
 	end
 end
 
