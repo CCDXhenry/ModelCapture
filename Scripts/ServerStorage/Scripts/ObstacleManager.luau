@@ -350,13 +350,12 @@ local function RunMoveAndDwellLoop(part: BasePart, startCFrame: CFrame, endCFram
 	end
 end
 
-local function StartObstacleMotionAndScale(part: BasePart, startZ: number, endZ: number)
+local function StartObstacleMotionAndScale(part: BasePart, startWorldPos: Vector3, endWorldPos: Vector3)
 	local config = BuildObstacleMotionConfig(part)
 	local baseSize = part.Size
-	local p = part.Position
 	local rotation = part.CFrame.Rotation
-	local startCFrame = CFrame.new(p.X, p.Y, startZ) * rotation
-	local endCFrame = CFrame.new(p.X, p.Y, endZ) * rotation
+	local startCFrame = CFrame.new(startWorldPos) * rotation
+	local endCFrame = CFrame.new(endWorldPos) * rotation
 
 	if config.needsScaleAnimation then
 		registerScaleAnimationEntry(part, baseSize, config)
@@ -404,45 +403,46 @@ end
 
 local function ScanObstacleFolder(obstacleFolder: Instance)
 	table.clear(scaleAnimationEntries)
-	local validIslandCount = 0
+	local validObstacleCount = 0
 
-	for _, child in obstacleFolder:GetChildren() do
-		if not (child:IsA("Folder") or child:IsA("Model")) then
+	for _, island in obstacleFolder:GetChildren() do
+		if not (island:IsA("Folder") or island:IsA("Model")) then
 			continue
 		end
-		if string.match(child.Name, ISLAND_NAME_PATTERN) == nil then
-			continue
-		end
-
-		local startAtt = child:FindFirstChild("StartAttachment")
-		local endAtt = child:FindFirstChild("EndAttachment")
-		local part = child:FindFirstChild("Part")
-		if startAtt == nil or not startAtt:IsA("Attachment") then
-			warn("[ObstacleManager] Missing StartAttachment (Attachment) under", child:GetFullName())
-			continue
-		end
-		if endAtt == nil or not endAtt:IsA("Attachment") then
-			warn("[ObstacleManager] Missing EndAttachment (Attachment) under", child:GetFullName())
-			continue
-		end
-		if part == nil or not part:IsA("BasePart") then
-			warn("[ObstacleManager] Missing Part (BasePart) under", child:GetFullName())
+		if string.match(island.Name, ISLAND_NAME_PATTERN) == nil then
 			continue
 		end
 
-		validIslandCount += 1
-		local startZ = startAtt.WorldPosition.Z
-		local endZ = endAtt.WorldPosition.Z
+		for _, obstaclePart in island:GetChildren() do
+			if not obstaclePart:IsA("BasePart") then
+				continue
+			end
 
-		part.Touched:Connect(function(hit: BasePart)
-			OnObstacleTouched(part, hit)
-		end)
+			local startAtt = obstaclePart:FindFirstChild("StartAttachment")
+			local endAtt = obstaclePart:FindFirstChild("EndAttachment")
+			if startAtt == nil or not startAtt:IsA("Attachment") then
+				warn("[ObstacleManager] Missing StartAttachment (Attachment) under", obstaclePart:GetFullName())
+				continue
+			end
+			if endAtt == nil or not endAtt:IsA("Attachment") then
+				warn("[ObstacleManager] Missing EndAttachment (Attachment) under", obstaclePart:GetFullName())
+				continue
+			end
 
-		StartObstacleMotionAndScale(part, startZ, endZ)
+			validObstacleCount += 1
+			local startWorldPos = startAtt.WorldPosition
+			local endWorldPos = endAtt.WorldPosition
+
+			obstaclePart.Touched:Connect(function(hit: BasePart)
+				OnObstacleTouched(obstaclePart, hit)
+			end)
+
+			StartObstacleMotionAndScale(obstaclePart, startWorldPos, endWorldPos)
+		end
 	end
 
-	if validIslandCount == 0 then
-		warn("[ObstacleManager] No valid island obstacles under", obstacleFolder:GetFullName())
+	if validObstacleCount == 0 then
+		warn("[ObstacleManager] No valid obstacles under", obstacleFolder:GetFullName())
 	end
 end
 
