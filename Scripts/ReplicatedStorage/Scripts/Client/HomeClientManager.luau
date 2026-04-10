@@ -27,7 +27,9 @@ local actualModels = replicatedStorage:WaitForChild("Models"):FindFirstChild("Br
 local HomeClientManager = {}
 local homesFolder = workspace:WaitForChild("PlayersHome")
 
-local slotStateCache: { [string]: { active: boolean, homeInfo: any?, isLocalPlayer: boolean?, rebirthLevel: number? } } = {}
+local slotStateCache: { [string]: { active: boolean, homeInfo: any?, isLocalPlayer: boolean?, rebirthLevel: number?, ownerUserId: number? } } = {}
+-- 服务端同步时的权威 unclaimedYield；展示数字 = 该值 + 每秒增量 * floor(服务器时间 - anchorTime)
+local yieldAnchorServerTime: { [number]: { [string]: number } } = {}
 local floorModelsCache: { [string]: { [number]: Model } } = {}
 local upgradeUITemplateBackup: SurfaceGui? = nil
 local FLOOR_HEIGHT = 32.6
@@ -59,10 +61,143 @@ local lastBrainrotPaidPromptAt = 0
 local BRAINROT_PAID_PROMPT_COOLDOWN = 2
 
 local INTERACTION_FOCUS_REFRESH_INTERVAL = 0.1
+local COLLECT_YIELD_TEXT_REFRESH_INTERVAL = 0.12
+local lastCollectYieldTextRefreshAt = 0.0
 local BILLBOARD_TRACKED_ATTR = "BillboardTracked"
 local PLACE_MODEL_INFO_UI_BASE_STUDS_OFFSET_Y_ATTR = "BaseStudsOffsetY"
 local LOCAL_SLOT_RECOVERY_DELAY = 0.25
 local LOCAL_SLOT_RECOVERY_MAX_ATTEMPTS = 24
+
+local function getCollectMultipleForRebirth(rebirthLevel: number): number
+	if rebirthLevel <= 0 then
+		return 1
+	end
+	local rbConfig = GameConfig.RebirthMap[rebirthLevel]
+	return if rbConfig then rbConfig.collectMultiple else 1
+end
+
+local function getPerSecondUnclaimedIncrement(placedData: any, rebirthLevel: number): number
+	local brainrotData = GameConfig.BrainrotIdMap[placedData.configId]
+	if not brainrotData then
+		return 0
+	end
+	local baseYield = GameConfig.GetBrainrotAbility(brainrotData.baseAbility, placedData.level or 1)
+	return math.ceil(baseYield * getCollectMultipleForRebirth(rebirthLevel))
+end
+
+local function getYieldAnchorTime(ownerUserId: number, pointIndexStr: string): number
+	local byPoint = yieldAnchorServerTime[ownerUserId]
+	if not byPoint then
+		byPoint = {}
+		yieldAnchorServerTime[ownerUserId] = byPoint
+	end
+	if byPoint[pointIndexStr] == nil then
+		byPoint[pointIndexStr] = workspace:GetServerTimeNow()
+	end
+	return byPoint[pointIndexStr]
+end
+
+local function resetYieldAnchor(ownerUserId: number, pointIndexStr: string)
+	local byPoint = yieldAnchorServerTime[ownerUserId]
+	if not byPoint then
+		byPoint = {}
+		yieldAnchorServerTime[ownerUserId] = byPoint
+	end
+	byPoint[pointIndexStr] = workspace:GetServerTimeNow()
+end
+
+local function clearYieldAnchorsForOwner(ownerUserId: number)
+	yieldAnchorServerTime[ownerUserId] = nil
+end
+
+local function syncAllYieldAnchorsForOwner(ownerUserId: number, homeInfo: any?)
+	if not homeInfo or not homeInfo.placedModels then
+		clearYieldAnchorsForOwner(ownerUserId)
+		return
+	end
+	local byPoint: { [string]: number } = {}
+	local now = workspace:GetServerTimeNow()
+	for pointIndexStr in pairs(homeInfo.placedModels) do
+		byPoint[pointIndexStr] = now
+	end
+	yieldAnchorServerTime[ownerUserId] = byPoint
+end
+
+local function getExtrapolatedUnclaimedDisplay(ownerUserId: number, pointIndexStr: string, placedData: any, rebirthLevel: number): number
+	local m = placedData :: any
+	local baseAmount: number = if type(m.unclaimedYield) == "number" then m.unclaimedYield else 0
+	local anchorT = getYieldAnchorTime(ownerUserId, pointIndexStr)
+	local perSec = getPerSecondUnclaimedIncrement(placedData, rebirthLevel)
+	local elapsed = math.max(0, math.floor(workspace:GetServerTimeNow() - anchorT))
+	return baseAmount + perSec * elapsed
+end
+
+local function findPlaceModelFolder(slotModel: Model, pointIndexStr: string): Instance?
+	for _, floor in ipairs(slotModel:GetChildren()) do
+		if floor.Name:match("^Lv%d+$") then
+			local plot = floor:FindFirstChild("PlaceModel" .. pointIndexStr)
+			if plot then
+				return plot
+			end
+		end
+	end
+	return nil
+end
+
+local function formatCollectYieldDisplay(ownerUserId: number?, pointIndexStr: string, placedData: any, rebirthLevel: number): string
+	if ownerUserId == nil then
+		local m = placedData :: any
+		local y: number = if type(m.unclaimedYield) == "number" then m.unclaimedYield else 0
+		return NumberExtension.FormatBigNumberAA(y)
+	end
+	return NumberExtension.FormatBigNumberAA(getExtrapolatedUnclaimedDisplay(ownerUserId, pointIndexStr, placedData, rebirthLevel))
+end
+
+local function refreshCollectYieldTextsForActiveHomes()
+	local nowClock = os.clock()
+	if nowClock - lastCollectYieldTextRefreshAt < COLLECT_YIELD_TEXT_REFRESH_INTERVAL then
+		return
+	end
+	lastCollectYieldTextRefreshAt = nowClock
+	for slotName, state in pairs(slotStateCache) do
+		if not state.active or not state.homeInfo or not state.homeInfo.placedModels then
+			continue
+		end
+		local ownerUserId = state.ownerUserId
+		if ownerUserId == nil and state.isLocalPlayer then
+			ownerUserId = players.LocalPlayer.UserId
+		end
+		if ownerUserId == nil then
+			continue
+		end
+		local slotModel = homesFolder:FindFirstChild(slotName) :: Model?
+		if not slotModel then
+			continue
+		end
+		local rebirthLevel = if state.rebirthLevel ~= nil then state.rebirthLevel else 0
+		for pointIndexStr, placedData in pairs(state.homeInfo.placedModels) do
+			if placedData == nil then
+				continue
+			end
+			local plot = findPlaceModelFolder(slotModel, pointIndexStr)
+			if not plot then
+				continue
+			end
+			local booth = plot:FindFirstChild("Booth")
+			local collectPart = booth and booth:FindFirstChild("CollectPart")
+			local collectUI = collectPart and collectPart:FindFirstChild("CollectUI") :: SurfaceGui?
+			if not collectUI then
+				continue
+			end
+			local controller = collectUI:FindFirstChild("ControllerFrame")
+			local collectText = controller and controller:FindFirstChild("CollectText") :: TextLabel?
+			if not collectText then
+				continue
+			end
+			collectText.Text = formatCollectYieldDisplay(ownerUserId, pointIndexStr, placedData, rebirthLevel)
+		end
+	end
+end
 
 local function EnsureBillboardTracked(gui: BillboardGui)
 	if gui:GetAttribute(BILLBOARD_TRACKED_ATTR) ~= true then
@@ -405,7 +540,9 @@ local function ApplyLocalSlotVisualsIfReady(): boolean
 		homeInfo = localInfo.homeInfo,
 		isLocalPlayer = true,
 		rebirthLevel = if localInfo.shopInfo then localInfo.shopInfo.rebirthLevel else 0,
+		ownerUserId = players.LocalPlayer.UserId,
 	}
+	syncAllYieldAnchorsForOwner(players.LocalPlayer.UserId, localInfo.homeInfo)
 	ApplySlotVisuals(slotName)
 
 	-- Streaming 场景下槽位模型可能晚到，补一次延迟刷新。
@@ -739,23 +876,20 @@ local function UpdatePlot(folder: Instance, placedData: any?, isLocalPlayer: boo
 	end
 
 	if collectUI then
-		local yield = if placedData then (placedData.unclaimedYield or 0) else 0
 		collectUI.Enabled = true -- 始终显示
 		local controller = collectUI:FindFirstChild("ControllerFrame")
 		local collectText = controller and controller:FindFirstChild("CollectText") :: TextLabel?
 		local coinImg = controller and controller:FindFirstChild("CoinImg") :: GuiObject?
 		if collectText then
 			collectText.Visible = isOccupied
-			if isOccupied then
-				local playerInfo = ClientGameInfo.GetLocalPlayerInfo()
-					local rebirthLevel = if playerInfo then (playerInfo.shopInfo.rebirthLevel or 0) else 0
-				local multiplier = 1
-					if rebirthLevel > 0 then
-						local rbConfig = GameConfig.RebirthMap[rebirthLevel]
-					multiplier = if rbConfig then rbConfig.collectMultiple else 1
-				end
-				local finalYield = math.ceil(yield * multiplier)
-				local yieldStr = NumberExtension.FormatBigNumberAA(finalYield)
+			if isOccupied and placedData and pointIndex then
+				local state = slotStateCache[slotName]
+				local ownerUserId: number? = if state and state.ownerUserId ~= nil
+					then state.ownerUserId
+					elseif isLocalPlayer then players.LocalPlayer.UserId
+					else nil
+				local rebirthForYield = if state and state.rebirthLevel ~= nil then state.rebirthLevel else 0
+				local yieldStr = formatCollectYieldDisplay(ownerUserId, tostring(pointIndex), placedData, rebirthForYield)
 				TranslationTool.CustomAutoLocalizeTextLabel(collectText, yieldStr) -- Plain text, no key
 			end
 		end
@@ -1542,6 +1676,7 @@ local function RefreshAllHomes()
 			homeInfo = localInfo.homeInfo,
 			isLocalPlayer = true,
 			rebirthLevel = if localInfo.shopInfo then localInfo.shopInfo.rebirthLevel else 0,
+			ownerUserId = players.LocalPlayer.UserId,
 		}
 		localSlotRecoveryAttemptCount = 0
 	elseif previousLocalSlotName and previousLocalState and previousLocalState.active then
@@ -1550,6 +1685,7 @@ local function RefreshAllHomes()
 			homeInfo = previousLocalState.homeInfo,
 			isLocalPlayer = true,
 			rebirthLevel = previousLocalState.rebirthLevel or 0,
+			ownerUserId = players.LocalPlayer.UserId,
 		}
 		ScheduleLocalSlotRecovery(true)
 	else
@@ -1567,6 +1703,7 @@ local function RefreshAllHomes()
 				homeInfo = otherInfo.homeInfo,
 				isLocalPlayer = false,
 				rebirthLevel = otherInfo.rebirthLevel or 0,
+				ownerUserId = player.UserId,
 			}
 		end
 	end
@@ -1730,6 +1867,7 @@ function HomeClientManager.Init()
 	RefreshAllHomes()
 	ScheduleLocalSlotRecovery(true)
 	runService.RenderStepped:Connect(RefreshLocalHomeInteractionFocus)
+	runService.Heartbeat:Connect(refreshCollectYieldTextsForActiveHomes)
 	proximityPromptService.PromptTriggered:Connect(OnPromptTriggered)
 
 	-- Monitor for streaming / replication of parts
@@ -1750,6 +1888,7 @@ function HomeClientManager.Init()
 	end)
 
 	players.PlayerRemoving:Connect(function(player)
+		clearYieldAnchorsForOwner(player.UserId)
 		ClientGameInfo.RemoveOtherPlayer(player.UserId)
 		RefreshAllHomes()
 	end)
@@ -1768,7 +1907,9 @@ function HomeClientManager.Init()
 				homeInfo = otherInfo.homeInfo,
 				isLocalPlayer = false,
 				rebirthLevel = otherInfo.rebirthLevel or 0,
+				ownerUserId = playerId,
 			}
+			syncAllYieldAnchorsForOwner(playerId, otherInfo.homeInfo)
 			ApplySlotVisuals(otherInfo.homeSlot)
 		end
 	end)
@@ -1806,7 +1947,9 @@ function HomeClientManager.Init()
 			homeInfo = homeInfo,
 			isLocalPlayer = isLocal,
 			rebirthLevel = resolvedRebirthLevel,
+			ownerUserId = playerId,
 		}
+		syncAllYieldAnchorsForOwner(playerId, homeInfo)
 		ApplySlotVisuals(homeSlot)
 		if isLocal and not homesFolder:FindFirstChild(homeSlot) then
 			ScheduleSlotUpdate(homeSlot)
@@ -1828,7 +1971,9 @@ function HomeClientManager.Init()
 			homeInfo = localInfo.homeInfo,
 			isLocalPlayer = true,
 			rebirthLevel = level,
+			ownerUserId = players.LocalPlayer.UserId,
 		}
+		syncAllYieldAnchorsForOwner(players.LocalPlayer.UserId, localInfo.homeInfo)
 		if currentState and currentState.active and currentState.homeInfo == localInfo.homeInfo then
 			UpdateRebirthMultiplierUI(homeSlot, localInfo.homeInfo, true, level)
 		else
@@ -1869,10 +2014,12 @@ function HomeClientManager.Init()
 
 					if plot then
 						-- 1. 更新数据缓存 (使其在 ApplySlotVisuals 调用时能拿到最新值)
+						local pData: any? = nil
 						if playerInfo.homeInfo and playerInfo.homeInfo.placedModels then
-							local pData = playerInfo.homeInfo.placedModels[pointIndexStr]
+							pData = playerInfo.homeInfo.placedModels[pointIndexStr]
 							if pData then
 								pData.unclaimedYield = amount
+								resetYieldAnchor(playerId, pointIndexStr)
 							end
 						end
 
@@ -1887,8 +2034,10 @@ function HomeClientManager.Init()
 							local coinImg = controller and controller:FindFirstChild("CoinImg") :: GuiObject?
 							if collectText then
 								collectText.Visible = isOccupied
-								if isOccupied then
-									collectText.Text = NumberExtension.FormatBigNumberAA(amount)
+								if isOccupied and pData then
+									local slotState = slotStateCache[homeSlot]
+									local rlv = if slotState and slotState.rebirthLevel ~= nil then slotState.rebirthLevel else 0
+									collectText.Text = formatCollectYieldDisplay(playerId, pointIndexStr, pData, rlv)
 								end
 							end
 							if coinImg then

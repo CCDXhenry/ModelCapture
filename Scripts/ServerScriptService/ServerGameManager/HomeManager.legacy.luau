@@ -26,7 +26,8 @@ local islandDiscoverAccumulator = 0
 local basePlotsCount = 0
 
 local YIELD_UPDATE_INTERVAL = 1
-local YIELD_BROADCAST_INTERVAL = 1
+-- 全服收益快照纠偏间隔：平时由客户端按秒本地推算，此处仅定期对齐服务端权威值
+local YIELD_BROADCAST_INTERVAL = 60
 
 -- Initialize available slots from PlayersHome
 local function InitSlots()
