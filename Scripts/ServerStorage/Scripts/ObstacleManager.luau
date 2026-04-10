@@ -84,7 +84,7 @@ local function composeSizeComponents(
 			return baseComp
 		end
 		if timeC <= 0 then
-			return baseComp * minC
+			return baseComp
 		end
 		return baseComp * axisOscMultiplier(minC, maxC, timeC, clock)
 	end
@@ -101,7 +101,7 @@ local function composeStaticSizeForNonAnimatedAxes(baseSize: Vector3, minS: Vect
 			return baseComp
 		end
 		if timeC <= 0 then
-			return baseComp * minC
+			return baseComp
 		end
 		return baseComp
 	end
